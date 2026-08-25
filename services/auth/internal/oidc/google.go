@@ -1,10 +1,7 @@
 package oidc
 
-// NewGoogle returns the Google relying party. Google is vanilla OIDC:
-// the email and profile scopes put email, email_verified, name, and
-// picture straight into the ID token. issuerURL is the service config's
-// concern (defaulting to the real Google issuer there) so tests and
-// local fakes can stand in for it.
+// NewGoogle returns the Google relying party: email/profile scopes yield email,
+// email_verified, name, and picture claims. issuerURL is caller-supplied for test fakes.
 func NewGoogle(clientID, clientSecret, redirectURL, issuerURL string) *RP {
 	return NewRP(RPConfig{
 		Name:         "google",

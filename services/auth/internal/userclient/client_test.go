@@ -30,10 +30,9 @@ func newMinter(t *testing.T) *token.Minter {
 	return m
 }
 
-// newFakeUserService returns a fake that enforces a service-role Bearer
-// token (validated via jwtauth against the minter's JWKS) before
-// answering with the canned user.
-func newFakeUserService(t *testing.T, m *token.Minter, status int, body any) *httptest.Server {
+// newStubUserService returns a stub that enforces a token_use=service Bearer token (validated
+// via jwtauth against the minter's JWKS) before answering with the canned user.
+func newStubUserService(t *testing.T, m *token.Minter, status int, body any) *httptest.Server {
 	t.Helper()
 	jwks, _ := json.Marshal(map[string]any{"keys": []map[string]string{{
 		"kty": "OKP", "crv": "Ed25519", "kid": m.Kid(),
@@ -58,8 +57,8 @@ func newFakeUserService(t *testing.T, m *token.Minter, status int, body any) *ht
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		if !claims.HasRole("service") || claims.Subject != "svc:auth" {
-			t.Errorf("claims = %+v, want service role and svc:auth subject", claims)
+		if !claims.IsService() || claims.Subject != "svc:auth" {
+			t.Errorf("claims = %+v, want token_use=service and svc:auth subject", claims)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(status)
@@ -80,7 +79,7 @@ func userJSON(id uuid.UUID, roles ...string) map[string]any {
 func TestUpsert(t *testing.T) {
 	m := newMinter(t)
 	id := uuid.New()
-	srv := newFakeUserService(t, m, http.StatusOK, userJSON(id, "user"))
+	srv := newStubUserService(t, m, http.StatusOK, userJSON(id, "user"))
 	c, err := userclient.New(srv.URL, m)
 	if err != nil {
 		t.Fatal(err)
@@ -98,7 +97,7 @@ func TestUpsert(t *testing.T) {
 func TestGet(t *testing.T) {
 	m := newMinter(t)
 	id := uuid.New()
-	srv := newFakeUserService(t, m, http.StatusOK, userJSON(id, "user", "admin"))
+	srv := newStubUserService(t, m, http.StatusOK, userJSON(id, "user", "admin"))
 	c, err := userclient.New(srv.URL, m)
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +113,7 @@ func TestGet(t *testing.T) {
 
 func TestGet_NotFound(t *testing.T) {
 	m := newMinter(t)
-	srv := newFakeUserService(t, m, http.StatusNotFound, map[string]any{
+	srv := newStubUserService(t, m, http.StatusNotFound, map[string]any{
 		"type": "about:blank", "title": "Not Found", "status": 404,
 	})
 	c, err := userclient.New(srv.URL, m)
@@ -128,7 +127,7 @@ func TestGet_NotFound(t *testing.T) {
 
 func TestUpsert_UpstreamErrorSurfaces(t *testing.T) {
 	m := newMinter(t)
-	srv := newFakeUserService(t, m, http.StatusInternalServerError, map[string]any{
+	srv := newStubUserService(t, m, http.StatusInternalServerError, map[string]any{
 		"type": "about:blank", "title": "Internal Server Error", "status": 500,
 	})
 	c, err := userclient.New(srv.URL, m)
@@ -142,7 +141,7 @@ func TestUpsert_UpstreamErrorSurfaces(t *testing.T) {
 
 func TestGet_ServiceErrorIsNotNotFound(t *testing.T) {
 	m := newMinter(t)
-	srv := newFakeUserService(t, m, http.StatusInternalServerError, map[string]any{
+	srv := newStubUserService(t, m, http.StatusInternalServerError, map[string]any{
 		"type": "about:blank", "title": "Internal Server Error", "status": 500,
 	})
 	c, err := userclient.New(srv.URL, m)
@@ -153,8 +152,7 @@ func TestGet_ServiceErrorIsNotNotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("want error for 500 from user service")
 	}
-	// The caller revokes sessions on ErrUserNotFound; a 5xx must never
-	// masquerade as it.
+	// The caller revokes sessions on ErrUserNotFound; a 5xx must never masquerade as it.
 	if errors.Is(err, userclient.ErrUserNotFound) {
 		t.Fatal("500 masqueraded as ErrUserNotFound")
 	}
@@ -162,8 +160,7 @@ func TestGet_ServiceErrorIsNotNotFound(t *testing.T) {
 
 func TestGet_NonJSON404IsNotNotFound(t *testing.T) {
 	m := newMinter(t)
-	// A 404 that is NOT problem+json (e.g. a proxy error page or a
-	// misrouted USER_SERVICE_URL) must not read as "user gone".
+	// A 404 that is NOT problem+json (e.g. a proxy error page or a misrouted USER_SERVICE_URL) must not read as "user gone".
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		w.WriteHeader(http.StatusNotFound)

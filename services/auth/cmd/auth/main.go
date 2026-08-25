@@ -86,7 +86,12 @@ func run() error {
 	}
 	slog.Info("auth providers", "real", names, "dev", cfg.DevProviderEnabled, "kid", minter.Kid())
 
-	h := server.New(st, minter, users, providers, verifier, cfg.DevProviderEnabled, cfg.RefreshTokenTTL, cfg.InternalServiceSecrets, slog.Default())
+	h := server.New(st, minter, users, providers, verifier, server.Options{
+		DevProviderEnabled:     cfg.DevProviderEnabled,
+		RefreshTokenTTL:        cfg.RefreshTokenTTL,
+		InternalServiceSecrets: cfg.InternalServiceSecrets,
+		Logger:                 slog.Default(),
+	})
 	router, err := server.NewRouter(h, slog.Default(),
 		func(c context.Context) error { return pgkit.Health(c, pool) })
 	if err != nil {

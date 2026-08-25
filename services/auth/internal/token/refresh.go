@@ -7,11 +7,8 @@ import (
 	"encoding/hex"
 )
 
-// NewRefreshToken returns a fresh opaque refresh token (returned to the
-// caller exactly once) and its SHA-256 hex hash, the only form stored.
-// crypto/rand.Read is documented to never fail on supported platforms,
-// so a failure is unrecoverable corruption and panics (the same stance
-// uuid.NewString takes).
+// NewRefreshToken returns a fresh opaque refresh token (given out once) and its SHA-256 hex
+// hash, the only form stored. crypto/rand.Read never fails on supported platforms; a failure panics.
 func NewRefreshToken() (raw, hash string) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

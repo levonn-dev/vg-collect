@@ -20,8 +20,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// ProviderError wraps upstream identity-provider failures (network,
-// non-200, malformed responses) so handlers can map them to 502.
+// ProviderError wraps upstream identity-provider failures (network, non-200, malformed) so handlers can map them to 502.
 type ProviderError struct {
 	Op     string
 	Status int // 0 when the request never completed
@@ -37,14 +36,8 @@ func (e *ProviderError) Error() string {
 
 func (e *ProviderError) Unwrap() error { return e.Err }
 
-// doJSON runs one provider HTTP round trip and decodes a JSON response
-// into out. Every failure mode (request construction, transport, a
-// non-200 status, or a malformed body) returns *ProviderError, so
-// fetchDiscovery, redeemCode, and the JWKS refetch blame the identity
-// provider the same way, and OauthCallback's errors.As sees one type
-// regardless of which leg of the OIDC dance failed. Decoded-value
-// checks (issuer match, a non-empty id_token) are the caller's job,
-// not a transport failure.
+// doJSON runs one provider HTTP round trip and decodes JSON into out; every failure
+// classifies as *ProviderError, so OauthCallback's errors.As sees one type per OIDC leg.
 func doJSON(ctx context.Context, hc *http.Client, method, url string, body io.Reader, headers map[string]string, op string, out any) *ProviderError {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)
 	if err != nil {
@@ -69,9 +62,8 @@ func doJSON(ctx context.Context, hc *http.Client, method, url string, body io.Re
 	return nil
 }
 
-// RPConfig parameterizes one generic OIDC relying party. Provider
-// quirks (scopes, extra authorize params) live in the per-provider
-// constructors, not in this code path.
+// RPConfig parameterizes one generic OIDC relying party; provider-specific quirks
+// (scopes, extra params) live in the per-provider constructors.
 type RPConfig struct {
 	Name            string
 	IssuerURL       string // discovery at IssuerURL + /.well-known/openid-configuration
@@ -82,8 +74,7 @@ type RPConfig struct {
 	ExtraAuthParams url.Values
 }
 
-// RP is a hand-rolled OIDC relying party: discovery, authorization-code
-// flow with PKCE, and full ID-token verification.
+// RP is a hand-rolled OIDC relying party: discovery, authorization-code flow with PKCE, and full ID-token verification.
 type RP struct {
 	cfg         RPConfig
 	hc          *http.Client
@@ -94,18 +85,15 @@ type RP struct {
 	disc *discovery
 }
 
-// Provider round-trip op label values. ProviderError.Op stays prose
-// ("token exchange"); these are the bounded metric spellings.
+// Bounded metric op label values; ProviderError.Op stays prose ("token exchange").
 const (
 	opDiscovery     = "discovery"
 	opTokenExchange = "token_exchange"
 	opJWKS          = "jwks"
 )
 
-// recordProviderRequest records one relying-party HTTP round trip on
-// the shared histogram. Every label is a bounded set: provider is a
-// configured RP name, op one of the constants above, and outcome
-// collapses to ok|error.
+// recordProviderRequest records one round trip on the shared histogram with bounded
+// labels: provider (RP name), op (constants above), outcome (ok|error).
 func recordProviderRequest(ctx context.Context, hist metric.Float64Histogram, provider, op string, start time.Time, failed bool) {
 	if hist == nil {
 		return
@@ -127,10 +115,7 @@ type discovery struct {
 	JWKSURI               string `json:"jwks_uri"`
 }
 
-// defaultJWKSRefetch bounds how often an unknown provider kid forces a
-// JWKS refetch: fast enough to pick up provider key rotation, throttled
-// so a flood of unknown kids cannot hammer the provider. Mirrors the
-// jwtauth validator's refetch window.
+// defaultJWKSRefetch throttles refetch-per-unknown-kid; mirrors jwtauth's validator window.
 const defaultJWKSRefetch = 30 * time.Second
 
 // NewRP builds a relying party; hc nil means a 10s-timeout default.
@@ -138,16 +123,13 @@ func NewRP(cfg RPConfig, hc *http.Client) *RP {
 	return NewRPWithRefetchInterval(cfg, hc, defaultJWKSRefetch)
 }
 
-// NewRPWithRefetchInterval is NewRP with a custom minimum JWKS refetch
-// interval. Pass 0 to refetch on every unknown kid (used by tests).
+// NewRPWithRefetchInterval is NewRP with a custom minimum JWKS refetch interval; 0 refetches on every unknown kid (tests).
 func NewRPWithRefetchInterval(cfg RPConfig, hc *http.Client, jwksRefetch time.Duration) *RP {
 	if hc == nil {
 		hc = &http.Client{Timeout: 10 * time.Second}
 	}
-	// Best-effort, like every domain instrument: a registration failure
-	// logs and the record sites no-op. Both real providers create the
-	// same instrument (the SDK deduplicates); the dev provider has no
-	// RP, so it never appears in this histogram.
+	// Best-effort: a registration failure logs and record sites no-op. Both real
+	// providers share this instrument (SDK dedupes); the dev provider never appears here.
 	hist, err := otel.Meter("github.com/levonn-dev/vgkeep/services/auth").
 		Float64Histogram("vg.auth.provider.request.duration",
 			metric.WithDescription("Wall time of relying-party round trips to the identity provider"),
@@ -161,10 +143,8 @@ func NewRPWithRefetchInterval(cfg RPConfig, hc *http.Client, jwksRefetch time.Du
 
 func (p *RP) Name() string { return p.cfg.Name }
 
-// discover fetches and caches the provider metadata. Lazy (first use,
-// not boot) so a provider outage cannot crash-loop the whole service;
-// only successful fetches are cached. Only the fetch is measured; the
-// cached fast path records nothing.
+// discover fetches and caches provider metadata lazily (first use, not boot) so an outage
+// cannot crash-loop the service; only successful fetches cache, and only the fetch is measured.
 func (p *RP) discover(ctx context.Context) (*discovery, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -181,9 +161,7 @@ func (p *RP) discover(ctx context.Context) (*discovery, error) {
 	return p.disc, nil
 }
 
-// fetchDiscovery performs the discovery round trip and validates that
-// the document declares the issuer we were configured to talk to
-// (mix-up defense).
+// fetchDiscovery validates the document's issuer matches configuration (mix-up defense).
 func (p *RP) fetchDiscovery(ctx context.Context) (*discovery, error) {
 	u := strings.TrimSuffix(p.cfg.IssuerURL, "/") + "/.well-known/openid-configuration"
 	var d discovery
@@ -217,12 +195,9 @@ func (p *RP) AuthorizeURL(ctx context.Context, state, nonce, challenge string) (
 	return d.AuthorizationEndpoint + "?" + q.Encode(), nil
 }
 
-// Exchange redeems the code (client_secret_post + PKCE verifier) and
-// fully verifies the ID token: RS256 signature against the provider
-// JWKS, issuer, audience = client_id, required expiry with 30s leeway,
-// and the nonce binding it to the login that started the flow. Only
-// the token-endpoint round trip is measured here; verification is our
-// own work (its JWKS fetch, when one happens, records op=jwks).
+// Exchange redeems the code (client_secret_post + PKCE) and fully verifies the ID token: RS256
+// against the provider JWKS, issuer, audience = client_id, expiry with 30s leeway, and nonce.
+// Only the token-endpoint round trip is measured here; verification's own JWKS fetch records op=jwks.
 func (p *RP) Exchange(ctx context.Context, code, verifier, nonce string) (IDClaims, error) {
 	d, err := p.discover(ctx)
 	if err != nil {
@@ -290,8 +265,7 @@ func (p *RP) verifyIDToken(ctx context.Context, d *discovery, raw, nonce string)
 	out.Email, _ = mc["email"].(string)
 	out.EmailVerified, _ = mc["email_verified"].(bool)
 	out.AvatarURL, _ = mc["picture"].(string)
-	// Display-name preference: standard "name", then Twitch's
-	// "preferred_username", then the email local part.
+	// Display-name preference: name, then Twitch's preferred_username, then email local part.
 	if v, _ := mc["name"].(string); v != "" {
 		out.DisplayName = v
 	} else if v, _ := mc["preferred_username"].(string); v != "" {

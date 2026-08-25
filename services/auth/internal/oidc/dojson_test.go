@@ -7,24 +7,19 @@ import (
 	"testing"
 )
 
-// doJSONOut is the decode target shared by every case below; doJSON is
-// generic over out, so one small struct is enough to pin the contract.
+// doJSONOut is the shared decode target; doJSON is generic over out.
 type doJSONOut struct {
 	Msg string `json:"msg"`
 }
 
-// TestDoJSON pins doJSON's contract directly: every failure mode
-// classifies as *ProviderError carrying the caller's op, and a clean
-// response decodes into out. doJSON is unexported, so fetchDiscovery,
-// redeemCode, and refreshLocked only exercise it indirectly through
-// their own op string and decode target.
+// TestDoJSON pins doJSON's contract: every failure classifies as *ProviderError
+// with the caller's op; a clean response decodes into out.
 func TestDoJSON(t *testing.T) {
 	const op = "the-op"
 
 	tests := []struct {
 		name string
-		// handler serves the case's response; nil means the case wants
-		// a server that is already closed (the transport-error case).
+		// handler serves the response; nil means a pre-closed server (transport-error case).
 		handler    http.HandlerFunc
 		wantErr    bool
 		wantStatus int // asserted only when non-zero
@@ -59,10 +54,8 @@ func TestDoJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// A server that answers normally, except the transport-error
-			// case: start one, then close it immediately, so the request
-			// hits a deterministic, fast connection-refused instead of a
-			// hostname that may or may not resolve.
+			// Transport-error case closes the server immediately: a deterministic
+			// connection-refused beats a hostname that may or may not resolve.
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if tt.handler != nil {
 					tt.handler(w, r)
@@ -103,9 +96,7 @@ func TestDoJSON(t *testing.T) {
 				}
 				return
 			}
-			// Transport and decode failures both carry the underlying
-			// error instead of a status (the request either never
-			// completed or completed with a 200 that was not usable).
+			// Transport and decode failures carry the underlying error instead of a status.
 			if err.Status != 0 {
 				t.Fatalf("Status = %d, want 0", err.Status)
 			}

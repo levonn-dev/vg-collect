@@ -22,10 +22,8 @@ type rsaJWKSDoc struct {
 	} `json:"keys"`
 }
 
-// rsaKeyCache caches a provider's RSA verification keys by kid,
-// refetching at most once per minRefetch window when a kid is unknown
-// (covers provider key rotation without hammering the provider on
-// garbage). Pass 0 to always refetch on unknown kid.
+// rsaKeyCache caches a provider's RSA keys by kid, refetching at most once per
+// minRefetch on an unknown kid; 0 means always refetch.
 type rsaKeyCache struct {
 	hc         *http.Client
 	minRefetch time.Duration
@@ -60,8 +58,7 @@ func (c *rsaKeyCache) get(ctx context.Context, jwksURL, kid string) (*rsa.Public
 	return nil, fmt.Errorf("oidc: unknown provider kid %q after refetch", kid)
 }
 
-// fetchLocked measures the provider JWKS round trip (op=jwks) around
-// the actual fetch.
+// fetchLocked measures the provider JWKS round trip (op=jwks) around the actual fetch.
 func (c *rsaKeyCache) fetchLocked(ctx context.Context, jwksURL string) error {
 	start := time.Now()
 	err := c.refreshLocked(ctx, jwksURL)
@@ -70,11 +67,8 @@ func (c *rsaKeyCache) fetchLocked(ctx context.Context, jwksURL string) error {
 }
 
 func (c *rsaKeyCache) refreshLocked(ctx context.Context, jwksURL string) error {
-	// Same fetch-decode skeleton as fetchDiscovery/redeemCode, and the
-	// same *ProviderError classification: a JWKS refetch failing here
-	// happens mid token-verification, and OauthCallback's errors.As
-	// must see the same type it sees from those two or this outage
-	// gets misclassified as a rejected login instead of a 502.
+	// Same fetch-decode skeleton as fetchDiscovery/redeemCode: OauthCallback's errors.As
+	// must see the same *ProviderError type, or a JWKS outage misclassifies as a rejected login.
 	var doc rsaJWKSDoc
 	if err := doJSON(ctx, c.hc, http.MethodGet, jwksURL, nil, nil, "jwks", &doc); err != nil {
 		return err
@@ -98,10 +92,8 @@ func (c *rsaKeyCache) refreshLocked(ctx context.Context, jwksURL string) error {
 		}
 	}
 	c.lastFetch = time.Now()
-	// A healthy provider JWKS is never empty. A 200 carrying no usable
-	// keys (transient provider degradation, e.g. mid-rotation) must not
-	// evict the keys we already trust, or in-flight logins fail until the
-	// next refetch. Keep the existing cache; the throttle still applies.
+	// A 200 with no usable keys (mid-rotation provider hiccup) must not evict
+	// cached keys, or in-flight logins fail until the next refetch; the throttle still applies.
 	if len(keys) == 0 {
 		return nil
 	}

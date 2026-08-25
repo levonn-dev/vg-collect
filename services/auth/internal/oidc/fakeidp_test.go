@@ -17,9 +17,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// fakeIDP is an httptest OIDC provider: discovery, JWKS (RSA), and a
-// token endpoint that redeems pre-registered codes for ID tokens.
-type fakeIDP struct {
+// stubIDP is an httptest OIDC provider: discovery, RSA JWKS, and a token endpoint that redeems pre-registered codes.
+type stubIDP struct {
 	t   *testing.T
 	srv *httptest.Server
 	key *rsa.PrivateKey
@@ -39,13 +38,13 @@ type fakeIDP struct {
 	codes           map[string]jwt.MapClaims
 }
 
-func newFakeIDP(t *testing.T) *fakeIDP {
+func newStubIDP(t *testing.T) *stubIDP {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeIDP{t: t, key: key, kid: "idp-key-1", codes: map[string]jwt.MapClaims{}}
+	f := &stubIDP{t: t, key: key, kid: "idp-key-1", codes: map[string]jwt.MapClaims{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", f.discovery)
 	mux.HandleFunc("GET /jwks", f.jwks)
@@ -55,9 +54,9 @@ func newFakeIDP(t *testing.T) *fakeIDP {
 	return f
 }
 
-func (f *fakeIDP) issuer() string { return f.srv.URL }
+func (f *stubIDP) issuer() string { return f.srv.URL }
 
-func (f *fakeIDP) discovery(w http.ResponseWriter, _ *http.Request) {
+func (f *stubIDP) discovery(w http.ResponseWriter, _ *http.Request) {
 	f.discoveryCalls.Add(1)
 	if f.discoveryStatus != 0 {
 		w.WriteHeader(f.discoveryStatus)
@@ -75,7 +74,7 @@ func (f *fakeIDP) discovery(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (f *fakeIDP) jwks(w http.ResponseWriter, _ *http.Request) {
+func (f *stubIDP) jwks(w http.ResponseWriter, _ *http.Request) {
 	if f.jwksStatus != 0 {
 		w.WriteHeader(f.jwksStatus)
 		return
@@ -92,7 +91,7 @@ func (f *fakeIDP) jwks(w http.ResponseWriter, _ *http.Request) {
 	}}})
 }
 
-func (f *fakeIDP) token(w http.ResponseWriter, r *http.Request) {
+func (f *stubIDP) token(w http.ResponseWriter, r *http.Request) {
 	if f.tokenDelay > 0 {
 		time.Sleep(f.tokenDelay)
 	}
@@ -116,9 +115,8 @@ func (f *fakeIDP) token(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// registerCode makes the token endpoint redeem code for an ID token
-// with these claims (defaults filled for iss/aud/exp unless preset).
-func (f *fakeIDP) registerCode(code, clientID, nonce string, claims jwt.MapClaims) {
+// registerCode redeems code for an ID token with claims; iss/aud/exp default unless preset.
+func (f *stubIDP) registerCode(code, clientID, nonce string, claims jwt.MapClaims) {
 	merged := jwt.MapClaims{
 		"iss": f.srv.URL, "aud": clientID, "nonce": nonce,
 		"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
@@ -127,7 +125,7 @@ func (f *fakeIDP) registerCode(code, clientID, nonce string, claims jwt.MapClaim
 	f.codes[code] = merged
 }
 
-func (f *fakeIDP) mint(claims jwt.MapClaims) string {
+func (f *stubIDP) mint(claims jwt.MapClaims) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = f.kid
 	s, err := tok.SignedString(f.key)
@@ -137,9 +135,8 @@ func (f *fakeIDP) mint(claims jwt.MapClaims) string {
 	return s
 }
 
-// mintWithKid signs with the real key but stamps an arbitrary kid, to
-// simulate a token whose kid is absent from the served JWKS.
-func (f *fakeIDP) mintWithKid(claims jwt.MapClaims, kid string) string {
+// mintWithKid signs with the real key under an arbitrary kid, absent from the served JWKS.
+func (f *stubIDP) mintWithKid(claims jwt.MapClaims, kid string) string {
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = kid
 	s, err := tok.SignedString(f.key)

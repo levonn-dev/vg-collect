@@ -40,8 +40,7 @@ import (
 
 var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 
-// newTestPool duplicates the fixture in internal/store/store_test.go
-// (Go test packages can't share helpers across packages).
+// newTestPool duplicates the fixture in internal/store/store_test.go (Go test packages can't share helpers).
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	return pgtest.FreshPool(t, migrations.FS, ".")
@@ -69,10 +68,8 @@ type stubUsersServer struct {
 	lastUpsertBody []byte
 }
 
-// newJWKSValidator builds a jwtauth.Validator against a JWKS httptest
-// server mirroring m's public key -- the same verification path every
-// real service uses to check a vgkeep access token, including the
-// auth service validating its own tokens on the self-service endpoints.
+// newJWKSValidator builds a jwtauth.Validator against a JWKS httptest server mirroring m's
+// public key: the same path every real service uses, including auth validating its own tokens.
 func newJWKSValidator(t *testing.T, m *token.Minter) *jwtauth.Validator {
 	t.Helper()
 	jwks, _ := json.Marshal(map[string]any{"keys": []map[string]string{{
@@ -108,7 +105,7 @@ func (f *stubUsersServer) authorize(w http.ResponseWriter, r *http.Request) bool
 		return false
 	}
 	claims, err := f.v.Validate(r.Context(), raw)
-	if err != nil || !claims.HasRole("service") {
+	if err != nil || !claims.IsService() {
 		f.t.Errorf("service token rejected: %v (claims %+v)", err, claims)
 		w.WriteHeader(http.StatusUnauthorized)
 		return false
@@ -209,18 +206,15 @@ func (f *stubUsersServer) count() int {
 	return len(f.byEmail)
 }
 
-// lastLocaleHint reports the locale_hint decoded off the most recent
-// upsert body (empty when none was sent, or the field was omitted).
+// lastLocaleHint reports the locale_hint decoded off the most recent upsert body (empty if none sent or omitted).
 func (f *stubUsersServer) lastLocaleHint() string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.localeHint
 }
 
-// lastUpsertRaw reports the raw JSON bytes of the most recent upsert
-// body, so a test can prove a key is absent from the wire -- a decoded
-// zero value alone can't distinguish "key omitted" from "key present
-// with a zero value" for non-pointer fields.
+// lastUpsertRaw reports the raw JSON bytes of the most recent upsert body, so a test can prove
+// a key is absent: a decoded zero value can't distinguish omitted from present-but-zero.
 func (f *stubUsersServer) lastUpsertRaw() []byte {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -235,8 +229,7 @@ type stubIDP struct {
 	key   *rsa.PrivateKey
 	codes map[string]jwt.MapClaims
 
-	// jwksStatus simulates the provider's key endpoint going down after
-	// a token was already issued (0 means the normal 200 response).
+	// jwksStatus simulates the provider's key endpoint going down after a token was issued (0 = normal 200).
 	jwksStatus int
 }
 
@@ -328,12 +321,15 @@ func newEnv(t *testing.T, devEnabled bool) *env {
 	providers := map[string]oidc.Provider{
 		"google": oidc.NewGoogle("client-1", "secret-1", "https://app.example/cb", idp.srv.URL),
 	}
-	// The router under test validates Bearer tokens on its own
-	// self-service endpoints exactly as production does: against its
-	// own JWKS, mirrored here from the same minter that signs the
-	// sessions these tests log in with.
+	// The router validates Bearer tokens against its own JWKS, exactly as production does;
+	// mirrored here from the same minter that signs the sessions these tests log in with.
 	verifier := newJWKSValidator(t, m)
-	h := server.New(st, m, uc, providers, verifier, devEnabled, 30*24*time.Hour, []string{testInternalServiceToken}, slog.Default())
+	h := server.New(st, m, uc, providers, verifier, server.Options{
+		DevProviderEnabled:     devEnabled,
+		RefreshTokenTTL:        30 * 24 * time.Hour,
+		InternalServiceSecrets: []string{testInternalServiceToken},
+		Logger:                 slog.Default(),
+	})
 	router, err := server.NewRouter(h, slog.Default(), func(context.Context) error { return nil })
 	if err != nil {
 		t.Fatal(err)
@@ -348,24 +344,19 @@ func post(t *testing.T, url string, body any) *http.Response {
 	return send(t, reqtest.NewJSONRequest(t, http.MethodPost, url, "", body))
 }
 
-// postAuth posts body carrying an Authorization header (raw is the
-// bearer token; an empty raw omits the header entirely, for the
-// missing-Authorization cases).
+// postAuth posts body with an Authorization header; empty raw omits the header (missing-Authorization cases).
 func postAuth(t *testing.T, url, raw string, body any) *http.Response {
 	t.Helper()
 	return send(t, reqtest.NewJSONRequest(t, http.MethodPost, url, raw, body))
 }
 
-// authReq is postAuth for the body-less identity-management endpoints
-// (GET/DELETE): raw is the bearer token, empty omits the header
-// entirely, for the missing-Authorization cases.
+// authReq is postAuth for the body-less identity-management endpoints (GET/DELETE); empty raw omits the header.
 func authReq(t *testing.T, method, url, raw string) *http.Response {
 	t.Helper()
 	return send(t, reqtest.NewJSONRequest(t, method, url, raw, nil))
 }
 
-// send issues req against a real listener (every caller here builds
-// an absolute httptest.NewServer URL) and closes the body on cleanup.
+// send issues req against a real listener and closes the body on cleanup.
 func send(t *testing.T, req *http.Request) *http.Response {
 	t.Helper()
 	resp, err := http.DefaultClient.Do(req)
@@ -389,16 +380,14 @@ type tokenPair struct {
 	RefreshExpiresIn int64  `json:"refresh_expires_in"`
 }
 
-// linkedTokenPair decodes a CallbackResponse: a tokenPair plus the
-// linked_provider a link-mode completion carries.
+// linkedTokenPair decodes a CallbackResponse: tokenPair plus the linked_provider a link-mode completion carries.
 type linkedTokenPair struct {
 	tokenPair
 	LinkedProvider string `json:"linked_provider"`
 }
 
-// problemBody is reqtest.ProblemBody under the name this file's ~80
-// call sites already use; RevokeJTIs is the field only this service's
-// problem responses (refresh reuse) ever populate.
+// problemBody is reqtest.ProblemBody under this file's existing name; RevokeJTIs is the
+// field only refresh-reuse responses populate.
 type problemBody = reqtest.ProblemBody
 
 // identityDTO decodes one entry of an Identities response.
@@ -418,8 +407,7 @@ func wantProblem(t *testing.T, resp *http.Response, status int, code string) pro
 	return reqtest.AssertProblem(t, resp, status, code)
 }
 
-// accessClaims parses an access token against the minter's own public
-// key (full jwtauth round-trips are asserted in the lifecycle tests).
+// accessClaims parses an access token against the minter's public key (full jwtauth round-trips are tested in lifecycle tests).
 func accessClaims(t *testing.T, e *env, raw string) jwt.MapClaims {
 	t.Helper()
 	mc := jwt.MapClaims{}
@@ -453,8 +441,7 @@ func TestOauthFlow_EndToEnd(t *testing.T) {
 		t.Fatalf("authorize url incomplete: %s", start.AuthorizeURL)
 	}
 
-	// The "browser" returns from the provider with a code bound to the
-	// nonce the service generated.
+	// The "browser" returns with a code bound to the nonce the service generated.
 	e.idp.registerCode("code-1", q.Get("nonce"), jwt.MapClaims{
 		"sub": "google-sub-1", "email": "alice@example.com", "email_verified": true,
 		"name": "Alice Google",
@@ -498,9 +485,8 @@ func TestOauthFlow_EndToEnd(t *testing.T) {
 	wantProblem(t, resp, 400, "invalid_state")
 }
 
-// Two dev logins with the same subject stay one user even after the
-// user's email-owning row changes hands: bind once as alice, then a
-// second login resolves by identity without consulting upsert-by-email.
+// Two dev logins with the same subject stay one user even after the email-owning row
+// changes hands: identity resolution wins over a fresh upsert-by-email.
 func TestOauthFlow_IdentityFirstResolution(t *testing.T) {
 	e := newEnv(t, true)
 
@@ -511,9 +497,8 @@ func TestOauthFlow_IdentityFirstResolution(t *testing.T) {
 		t.Fatalf("first login sub missing: %v", firstClaims)
 	}
 
-	// Drop alice's email-indexed row but keep the id-indexed one: an
-	// email upsert would now mint a brand new user, but the identity
-	// bound on the first login must still resolve straight to alice.
+	// Drop alice's email-indexed row but keep the id-indexed one: an email upsert would mint a
+	// new user, but identity resolution must still land on alice.
 	e.users.mu.Lock()
 	delete(e.users.byEmail, "alice@example.com")
 	e.users.mu.Unlock()
@@ -624,8 +609,7 @@ func TestOauthCallback_NoAcceptLanguageOmitsLocaleHint(t *testing.T) {
 	e.idp.registerCode("code-noloc", q.Get("nonce"), jwt.MapClaims{
 		"sub": "s-noloc", "email": "noloc@example.com", "email_verified": true, "name": "NoLoc",
 	})
-	// post() never sets Accept-Language, so this drives the callback
-	// with the header fully absent (not merely empty).
+	// post() never sets Accept-Language, so the header is fully absent, not merely empty.
 	resp = post(t, e.srv.URL+"/oauth/callback",
 		map[string]string{"code": "code-noloc", "state": q.Get("state")})
 	if resp.StatusCode != http.StatusOK {
@@ -675,8 +659,7 @@ func TestOauthCallback_VerificationFailureIs400(t *testing.T) {
 	}](t, resp)
 	u, _ := url.Parse(start.AuthorizeURL)
 	q := u.Query()
-	// The provider answers 200 with a well-signed token bound to the
-	// WRONG nonce: an invalid login attempt, not a provider outage.
+	// Provider answers 200 with a well-signed token bound to the WRONG nonce: a bad login, not an outage.
 	e.idp.registerCode("code-n", "not-the-nonce", jwt.MapClaims{
 		"sub": "s", "email": "n@example.com", "email_verified": true,
 	})
@@ -688,14 +671,8 @@ func TestOauthCallback_VerificationFailureIs400(t *testing.T) {
 	}
 }
 
-// A JWKS refetch failing during ID-token verification is an upstream
-// outage, not a bad login attempt: it must classify the same way as a
-// broken discovery or token endpoint (502 provider_error), the same
-// distinction TestOauthCallback_VerificationFailureIs400 draws for an
-// actually-bad token. The code is well-formed and correctly signed;
-// only the provider's key endpoint is unreachable at verify time, so a
-// misclassification here is purely a wrong-error-type bug, not a
-// reachability problem.
+// A JWKS refetch failure during verification is an upstream outage (502 provider_error), not
+// a bad login (contrast TestOauthCallback_VerificationFailureIs400): the token itself is well-formed and signed.
 func TestOauthCallback_JWKSFetchFailureIsProviderError(t *testing.T) {
 	e := newEnv(t, false)
 	resp := post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
@@ -707,8 +684,7 @@ func TestOauthCallback_JWKSFetchFailureIsProviderError(t *testing.T) {
 	e.idp.registerCode("code-jwks-down", q.Get("nonce"), jwt.MapClaims{
 		"sub": "s-jwks", "email": "jwks@example.com", "email_verified": true,
 	})
-	// Nothing has been cached yet, so verifying this token's kid forces
-	// the RP's very first JWKS fetch -- and that fetch now fails.
+	// Nothing cached yet, so verifying this kid forces the RP's first JWKS fetch, which fails.
 	e.idp.jwksStatus = http.StatusInternalServerError
 	resp = post(t, e.srv.URL+"/oauth/callback",
 		map[string]string{"code": "code-jwks-down", "state": q.Get("state")})
@@ -739,8 +715,7 @@ func TestOauthLink_StartAndCallbackBindsToCaller(t *testing.T) {
 	}
 	q := u.Query()
 
-	// The fake provider asserts a verified email DIFFERENT from alice's;
-	// identity-first binding must still land on alice's account.
+	// Fake provider asserts an email DIFFERENT from alice's; identity-first binding must still land on alice.
 	e.idp.registerCode("link-code-1", q.Get("nonce"), jwt.MapClaims{
 		"sub": "g-sub-1", "email": "other@example.com", "email_verified": true,
 	})
@@ -759,8 +734,7 @@ func TestOauthLink_StartAndCallbackBindsToCaller(t *testing.T) {
 			linkedSub, aliceSub)
 	}
 
-	// A fresh login through google with the SAME subject resolves straight
-	// to alice's user: identity-first, proven through a real provider path.
+	// A fresh login with the SAME subject resolves straight to alice: identity-first via a real provider.
 	resp = post(t, e.srv.URL+"/oauth/start", map[string]string{"provider": "google"})
 	start2 := decode[struct {
 		AuthorizeURL string `json:"authorize_url"`
@@ -789,9 +763,8 @@ func TestOauthLinkStart_UnknownProviderAndMissingBearer(t *testing.T) {
 	e := newEnv(t, true)
 	alice := devLogin(t, e, "alice")
 
-	// The schema enum is not runtime-enforced (this router does its own
-	// manual body decoding); an unrecognised provider name reaches the
-	// handler and answers 400 the same way OauthStart's does.
+	// The schema enum is not runtime-enforced (manual body decoding); an unrecognised provider
+	// reaches the handler and answers 400, same as OauthStart.
 	resp := postAuth(t, e.srv.URL+"/oauth/link/start", alice.AccessToken,
 		map[string]string{"provider": "nope"})
 	if resp.StatusCode != 400 {
@@ -841,9 +814,8 @@ func TestDevToken_MintsSessionValidatedByJwtauth(t *testing.T) {
 	e := newEnv(t, true)
 	pair := devLogin(t, e, "alice")
 
-	// The keystone cross-check: a token minted here must validate via
-	// the shared jwtauth library against this service's own JWKS
-	// endpoint, exactly as every other service will validate it.
+	// Keystone cross-check: a token minted here must validate via jwtauth against this
+	// service's own JWKS, exactly as every other service will.
 	v := jwtauth.NewValidator(e.srv.URL+"/.well-known/jwks.json", "vgkeep-auth", "vgkeep")
 	claims, err := v.Validate(context.Background(), pair.AccessToken)
 	if err != nil {
@@ -857,8 +829,7 @@ func TestDevToken_MintsSessionValidatedByJwtauth(t *testing.T) {
 	}
 }
 
-// --- dev-link (account link via the dev provider; start and callback
-// collapse into one hop, so these test the whole round trip directly) ---
+// --- dev-link (start/callback collapse into one hop; tests the whole round trip) ---
 
 func TestDevLink_LinksFixtureToCaller(t *testing.T) {
 	e := newEnv(t, true)
@@ -908,8 +879,7 @@ func TestDevLink_RequiresBearerAndEnabledProvider(t *testing.T) {
 	resp := postAuth(t, e.srv.URL+"/oauth/dev/link", "", map[string]string{"user": "bob"})
 	wantProblem(t, resp, 401, "missing_token")
 
-	// A malformed/garbage token is a distinct rejection from a missing
-	// one: it reaches the verifier and fails there.
+	// A malformed token is a distinct rejection from a missing one: it reaches the verifier and fails.
 	resp = postAuth(t, e.srv.URL+"/oauth/dev/link", "not-a-real-jwt", map[string]string{"user": "bob"})
 	wantProblem(t, resp, 401, "invalid_token")
 
@@ -999,8 +969,7 @@ func TestRefresh_ReuseRevokesChainAndReportsJTIs(t *testing.T) {
 	}
 	next := decode[tokenPair](t, resp)
 
-	// Replaying the consumed token is reuse: 401 with the jtis the BFF
-	// must denylist.
+	// Replaying the consumed token is reuse: 401 with the jtis the BFF must denylist.
 	p := wantProblem(t, refresh(t, e, pair.RefreshToken), 401, "refresh_reused")
 	if len(p.RevokeJTIs) < 2 {
 		t.Fatalf("revoke_jtis = %v, want both session jtis", p.RevokeJTIs)
@@ -1032,8 +1001,7 @@ func TestRefresh_UserServiceDownDoesNotConsumeToken(t *testing.T) {
 	e.users.setFail(true)
 	wantProblem(t, refresh(t, e, pair.RefreshToken), 503, "user_unavailable")
 
-	// Roles are read BEFORE rotation, so the failed attempt must not
-	// have consumed the token: the retry succeeds.
+	// Roles are read BEFORE rotation, so the failed attempt didn't consume the token; retry succeeds.
 	e.users.setFail(false)
 	if resp := refresh(t, e, pair.RefreshToken); resp.StatusCode != 200 {
 		t.Fatalf("retry after outage: %d, want 200", resp.StatusCode)
@@ -1105,8 +1073,7 @@ func TestIdentities_ListUnlinkGuardsAndWipe(t *testing.T) {
 		t.Fatalf("emails = %v, want alice@example.com and bob@example.com", emails)
 	}
 
-	// Reading another account's identities is refused even for the
-	// account's own owner token.
+	// Reading another account's identities is refused even for the account's own owner token.
 	resp = authReq(t, http.MethodGet, e.srv.URL+"/users/"+uuid.NewString()+"/identities", alice.AccessToken)
 	wantProblem(t, resp, http.StatusForbidden, "forbidden")
 
@@ -1139,8 +1106,7 @@ func TestIdentities_ListUnlinkGuardsAndWipe(t *testing.T) {
 	resp = authReq(t, http.MethodDelete, e.srv.URL+"/identities/"+uuid.NewString(), alice.AccessToken)
 	wantProblem(t, resp, http.StatusNotFound, "identity_not_found")
 
-	// Wiping the account's auth footprint empties the identity list and
-	// kills the outstanding refresh family.
+	// Wiping the account's auth footprint empties the identity list and kills the outstanding refresh family.
 	resp = authReq(t, http.MethodDelete, e.srv.URL+"/users/"+aliceID+"/auth", alice.AccessToken)
 	if resp.StatusCode != 204 {
 		t.Fatalf("delete user auth: %d", resp.StatusCode)
@@ -1203,7 +1169,11 @@ func TestListProviders(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, tc.devEnabled, 0, []string{testInternalServiceToken}, slog.Default())
+			h := server.New(nil, nil, nil, tc.providers, &stubVerifier{}, server.Options{
+				DevProviderEnabled:     tc.devEnabled,
+				InternalServiceSecrets: []string{testInternalServiceToken},
+				Logger:                 slog.Default(),
+			})
 			rec := httptest.NewRecorder()
 			h.ListProviders(rec, httptest.NewRequest(http.MethodGet, "/providers", nil))
 			if rec.Code != http.StatusOK {
@@ -1220,27 +1190,19 @@ func TestListProviders(t *testing.T) {
 	}
 }
 
-// TestInternalServiceToken pins POST /internal/service-token's
-// internal-token guard and minting behavior, driven straight at the
-// handler with hand-built params: a wrong or empty X-Internal-Token
-// answers 401 invalid_internal_token regardless of body; the current
-// AND previous accepted secrets (A/B rotation) both mint a token the
-// package's own jwtauth validator accepts, carrying sub svc:<service>,
-// no roles, and token_use=service (the machine-caller signal
-// requireService/requireAdminOrService key off downstream), with
-// expires_in fixed at 900 regardless of ACCESS_TOKEN_TTL. service's
-// enum membership (a service name outside catalog-refresh/entry-rematch)
-// is specval's job at the router layer, pinned by
-// TestValidatorPath_InternalServiceToken_BadServiceEnum instead, which
-// this direct-call harness cannot exercise since it bypasses the
-// router entirely.
+// TestInternalServiceToken pins the token guard (bad/empty X-Internal-Token -> 401) and
+// minting: both current/previous secrets mint sub svc:<service>, no roles, token_use=service,
+// expires_in=900 regardless of ACCESS_TOKEN_TTL (enum validation is specval's, pinned by TestValidatorPath_InternalServiceToken_BadServiceEnum).
 func TestInternalServiceToken(t *testing.T) {
 	m, err := token.NewMinter(testSeed, "vgkeep-auth", "vgkeep", 5*time.Minute)
 	if err != nil {
 		t.Fatal(err)
 	}
 	v := newJWKSValidator(t, m)
-	h := server.New(nil, m, nil, nil, v, false, 0, []string{"current-token", "previous-token"}, slog.Default())
+	h := server.New(nil, m, nil, nil, v, server.Options{
+		InternalServiceSecrets: []string{"current-token", "previous-token"},
+		Logger:                 slog.Default(),
+	})
 
 	call := func(t *testing.T, xInternalToken, service string) *httptest.ResponseRecorder {
 		t.Helper()
@@ -1284,35 +1246,14 @@ func TestInternalServiceToken(t *testing.T) {
 }
 
 // ============================================================================
-// Fast unit layer (no Docker, runs under -short)
-//
-// The tests below drive the real handlers with the in-memory doubles
-// (stubStore, stubMinter, stubUserService, stubProvider) defined just below.
-// They cover the full branch matrix of every handler -- each asserts the
-// branch's distinctive outcome (exact status + problem code, and for the
-// security branches the side effects), not merely a 200. They take no
-// Postgres and no network, so unlike the integration tests above they do
-// NOT skip on -short; they are the auth-side parity for the bff's fast
-// handler/middleware unit layer.
-//
-// ListProviders' fast-layer coverage already lives in TestListProviders
-// above: it touches no store, so it runs Docker-free today.
+// Fast unit layer (no Docker, runs under -short): drives real handlers with in-memory
+// doubles, covering each handler's full branch matrix (status, problem code, side effects)
+// without Postgres or network. ListProviders' fast-layer coverage already lives in TestListProviders above.
 // ============================================================================
 
-// In-memory doubles for the fast, Docker-free unit layer. Each implements
-// one of the server ports (server.Store, server.Minter,
-// server.UserService) or oidc.Provider directly, with function fields a
-// table-driven test sets to drive a specific branch. A method whose field
-// is left nil panics: an unexpected collaborator call is a loud test
-// failure, not a silent zero value, which keeps each branch's wiring
-// honest. Counters record the side effects the security branches turn on
-// (e.g. whether Rotate ran, how many times RevokeFamilyByToken was
-// called) so a test can assert them, not just the status code.
-//
-// These are distinct from the httptest-backed server stubs above
-// (stubUsersServer, stubIDP): those exercise the real
-// userclient/oidc adapters over HTTP in the integration layer; these
-// satisfy the interfaces directly with no network.
+// In-memory doubles for server.Store/Minter/UserService/oidc.Provider (distinct from the
+// httptest-backed stubUsersServer/stubIDP above); function fields set per test, a nil field
+// panics so an unexpected call fails loudly, and counters record side effects for assertions.
 
 // stubStore implements server.Store.
 type stubStore struct {
@@ -1432,8 +1373,7 @@ func (s *stubStore) ActiveSigningKeys(ctx context.Context) ([]store.SigningKey, 
 	return s.activeSigningKeys(ctx)
 }
 
-// stubMinter implements server.Minter. token is the access token Mint
-// returns; mintErr, when set, makes Mint fail (the mint-error branch).
+// stubMinter implements server.Minter; token is what Mint returns, mintErr makes it fail.
 type stubMinter struct {
 	token   string
 	mintErr error
@@ -1480,9 +1420,8 @@ func (u *stubUserService) Get(ctx context.Context, id uuid.UUID) (userclient.Use
 	return u.get(ctx, id)
 }
 
-// stubProvider implements oidc.Provider. authorizeURL and exchange drive
-// the AuthorizeURL/Exchange branches (success, *oidc.ProviderError, or a
-// plain verification error); name backs Name().
+// stubProvider implements oidc.Provider; authorizeURL/exchange drive the AuthorizeURL/Exchange
+// branches (success, *oidc.ProviderError, or plain verification error), name backs Name().
 type stubProvider struct {
 	name         string
 	authorizeURL func(ctx context.Context, state, nonce, challenge string) (string, error)
@@ -1512,34 +1451,31 @@ func (p *stubProvider) Exchange(ctx context.Context, code, verifier, nonce strin
 	return p.exchange(ctx, code, verifier, nonce)
 }
 
-// errStub is a generic non-typed error used to drive the "some other
-// error" (500) branches, distinct from the sentinel/typed errors the
-// handlers special-case.
+// errStub is a generic non-typed error driving the "some other error" (500) branches, distinct from sentinel/typed errors.
 var errStub = errors.New("stub failure")
 
 const unitRefreshTTL = 30 * 24 * time.Hour
 
-// testInternalServiceToken is the accepted internal-caller token
-// across the server tests' Handlers constructions.
+// testInternalServiceToken is the accepted internal-caller token across the server tests' Handlers.
 const testInternalServiceToken = "test-internal-service-token"
 
-// stubAccessJWT is the canned access token the stub minter returns; the
-// success assertions check the handler hands exactly this value back. It
-// is an opaque placeholder, never validated; named without a
-// credential-like word so static analysis does not mistake it for a real
-// secret.
+// stubAccessJWT is the canned token the stub minter returns and success assertions check for.
+// Opaque, never validated; named without a credential-like word so static analysis won't flag it.
 const stubAccessJWT = "stub.access.jwt"
 
 // newUnit builds Handlers wired to the given stubs for a single test.
 func newUnit(st server.Store, m server.Minter, users server.UserService,
 	providers map[string]oidc.Provider, verifier server.Verifier, devEnabled bool) *server.Handlers {
-	return server.New(st, m, users, providers, verifier, devEnabled, unitRefreshTTL, []string{testInternalServiceToken}, slog.Default())
+	return server.New(st, m, users, providers, verifier, server.Options{
+		DevProviderEnabled:     devEnabled,
+		RefreshTokenTTL:        unitRefreshTTL,
+		InternalServiceSecrets: []string{testInternalServiceToken},
+		Logger:                 slog.Default(),
+	})
 }
 
-// stubVerifier implements server.Verifier. validate is nil by default,
-// so a test that reaches Validate without wiring it panics -- every
-// unit test above drives handlers that never call requireUser, so
-// &stubVerifier{} is wired and never invoked.
+// stubVerifier implements server.Verifier; validate is nil by default, so an unwired call
+// panics. Handlers here never call requireUser, so &stubVerifier{} is wired but never invoked.
 type stubVerifier struct {
 	validate func(ctx context.Context, raw string) (jwtauth.Claims, error)
 }
@@ -1553,22 +1489,19 @@ func (v *stubVerifier) Validate(ctx context.Context, raw string) (jwtauth.Claims
 	return v.validate(ctx, raw)
 }
 
-// jsonReq builds a request whose body is the JSON encoding of v (or a raw
-// string when v is a string, for the malformed-body cases).
+// jsonReq builds a request whose body is the JSON encoding of v (a raw string for malformed-body cases).
 func jsonReq(t *testing.T, method, target string, v any) *http.Request {
 	t.Helper()
 	return reqtest.NewJSONRequest(t, method, target, "", v)
 }
 
-// wantProblemRec is wantProblem for a recorder-driven handler call: it
-// asserts the status, the problem+json content type, and the machine code.
+// wantProblemRec asserts status, problem+json content type, and the machine code for a recorder-driven call.
 func wantProblemRec(t *testing.T, rec *httptest.ResponseRecorder, status int, code string) problemBody {
 	t.Helper()
 	return reqtest.AssertProblemRec(t, rec, status, code)
 }
 
-// wantPairRec asserts a 200 carrying a well-formed TokenPair whose access
-// token is the one the stub minter produced.
+// wantPairRec asserts a 200 carrying a well-formed TokenPair with the stub minter's access token.
 func wantPairRec(t *testing.T, rec *httptest.ResponseRecorder, wantAccess string) tokenPair {
 	t.Helper()
 	if rec.Code != http.StatusOK {
@@ -1585,8 +1518,7 @@ func wantPairRec(t *testing.T, rec *httptest.ResponseRecorder, wantAccess string
 	return pair
 }
 
-// unitMinter returns a stub minter with a canned access token and the
-// 5-minute access TTL the production minter uses (so ExpiresIn == 300).
+// unitMinter returns a stub minter with a canned token and the 5-minute TTL (ExpiresIn == 300).
 func unitMinter() *stubMinter {
 	return &stubMinter{token: stubAccessJWT, ttl: 5 * time.Minute}
 }
@@ -1637,9 +1569,8 @@ func TestUnitOauthStart_CreateStateError(t *testing.T) {
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
-	// The state-persist failure records an internal_error login-outcomes
-	// terminal (see TestUnitOauthStart_AuthorizeProviderError's sibling
-	// assertion, and F4 in the phase-5 review).
+	// The state-persist failure records an internal_error login-outcomes terminal (see
+	// TestUnitOauthStart_AuthorizeProviderError's sibling assertion).
 	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
 	wantSingleCount(t, pts, loginAttrs("google", "login", "internal_error")...)
 }
@@ -1658,9 +1589,8 @@ func TestUnitOauthStart_AuthorizeProviderError(t *testing.T) {
 	h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start",
 		api.StartRequest{Provider: "google"}))
 	wantProblemRec(t, rec, http.StatusBadGateway, "provider_error")
-	// The provider AuthorizeURL failure records a provider_error
-	// login-outcomes terminal, symmetric with OauthCallback's exchange
-	// branch (TestLoginOutcomeMetric's "callback provider error" case).
+	// AuthorizeURL failure records a provider_error terminal, symmetric with OauthCallback's
+	// exchange branch (TestLoginOutcomeMetric's "callback provider error" case).
 	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
 	wantSingleCount(t, pts, loginAttrs("google", "login", "provider_error")...)
 }
@@ -1705,13 +1635,9 @@ func TestUnitOauthStart_Success(t *testing.T) {
 
 // --- OauthLinkStart ---
 //
-// startDance collapses OauthStart and OauthLinkStart onto shared code, so
-// these two mirror TestUnitOauthStart_CreateStateError and
-// TestUnitOauthStart_AuthorizeProviderError above, but assert
-// OauthLinkStart's own observable differences: it requires a caller
-// (requireUser), its persist-failure message says "link" not "login",
-// and the state it asks the store to save carries the caller's id in
-// LinkUserID.
+// startDance shares code with OauthStart, so these mirror TestUnitOauthStart_CreateStateError
+// and _AuthorizeProviderError above, testing only OauthLinkStart's differences: requireUser,
+// a "link" persist-failure message, and LinkUserID in the saved state.
 
 func TestUnitOauthLinkStart_CreateStateError(t *testing.T) {
 	reader := metrictest.Install(t)
@@ -1730,13 +1656,11 @@ func TestUnitOauthLinkStart_CreateStateError(t *testing.T) {
 	if body.Detail != "could not persist link state" {
 		t.Fatalf("detail = %q, want %q", body.Detail, "could not persist link state")
 	}
-	// The row the handler tried to persist still carried the caller's
-	// id, even though the write itself then failed.
+	// The row the handler tried to persist still carried the caller's id, even though the write failed.
 	if savedState.LinkUserID == nil || *savedState.LinkUserID != callerID {
 		t.Fatalf("LinkUserID = %v, want %s", savedState.LinkUserID, callerID)
 	}
-	// flow=link here (not login): startDance derives it from linkUserID,
-	// not from the (not-yet-persisted) state row.
+	// flow=link here: startDance derives it from linkUserID, not the (not-yet-persisted) state row.
 	pts := metrictest.Int64Points(t, reader, "vg.auth.login.outcomes")
 	wantSingleCount(t, pts, loginAttrs("google", "link", "internal_error")...)
 }
@@ -1759,8 +1683,7 @@ func TestUnitOauthLinkStart_AuthorizeProviderError(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.OauthLinkStart(rec, reqtest.NewJSONRequest(t, http.MethodPost, "/oauth/link/start",
 		"unit-test-token", api.LinkStartRequest{Provider: "google"}))
-	// Same 502 provider_error wording OauthStart answers: startDance
-	// does not branch on login vs link for this failure.
+	// Same 502 provider_error wording OauthStart answers: startDance doesn't branch on login vs link here.
 	body := wantProblemRec(t, rec, http.StatusBadGateway, "provider_error")
 	if body.Detail != "identity provider unavailable" {
 		t.Fatalf("detail = %q, want %q", body.Detail, "identity provider unavailable")
@@ -1834,8 +1757,7 @@ func TestUnitOauthCallback_ExchangeProviderError(t *testing.T) {
 }
 
 func TestUnitOauthCallback_ExchangeVerificationError(t *testing.T) {
-	// A non-ProviderError from Exchange is a failed verification: a bad
-	// login attempt (400), not an upstream outage.
+	// A non-ProviderError from Exchange is a failed verification: a bad login (400), not an outage.
 	st := &stubStore{consumeState: func(context.Context, string) (store.AuthState, error) {
 		return store.AuthState{Provider: "google"}, nil
 	}}
@@ -1854,9 +1776,8 @@ func TestUnitOauthCallback_ExchangeVerificationError(t *testing.T) {
 
 // --- completeLogin (the shared tail of OauthCallback and DevToken) ---
 
-// callbackInto runs OauthCallback with a state that resolves to provider
-// "google" whose Exchange yields claims, so the request lands in
-// completeLogin. It returns the recorder for branch assertions.
+// callbackInto runs OauthCallback with a state resolving to provider "google" whose Exchange
+// yields claims, landing in completeLogin; returns the recorder for branch assertions.
 func callbackInto(t *testing.T, st server.Store, m server.Minter, users server.UserService, claims oidc.IDClaims) *httptest.ResponseRecorder {
 	t.Helper()
 	if st == nil {
@@ -1875,10 +1796,8 @@ func callbackInto(t *testing.T, st server.Store, m server.Minter, users server.U
 	return rec
 }
 
-// consumeGoogle is the stubStore wiring shared by the completeLogin tests
-// reached through the callback: a one-shot state for provider "google",
-// with resolveIdentity defaulted to "first-time identity" so these tests
-// keep exercising the email fallback path unchanged.
+// consumeGoogle is the shared stubStore wiring for completeLogin tests reached via callback:
+// a one-shot "google" state with resolveIdentity defaulted to first-time identity (email fallback).
 func consumeGoogle() *stubStore {
 	return &stubStore{
 		consumeState: func(context.Context, string) (store.AuthState, error) {
@@ -1900,8 +1819,7 @@ func TestUnitCompleteLogin_EmailUnverified(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// Upsert/BindIdentity must never run for an unverified login:
-			// the unwired stubs would panic if reached.
+			// Upsert/BindIdentity must never run for an unverified login: the unwired stubs would panic.
 			rec := callbackInto(t, consumeGoogle(), unitMinter(), &stubUserService{}, tc.claims)
 			wantProblemRec(t, rec, http.StatusForbidden, "email_unverified")
 		})
@@ -1981,8 +1899,7 @@ func TestUnitCompleteLogin_SuccessViaCallback(t *testing.T) {
 	rec := callbackInto(t, st, unitMinter(), users, verifiedClaims())
 	wantPairRec(t, rec, stubAccessJWT)
 
-	// The verified claims flowed to the user service, the identity was
-	// bound to the upserted user, and the session row was keyed to it.
+	// Verified claims flowed to the user service, identity bound to the upserted user, session keyed to it.
 	if upsertEmail != "alice@example.com" || upsertName != "Alice" {
 		t.Fatalf("upsert(%q, %q)", upsertEmail, upsertName)
 	}
@@ -1996,8 +1913,7 @@ func TestUnitCompleteLogin_SuccessViaCallback(t *testing.T) {
 
 // --- completeLogin identity-first resolution ---
 
-// A known identity signs in as its bound user even though the email
-// upsert would have answered a different account.
+// A known identity signs in as its bound user even though email upsert would answer differently.
 func TestUnitCompleteLogin_KnownIdentityWinsOverEmail(t *testing.T) {
 	boundUser := uuid.New()
 	var upsertCalled bool
@@ -2039,8 +1955,7 @@ func TestUnitCompleteLogin_KnownIdentityWinsOverEmail(t *testing.T) {
 	}
 }
 
-// A known identity whose user lookup fails for a reason other than
-// "not found" is an upstream fault, not a healing opportunity.
+// A known identity's user lookup failing for a non-"not found" reason is an upstream fault.
 func TestUnitCompleteLogin_KnownIdentityUserLookupError(t *testing.T) {
 	st := consumeGoogle()
 	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
@@ -2055,8 +1970,7 @@ func TestUnitCompleteLogin_KnownIdentityUserLookupError(t *testing.T) {
 	wantProblemRec(t, rec, http.StatusBadGateway, "user_service_error")
 }
 
-// First-time identity: the email fallback creates/finds the user and
-// the identity is bound insert-only.
+// First-time identity: the email fallback creates/finds the user and the identity is bound insert-only.
 func TestUnitCompleteLogin_NewIdentityFallsBackToEmail(t *testing.T) {
 	u := upsertedUser()
 	st := consumeGoogle() // resolveIdentity defaults to ErrIdentityNotFound
@@ -2088,8 +2002,7 @@ func TestUnitCompleteLogin_NewIdentityFallsBackToEmail(t *testing.T) {
 	}
 }
 
-// Identity points at a vanished user: heal through the email path and
-// rebind explicitly (never through the insert-only BindIdentity).
+// Identity points at a vanished user: heal through email and rebind explicitly (never the insert-only BindIdentity).
 func TestUnitCompleteLogin_DeadUserHealsViaEmail(t *testing.T) {
 	dead := uuid.New()
 	fresh := upsertedUser()
@@ -2131,8 +2044,7 @@ func TestUnitCompleteLogin_DeadUserHealsViaEmail(t *testing.T) {
 	}
 }
 
-// Healing a dead identity whose email upsert itself fails surfaces the
-// same gateway error as the first-time-identity upsert failure.
+// Healing a dead identity whose email upsert fails surfaces the same gateway error as first-time upsert failure.
 func TestUnitCompleteLogin_HealUpsertError(t *testing.T) {
 	st := consumeGoogle()
 	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
@@ -2150,8 +2062,7 @@ func TestUnitCompleteLogin_HealUpsertError(t *testing.T) {
 	wantProblemRec(t, rec, http.StatusBadGateway, "user_service_error")
 }
 
-// Healing a dead identity whose RebindIdentity call fails is an
-// internal error: the survivor was found but the move did not stick.
+// Healing a dead identity whose RebindIdentity fails is internal: the survivor was found but the move didn't stick.
 func TestUnitCompleteLogin_HealRebindError(t *testing.T) {
 	st := consumeGoogle()
 	st.resolveIdentity = func(context.Context, string, string, string) (store.Identity, error) {
@@ -2172,8 +2083,7 @@ func TestUnitCompleteLogin_HealRebindError(t *testing.T) {
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
 }
 
-// A bind that loses a race to a concurrent link resolves once more and
-// signs in as the new owner, instead of failing the login.
+// A bind that loses a race to a concurrent link resolves once more and signs in as the new owner.
 func TestUnitCompleteLogin_BindRaceResolvesOnce(t *testing.T) {
 	winner := uuid.New()
 	st := consumeGoogle()
@@ -2214,8 +2124,7 @@ func TestUnitCompleteLogin_BindRaceResolvesOnce(t *testing.T) {
 	}
 }
 
-// A bind race whose post-race resolve itself fails is an internal
-// error: the login cannot tell who won.
+// A bind race whose post-race resolve itself fails is an internal error: the login cannot tell who won.
 func TestUnitCompleteLogin_BindRaceResolveError(t *testing.T) {
 	st := consumeGoogle()
 	var resolveCalls int
@@ -2238,8 +2147,7 @@ func TestUnitCompleteLogin_BindRaceResolveError(t *testing.T) {
 	wantProblemRec(t, rec, http.StatusInternalServerError, "internal")
 }
 
-// A bind race whose winner resolves but whose user lookup fails is a
-// gateway error, not an internal one: the user service is the fault.
+// A bind race whose winner resolves but user lookup fails is a gateway error, not internal.
 func TestUnitCompleteLogin_BindRaceUserLookupError(t *testing.T) {
 	st := consumeGoogle()
 	var resolveCalls int
@@ -2316,8 +2224,7 @@ func TestUnitCompleteLink_UserGone(t *testing.T) {
 
 // --- RefreshToken ---
 
-// peekOK is a stubStore whose PeekSession resolves to a fixed user, the
-// starting point for the post-peek RefreshToken branches.
+// peekOK is a stubStore whose PeekSession resolves to a fixed user, the starting point for post-peek branches.
 func peekOK(userID uuid.UUID) *stubStore {
 	return &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 		return store.Session{UserID: userID}, nil
@@ -2354,10 +2261,8 @@ func TestUnitRefresh_TokenNotFound(t *testing.T) {
 }
 
 func TestUnitRefresh_FamilyAlreadyRevoked(t *testing.T) {
-	// A peek that finds the family already revoked short-circuits to
-	// refresh_reused WITHOUT going through Rotate, and reports an empty
-	// (but present) revoke_jtis array: the live jtis were already signaled
-	// at the original reuse detection.
+	// A peek finding the family already revoked short-circuits to refresh_reused WITHOUT Rotate,
+	// reporting an empty (but present) revoke_jtis: live jtis were already signaled at the original detection.
 	st := &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 		return store.Session{}, store.ErrRefreshRevoked
 	}}
@@ -2394,8 +2299,7 @@ func TestUnitRefresh_UserNotFoundRevokesFamily(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusUnauthorized, "invalid_refresh")
-	// The vanished account's family is revoked, and the token is NOT
-	// rotated.
+	// The vanished account's family is revoked, and the token is NOT rotated.
 	if st.revokeCalls != 1 {
 		t.Fatalf("RevokeFamilyByToken ran %d times, want 1", st.revokeCalls)
 	}
@@ -2414,9 +2318,8 @@ func TestUnitRefresh_UserServiceDownLeavesTokenUnconsumed(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	wantProblemRec(t, rec, http.StatusServiceUnavailable, "user_unavailable")
-	// The distinctive guard: roles are read BEFORE rotation, so an
-	// upstream failure must leave the token unconsumed (no Rotate, no
-	// family revoke) -- the client safely retries the same token.
+	// Roles are read BEFORE rotation, so an upstream failure leaves the token unconsumed (no
+	// Rotate, no family revoke); the client safely retries.
 	if st.rotateCalls != 0 {
 		t.Fatalf("Rotate ran %d times; the token must stay unconsumed on user-service outage", st.rotateCalls)
 	}
@@ -2448,8 +2351,7 @@ func TestUnitRefresh_RotateReuseReportsJTIs(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.RefreshToken(rec, refreshReq(t, api.RefreshRequest{RefreshToken: "x"}))
 	p := wantProblemRec(t, rec, http.StatusUnauthorized, "refresh_reused")
-	// The distinctive guard: a Rotate-detected reuse carries the live
-	// jtis the BFF must denylist.
+	// A Rotate-detected reuse carries the live jtis the BFF must denylist.
 	if len(p.RevokeJTIs) != 2 || p.RevokeJTIs[0] != "jA" || p.RevokeJTIs[1] != "jB" {
 		t.Fatalf("revoke_jtis = %v, want [jA jB]", p.RevokeJTIs)
 	}
@@ -2493,9 +2395,8 @@ func TestUnitRefresh_RotateOtherError(t *testing.T) {
 func TestUnitRefresh_Success(t *testing.T) {
 	uid := uuid.New()
 	st := peekOK(uid)
-	// Use a distinctive near-term expiry (90s) so the assertion can verify the
-	// handler echoes the store's absolute ExpiresAt rather than recomputing
-	// from its own refreshTTL (~30 days).
+	// A near-term 90s expiry lets the assertion verify the handler echoes the store's absolute
+	// ExpiresAt rather than recomputing from its own ~30-day refreshTTL.
 	expiry := time.Now().Add(90 * time.Second)
 	var rotPresented, rotNew string
 	st.rotate = func(_ context.Context, presentedHash, newHash, _ string, _ time.Duration) (store.RotateResult, error) {
@@ -2535,9 +2436,8 @@ func TestUnitRevoke_StoreError(t *testing.T) {
 }
 
 func TestUnitRevoke_UnknownTokenIsIdempotent(t *testing.T) {
-	// The store treats an unknown token as a no-op (nil error); logout
-	// stays 204. Same observable outcome as a known token, so they share
-	// this assertion path.
+	// The store treats an unknown token as a no-op (nil error); logout stays 204, same
+	// observable outcome as a known token, so they share this assertion path.
 	for _, name := range []string{"unknown token", "known token"} {
 		t.Run(name, func(t *testing.T) {
 			st := &stubStore{revokeFamilyByToken: func(context.Context, string) error { return nil }}
@@ -2590,8 +2490,7 @@ func TestUnitGetJwks_Success(t *testing.T) {
 	if len(doc.Keys) != 2 {
 		t.Fatalf("keys = %+v", doc.Keys)
 	}
-	// Every key is an Ed25519 OKP key whose x is the stored public key,
-	// in the order the store returned them.
+	// Every key is an Ed25519 OKP key whose x is the stored public key, in store order.
 	for i, want := range []struct{ kid, x string }{
 		{"kid-old", "AAAAoldkey"}, {"kid-new", "AAAAnewkey"},
 	} {
@@ -2605,9 +2504,8 @@ func TestUnitGetJwks_Success(t *testing.T) {
 // --- DevToken ---
 
 func TestUnitDevToken_DisabledIs404(t *testing.T) {
-	// dev disabled: the response is a plain 404, indistinguishable from an
-	// unmounted route. The body is never decoded (DevToken short-circuits),
-	// so the unwired stubs would panic if reached.
+	// dev disabled: 404, indistinguishable from an unmounted route. The body is never decoded
+	// (DevToken short-circuits), so the unwired stubs would panic if reached.
 	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 	rec := httptest.NewRecorder()
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token",
@@ -2631,8 +2529,7 @@ func TestUnitDevToken_UnknownFixture(t *testing.T) {
 }
 
 func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
-	// A known fixture delegates to completeLogin with provider "dev" and
-	// the fixture's verified claims, producing a real TokenPair.
+	// A known fixture delegates to completeLogin with provider "dev" and its verified claims.
 	st := &stubStore{
 		resolveIdentity: func(context.Context, string, string, string) (store.Identity, error) {
 			return store.Identity{}, store.ErrIdentityNotFound
@@ -2658,8 +2555,7 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 	h.DevToken(rec, jsonReq(t, http.MethodPost, "/oauth/dev/token",
 		api.DevTokenRequest{User: "alice"}))
 	wantPairRec(t, rec, stubAccessJWT)
-	// completeLogin bound the dev fixture's identity, proving the shared
-	// tail ran from the dev entry point too.
+	// completeLogin bound the dev fixture's identity, proving the shared tail ran from the dev entry point too.
 	if boundProvider != "dev" || boundSubject != "dev-alice" {
 		t.Fatalf("bind(%q, %q), want (dev, dev-alice)", boundProvider, boundSubject)
 	}
@@ -2667,19 +2563,22 @@ func TestUnitDevToken_SuccessDelegatesToCompleteLogin(t *testing.T) {
 
 // --- ListIdentities / DeleteIdentity / DeleteUserAuth ---
 
-// claimsVerifier is a stubVerifier that answers every Validate call with
-// a fixed Claims regardless of the raw token presented: these tests
-// drive the ownership/role branches downstream of authentication, not
-// token parsing itself.
+// claimsVerifier answers every Validate call with a fixed Claims regardless of the raw
+// token, since these tests drive ownership/role branches downstream of authentication.
 func claimsVerifier(sub string, roles ...string) *stubVerifier {
 	return &stubVerifier{validate: func(context.Context, string) (jwtauth.Claims, error) {
 		return jwtauth.Claims{Subject: sub, Roles: roles}, nil
 	}}
 }
 
-// bearerReq builds a body-less request carrying some Bearer value;
-// claimsVerifier decides what it validates to, so the raw value itself
-// is never inspected.
+// serviceClaimsVerifier answers with a token_use=service claims set (no roles), the machine-caller shape MintService/ServiceToken mint.
+func serviceClaimsVerifier(sub string) *stubVerifier {
+	return &stubVerifier{validate: func(context.Context, string) (jwtauth.Claims, error) {
+		return jwtauth.Claims{Subject: sub, TokenUse: jwtauth.TokenUseService}, nil
+	}}
+}
+
+// bearerReq builds a body-less request with some Bearer value; claimsVerifier decides what it validates to.
 func bearerReq(method, target string) *http.Request {
 	req := httptest.NewRequest(method, target, nil)
 	req.Header.Set("Authorization", "Bearer whatever")
@@ -2689,25 +2588,23 @@ func bearerReq(method, target string) *http.Request {
 func TestUnitListIdentities_Forbidden(t *testing.T) {
 	target := uuid.New()
 	caller := uuid.New() // a different account, no service role
-	// stubStore is unwired: ListIdentities must never reach the store
-	// once the ownership check rejects the caller.
+	// stubStore is unwired: ListIdentities must never reach the store once the ownership check rejects the caller.
 	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "user"), false)
 	rec := httptest.NewRecorder()
 	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
 	wantProblemRec(t, rec, http.StatusForbidden, "forbidden")
 }
 
-func TestUnitListIdentities_ServiceRoleReadsAnyUser(t *testing.T) {
+func TestUnitListIdentities_ServiceTokenReadsAnyUser(t *testing.T) {
 	target := uuid.New()
 	var queried uuid.UUID
 	st := &stubStore{listIdentities: func(_ context.Context, userID uuid.UUID) ([]store.Identity, error) {
 		queried = userID
 		return nil, nil
 	}}
-	// The service token's subject ("svc:auth") does not parse as a uuid,
-	// so requireUserOrService hands back uuid.Nil for the caller; the
-	// role check is what must let the request through to the target user.
-	h := newUnit(st, unitMinter(), &stubUserService{}, nil, claimsVerifier("svc:auth", "service"), false)
+	// The service subject ("svc:auth") doesn't parse as a uuid, so requireUserOrService hands
+	// back uuid.Nil; IsService() is what lets the request through to the target user.
+	h := newUnit(st, unitMinter(), &stubUserService{}, nil, serviceClaimsVerifier("svc:auth"), false)
 	rec := httptest.NewRecorder()
 	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
 	if rec.Code != http.StatusOK {
@@ -2716,6 +2613,17 @@ func TestUnitListIdentities_ServiceRoleReadsAnyUser(t *testing.T) {
 	if queried != target {
 		t.Fatalf("ListIdentities queried %v, want the path user %v", queried, target)
 	}
+}
+
+// TestUnitListIdentities_LegacyRoleOnlyForbidden pins the retirement of the roles=["service"]
+// pseudo-role: a claims set with the role string but no token_use must not cross the ownership check.
+func TestUnitListIdentities_LegacyRoleOnlyForbidden(t *testing.T) {
+	target := uuid.New()
+	caller := uuid.New()
+	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "service"), false)
+	rec := httptest.NewRecorder()
+	h.ListIdentities(rec, bearerReq(http.MethodGet, "/users/"+target.String()+"/identities"), target)
+	wantProblemRec(t, rec, http.StatusForbidden, "forbidden")
 }
 
 func TestUnitListIdentities_StoreError(t *testing.T) {
@@ -2795,8 +2703,7 @@ func TestUnitDeleteIdentity_Outcomes(t *testing.T) {
 
 	t.Run("service role forbidden", func(t *testing.T) {
 		identityID := uuid.New()
-		// stubStore is unwired: requireUser must reject the service token
-		// before DeleteIdentity ever reaches the store.
+		// stubStore is unwired: requireUser must reject the service token before DeleteIdentity ever reaches the store.
 		h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier("svc:auth", "service"), false)
 		rec := httptest.NewRecorder()
 		h.DeleteIdentity(rec, bearerReq(http.MethodDelete, "/identities/"+identityID.String()), identityID)
@@ -2807,8 +2714,7 @@ func TestUnitDeleteIdentity_Outcomes(t *testing.T) {
 func TestUnitDeleteUserAuth_Forbidden(t *testing.T) {
 	target := uuid.New()
 	caller := uuid.New()
-	// stubStore is unwired: DeleteUserAuth must never reach the store
-	// once the self-only check rejects the caller.
+	// stubStore is unwired: DeleteUserAuth must never reach the store once the self-only check rejects the caller.
 	h := newUnit(&stubStore{}, unitMinter(), &stubUserService{}, nil, claimsVerifier(caller.String(), "user"), false)
 	rec := httptest.NewRecorder()
 	h.DeleteUserAuth(rec, bearerReq(http.MethodDelete, "/users/"+target.String()+"/auth"), target)

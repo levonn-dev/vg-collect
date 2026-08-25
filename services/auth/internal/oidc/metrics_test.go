@@ -1,9 +1,7 @@
 package oidc_test
 
-// Direct tests for the vg.auth.provider.request.duration histogram:
-// every relying-party round trip (discovery, token-endpoint POST,
-// provider JWKS fetch) records exactly once with bounded provider, op,
-// and outcome labels, and cached paths record nothing.
+// Tests for the vg.auth.provider.request.duration histogram: each round trip
+// records once with provider/op/outcome labels; cached paths record nothing.
 
 import (
 	"context"
@@ -21,11 +19,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 )
 
-// histCounts collects the histogram and flattens its data points into
-// "provider op outcome" -> count. Stays local rather than folding into
-// metrictest: no other adopter needs a fixed-attribute-triple flatten
-// into a composite string key, so generalizing it would just be
-// speculative surface on the shared package.
+// histCounts flattens histogram data points into "provider op outcome" -> count.
 func histCounts(t *testing.T, reader *sdkmetric.ManualReader) map[string]uint64 {
 	t.Helper()
 	out := map[string]uint64{}
@@ -56,7 +50,7 @@ func histCounts(t *testing.T, reader *sdkmetric.ManualReader) map[string]uint64 
 
 func TestProviderRequestHistogram_RecordsEveryHop(t *testing.T) {
 	reader := metrictest.Install(t)
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 	f.registerCode("c1", "client-1", "n", jwt.MapClaims{"sub": "s"})
 
@@ -72,8 +66,7 @@ func TestProviderRequestHistogram_RecordsEveryHop(t *testing.T) {
 		t.Fatalf("counts = %v, want %v", got, want)
 	}
 
-	// A second exchange rides the cached discovery and the cached
-	// provider key: only the token-endpoint POST records again.
+	// Second exchange rides cached discovery and key: only the token-endpoint POST records again.
 	f.registerCode("c2", "client-1", "n", jwt.MapClaims{"sub": "s"})
 	if _, err := p.Exchange(context.Background(), "c2", "v", "n"); err != nil {
 		t.Fatal(err)
@@ -86,7 +79,7 @@ func TestProviderRequestHistogram_RecordsEveryHop(t *testing.T) {
 
 func TestProviderRequestHistogram_DiscoveryError(t *testing.T) {
 	reader := metrictest.Install(t)
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	f.discoveryStatus = http.StatusInternalServerError
 	p := newRP(t, f, nil)
 
@@ -101,7 +94,7 @@ func TestProviderRequestHistogram_DiscoveryError(t *testing.T) {
 
 func TestProviderRequestHistogram_TokenEndpointError(t *testing.T) {
 	reader := metrictest.Install(t)
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	f.tokenStatus = http.StatusTooManyRequests
 	p := newRP(t, f, nil)
 
@@ -119,13 +112,11 @@ func TestProviderRequestHistogram_TokenEndpointError(t *testing.T) {
 
 func TestProviderRequestHistogram_JWKSError(t *testing.T) {
 	reader := metrictest.Install(t)
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRPRefetch(t, f, 0) // throttle disabled so the refetch runs
 	f.registerCode("c1", "client-1", "n", jwt.MapClaims{"sub": "s"})
 
-	// Prime discovery and the key cache, then break only the JWKS
-	// endpoint and present a token with an unknown kid so verification
-	// forces a refetch.
+	// Primes discovery/key cache, then breaks JWKS and uses an unknown kid to force a refetch.
 	if _, err := p.Exchange(context.Background(), "c1", "v", "n"); err != nil {
 		t.Fatal(err)
 	}

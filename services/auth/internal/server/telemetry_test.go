@@ -1,11 +1,7 @@
 package server_test
 
-// Direct tests for the domain telemetry added to the handlers: outcome
-// classification and attribute derivation for vg.auth.login.outcomes
-// and vg.auth.token.refreshes, the vg.auth.signing_keys.active gauge
-// callback, and the structured log events behind problem responses.
-// They drive the real handlers with the stubs from handlers_test.go
-// and read the recorded metrics back through an SDK manual reader.
+// Tests for the domain telemetry: vg.auth.login.outcomes, vg.auth.token.refreshes, the
+// vg.auth.signing_keys.active gauge callback, and the structured log events behind problem responses.
 
 import (
 	"bytes"
@@ -33,19 +29,14 @@ import (
 	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
 )
 
-// TestMain pins the global meter provider to a real (readerless) SDK
-// provider before any Handlers is built. Without it the default
-// delegating provider would queue every instrument and callback
-// registered by earlier tests and replay them into the first per-test
-// provider metrictest.Install installs, so its Collect would fire
-// signing-key callbacks against stubs those tests never wired.
+// TestMain pins the global meter provider to a real SDK provider before any Handlers is built,
+// so the default provider doesn't queue and replay earlier callbacks into the first per-test reader.
 func TestMain(m *testing.M) {
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider())
 	os.Exit(m.Run())
 }
 
-// wantSingleCount asserts the counter recorded exactly one data point:
-// value 1 under exactly the given attributes.
+// wantSingleCount asserts the counter recorded exactly one data point: value 1 under exactly the given attributes.
 func wantSingleCount(t *testing.T, pts []metricdata.DataPoint[int64], attrs ...attribute.KeyValue) {
 	t.Helper()
 	if len(pts) != 1 {
@@ -67,15 +58,12 @@ func loginAttrs(provider, flow, outcome string) []attribute.KeyValue {
 	}
 }
 
-// signingKeysOK satisfies the gauge callback during counter tests
-// (Collect invokes it on every Handlers built while a reader is
-// installed).
+// signingKeysOK satisfies the gauge callback during counter tests (Collect invokes it whenever a reader is installed).
 func signingKeysOK(context.Context) ([]store.SigningKey, error) {
 	return []store.SigningKey{{Kid: "k1"}}, nil
 }
 
-// googleState makes ConsumeState hand back a pending google dance;
-// linkTo non-nil marks it a link flow.
+// googleState makes ConsumeState return a pending google dance; linkTo non-nil marks it a link flow.
 func googleState(linkTo *uuid.UUID) func(context.Context, string) (store.AuthState, error) {
 	return func(context.Context, string) (store.AuthState, error) {
 		return store.AuthState{State: "s1", PKCEVerifier: "v1", Nonce: "n1",
@@ -589,11 +577,8 @@ func TestSigningKeysGaugeStoreErrorIsAGap(t *testing.T) {
 	}}
 	newUnit(st, unitMinter(), &stubUserService{}, nil, &stubVerifier{}, false)
 
-	// Collect surfaces the callback error; what matters is that no
-	// observation was recorded: a gap, never a false zero. reader.Collect
-	// runs directly (not through metrictest.Collect, which would fail the
-	// test on this exact error) so the possibly error-degraded result can
-	// still be inspected via the pure ByName lookup.
+	// What matters: no observation recorded (gap, never false zero). reader.Collect runs directly
+	// (not metrictest.Collect, which would fail on this error) so ByName can inspect the degraded result.
 	var rm metricdata.ResourceMetrics
 	_ = reader.Collect(context.Background(), &rm)
 	if m, ok := metrictest.ByName(rm, "vg.auth.signing_keys.active"); ok {
@@ -605,9 +590,8 @@ func TestSigningKeysGaugeStoreErrorIsAGap(t *testing.T) {
 
 // --- log events ---
 
-// captureLogs swaps the ambient slog default for a JSON handler over a
-// buffer for this test (the handlers log through slog.Default, which
-// production wires to the OTLP-fanout handler).
+// captureLogs swaps the ambient slog default for a JSON handler over a buffer; handlers log
+// through slog.Default, which production wires to the OTLP-fanout handler.
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -641,8 +625,7 @@ func TestReuseDetectedLogFields(t *testing.T) {
 
 	t.Run("revoked-family short-circuit has empty user_id", func(t *testing.T) {
 		buf := captureLogs(t)
-		// Runtime-random opaque value: proves by containment check that
-		// no log line carries the presented token.
+		// Runtime-random opaque value, checked by containment: no log line may carry the presented token.
 		presented := uuid.NewString()
 		st := &stubStore{peekSession: func(context.Context, string) (store.Session, error) {
 			return store.Session{}, store.ErrRefreshRevoked
@@ -697,7 +680,7 @@ func TestReuseDetectedLogFields(t *testing.T) {
 }
 
 func TestErrorLogEvents(t *testing.T) {
-	t.Run("auth store error names the op behind a 500", func(t *testing.T) {
+	t.Run("handler error names the op behind a 500", func(t *testing.T) {
 		buf := captureLogs(t)
 		st := &stubStore{createState: func(context.Context, store.AuthState) error { return errStub }}
 		p := &stubProvider{name: "google"}
@@ -705,7 +688,7 @@ func TestErrorLogEvents(t *testing.T) {
 		rec := httptest.NewRecorder()
 		h.OauthStart(rec, jsonReq(t, http.MethodPost, "/oauth/start", api.StartRequest{Provider: "google"}))
 
-		lines := logLines(t, buf, "auth store error")
+		lines := logLines(t, buf, "handler error")
 		if len(lines) != 1 || lines[0]["level"] != "ERROR" ||
 			lines[0]["op"] != "create_state" || lines[0]["err"] != errStub.Error() {
 			t.Fatalf("lines = %v, want one ERROR with op create_state", lines)
@@ -748,7 +731,7 @@ func TestErrorLogEvents(t *testing.T) {
 		if rec.Code != http.StatusInternalServerError {
 			t.Fatalf("status = %d, want 500", rec.Code)
 		}
-		lines := logLines(t, buf, "auth store error")
+		lines := logLines(t, buf, "handler error")
 		if len(lines) != 1 || lines[0]["op"] != "create_state" {
 			t.Fatalf("lines = %v, want one with op create_state", lines)
 		}
@@ -799,9 +782,7 @@ func TestErrorLogEvents(t *testing.T) {
 	})
 }
 
-// TestServiceTokenMintedLogFields pins the audit line on the system's
-// only machine-credential mint point: one INFO line per successful
-// mint, naming the service it was minted for.
+// TestServiceTokenMintedLogFields pins the audit line: one INFO per mint, naming the service it was minted for.
 func TestServiceTokenMintedLogFields(t *testing.T) {
 	buf := captureLogs(t)
 	h := newUnit(nil, unitMinter(), nil, nil, nil, false)

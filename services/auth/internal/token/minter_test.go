@@ -13,9 +13,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/auth/internal/token"
 )
 
-// testSeed is a base64 (std) encoded 32-byte seed, the JWT_SIGNING_KEY
-// wire format; built rather than hardcoded so the length is right by
-// construction.
+// testSeed is a base64 (std) 32-byte seed (JWT_SIGNING_KEY format), built rather than hardcoded so the length is right by construction.
 var testSeed = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 32))
 
 func newMinter(t *testing.T) *token.Minter {
@@ -94,9 +92,11 @@ func TestServiceToken(t *testing.T) {
 	if mc["sub"] != "svc:auth" {
 		t.Fatalf("sub = %v", mc["sub"])
 	}
-	roles, _ := mc["roles"].([]any)
-	if len(roles) != 1 || roles[0] != "service" {
-		t.Fatalf("roles = %v", mc["roles"])
+	if mc["token_use"] != "service" {
+		t.Fatalf("token_use = %v, want service", mc["token_use"])
+	}
+	if _, ok := mc["roles"]; ok {
+		t.Fatalf("roles = %v, want no roles claim", mc["roles"])
 	}
 	if jti, _ := mc["jti"].(string); jti == "" {
 		t.Fatal("service token missing jti")

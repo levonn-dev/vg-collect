@@ -1,6 +1,5 @@
-// Package token signs vgkeep access JWTs and generates opaque
-// refresh tokens. This is the only minting code in the system; every
-// other service validates via the shared jwtauth library.
+// Package token signs vgkeep access JWTs and generates opaque refresh tokens; the only
+// minting code in the system, every other service validates via the shared jwtauth library.
 package token
 
 import (
@@ -18,9 +17,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
-// Minter signs access JWTs (EdDSA) with a kid header derived from the
-// public key, so JWKS consumers can pick the right key without
-// coordination.
+// Minter signs access JWTs (EdDSA) with a kid header derived from the public key, so JWKS consumers can pick the right key without coordination.
 type Minter struct {
 	key      ed25519.PrivateKey
 	kid      string
@@ -29,8 +26,7 @@ type Minter struct {
 	ttl      time.Duration
 }
 
-// NewMinter builds a Minter from a base64 (std) encoded 32-byte Ed25519
-// seed, the format the JWT_SIGNING_KEY secret uses.
+// NewMinter builds a Minter from a base64 (std) 32-byte Ed25519 seed, the JWT_SIGNING_KEY format.
 func NewMinter(seedB64, issuer, audience string, ttl time.Duration) (*Minter, error) {
 	seed, err := base64.StdEncoding.DecodeString(seedB64)
 	if err != nil {
@@ -49,9 +45,8 @@ func NewMinter(seedB64, issuer, audience string, ttl time.Duration) (*Minter, er
 	}, nil
 }
 
-// KidFor derives a stable key id from a public key: the first 16 hex
-// chars of its SHA-256. Every replica derives the same kid for the
-// same key, so key registration is naturally idempotent.
+// KidFor derives a stable key id from a public key: the first 16 hex chars of its SHA-256.
+// Every replica derives the same kid for the same key, so registration is naturally idempotent.
 func KidFor(pub ed25519.PublicKey) string {
 	sum := sha256.Sum256(pub)
 	return hex.EncodeToString(sum[:])[:16]
@@ -77,19 +72,25 @@ func (m *Minter) Mint(sub string, roles []string, jti string) (string, error) {
 	return t.SignedString(m.key)
 }
 
-// ServiceToken mints the short-lived token this service presents when
-// calling other vgkeep services (role "service").
+// ServiceToken mints the short-lived token this service presents to other vgkeep services:
+// token_use=service, no roles, same machine marker as MintService.
 func (m *Minter) ServiceToken() (string, error) {
-	return m.Mint("svc:auth", []string{"service"}, uuid.NewString())
+	now := time.Now()
+	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{
+		"iss":       m.issuer,
+		"aud":       m.audience,
+		"sub":       "svc:auth",
+		"jti":       uuid.NewString(),
+		"iat":       now.Unix(),
+		"exp":       now.Add(m.ttl).Unix(),
+		"token_use": jwtauth.TokenUseService,
+	})
+	t.Header["kid"] = m.kid
+	return t.SignedString(m.key)
 }
 
-// MintService signs a short-lived machine access JWT for the internal
-// service-token endpoint: no roles (a service is not a user with
-// grantable roles) and token_use=service, the claim that marks it
-// distinguishable from any user's own access token. ttl overrides the
-// minter's configured default: a service token's lifetime (900s for
-// every consumer today) is independent of ACCESS_TOKEN_TTL, the login
-// flow's.
+// MintService signs a short-lived machine JWT: no roles, token_use=service marks it apart
+// from a user's access token. ttl overrides the minter's default, independent of ACCESS_TOKEN_TTL.
 func (m *Minter) MintService(sub string, ttl time.Duration) (string, error) {
 	now := time.Now()
 	t := jwt.NewWithClaims(jwt.SigningMethodEdDSA, jwt.MapClaims{

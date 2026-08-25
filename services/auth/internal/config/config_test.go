@@ -16,8 +16,7 @@ func setRequired(t *testing.T) {
 	t.Setenv("JWT_SIGNING_KEY", "c2VlZA==")
 	t.Setenv("USER_SERVICE_URL", "http://user:8080")
 	t.Setenv("INTERNAL_SERVICE_SECRETS", "dev-service-token")
-	// Neutralize any provider credentials in the developer's shell so
-	// the enablement assertions are hermetic (empty means disabled).
+	// Clears provider vars so enablement assertions ignore the shell environment.
 	for _, k := range []string{
 		"OAUTH_REDIRECT_URL", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
 		"TWITCH_CLIENT_ID", "TWITCH_CLIENT_SECRET",
@@ -52,11 +51,8 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	// t.Setenv can only represent a present value, so this unsets each
-	// var afterward to prove required's own absent-only failure mode;
-	// notEmpty (also set on every field here) separately catches a
-	// present-but-empty value. t.Setenv registers cleanup before
-	// os.Unsetenv so the env is restored correctly at test end.
+	// t.Setenv("") first registers cleanup, then Unsetenv proves the
+	// absent case; notEmpty (also set here) covers empty-but-present separately.
 	for _, k := range required {
 		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {

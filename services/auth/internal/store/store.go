@@ -1,6 +1,5 @@
-// Package store owns the auth service's SQL: identities, signing keys,
-// OAuth states, and refresh-token sessions. No other package writes
-// queries against this schema.
+// Package store owns the auth service's SQL: identities, signing keys, OAuth states, and
+// refresh-token sessions. No other package writes queries against this schema.
 package store
 
 import (
@@ -15,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 var (
@@ -27,10 +28,8 @@ var (
 	ErrLastIdentity     = errors.New("cannot remove the last identity")
 )
 
-// ReuseError reports that a consumed or revoked refresh token was
-// presented again. The whole family has been revoked; RevokedJTIs are
-// the access-token jtis from the family that may still be alive, for
-// the caller to denylist.
+// ReuseError reports a consumed or revoked refresh token presented again; the whole family
+// is revoked, and RevokedJTIs are the family's access-token jtis that may still be alive.
 type ReuseError struct {
 	RevokedJTIs []string
 }
@@ -41,33 +40,7 @@ type Store struct{ pool *pgxpool.Pool }
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
-// scanAll drains rows into a slice, closing them once done. Both call
-// sites in this package start from a nil slice and return rows.Err()
-// raw, so scanAll bakes that convention in. DeleteIdentity's own loop
-// is a clean unconditional append, but the scanned slice only feeds a
-// membership/last-identity check after the loop closes rather than
-// being the function's return value, so pulling just the loop out
-// saves little; Rotate's loop conditionally appends (only jtis newer
-// than a cutoff) into a field on a struct captured from the enclosing
-// function, not scanAll's unconditional one-append-per-row shape.
-// Both stay idiomatic inline loops. scan keeps its own error-wrap
-// text.
-func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) {
-	defer rows.Close()
-	var out []T
-	for rows.Next() {
-		x, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, x)
-	}
-	return out, rows.Err()
-}
-
-// RegisterSigningKey records a verification key for the JWKS. Kids are
-// derived deterministically from the key, so re-registration on every
-// boot is a no-op.
+// RegisterSigningKey records a verification key for the JWKS; kids derive deterministically from the key, so re-registration on boot is a no-op.
 func (s *Store) RegisterSigningKey(ctx context.Context, kid string, pub ed25519.PublicKey) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO signing_keys (kid, public_key) VALUES ($1, $2)
@@ -84,9 +57,7 @@ type SigningKey struct {
 	PublicKeyB64 string // base64url raw key, served verbatim as the JWKS x field
 }
 
-// ActiveSigningKeys returns every non-retired key, oldest first. After
-// a rotation the old key stays here (still verifying in-flight tokens)
-// until an operator retires it.
+// ActiveSigningKeys returns every non-retired key, oldest first; a rotated-out key stays until an operator retires it.
 func (s *Store) ActiveSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT kid, public_key FROM signing_keys
@@ -94,7 +65,7 @@ func (s *Store) ActiveSigningKeys(ctx context.Context) ([]SigningKey, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: signing keys: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (SigningKey, error) {
+	return pgkit.ScanAll(rows, nil, func(r pgx.Rows) (SigningKey, error) {
 		var k SigningKey
 		if err := r.Scan(&k.Kid, &k.PublicKeyB64); err != nil {
 			return SigningKey{}, fmt.Errorf("store: scan signing key: %w", err)
@@ -109,13 +80,11 @@ type AuthState struct {
 	Nonce        string
 	Provider     string
 	ExpiresAt    time.Time
-	// LinkUserID marks the pending flow as an account-link for that
-	// user instead of a login; nil is a normal login.
+	// LinkUserID marks the flow as an account-link for that user; nil is a normal login.
 	LinkUserID *uuid.UUID
 }
 
-// CreateState stores a pending OAuth round-trip and opportunistically
-// sweeps expired rows (the table self-cleans without a background job).
+// CreateState stores a pending OAuth round trip and opportunistically sweeps expired rows (the table self-cleans, no background job).
 func (s *Store) CreateState(ctx context.Context, st AuthState) error {
 	if _, err := s.pool.Exec(ctx,
 		`DELETE FROM auth_states WHERE expires_at < now()`); err != nil {
@@ -131,9 +100,8 @@ func (s *Store) CreateState(ctx context.Context, st AuthState) error {
 	return nil
 }
 
-// ConsumeState atomically deletes and returns a pending state. A state
-// can be consumed exactly once and only before it expires; everything
-// else is ErrStateNotFound (no oracle for which condition failed).
+// ConsumeState atomically deletes and returns a pending state; consumable exactly once and
+// only before expiry. Everything else is ErrStateNotFound (no oracle for which condition failed).
 func (s *Store) ConsumeState(ctx context.Context, state string) (AuthState, error) {
 	st := AuthState{State: state}
 	err := s.pool.QueryRow(ctx, `
@@ -159,9 +127,8 @@ type Identity struct {
 	CreatedAt time.Time
 }
 
-// ResolveIdentity answers "whose login is this" for a presented
-// (provider, subject), refreshing the stored informational email in the
-// same statement. ErrIdentityNotFound means a first-time identity.
+// ResolveIdentity answers "whose login is this" for (provider, subject), refreshing the
+// stored email in the same statement. ErrIdentityNotFound means a first-time identity.
 func (s *Store) ResolveIdentity(ctx context.Context, provider, subject, email string) (Identity, error) {
 	id := Identity{Provider: provider, Subject: subject}
 	err := s.pool.QueryRow(ctx, `
@@ -179,10 +146,8 @@ func (s *Store) ResolveIdentity(ctx context.Context, provider, subject, email st
 	return id, nil
 }
 
-// BindIdentity maps (provider, subject) to a user, insert-only: an
-// identity never silently moves between accounts. Binding the same
-// user again is an idempotent email refresh; another user's identity
-// answers ErrIdentityTaken.
+// BindIdentity maps (provider, subject) to a user, insert-only: an identity never silently
+// moves between accounts. The same user again is an idempotent email refresh; another user's answers ErrIdentityTaken.
 func (s *Store) BindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx, `
@@ -215,9 +180,8 @@ func (s *Store) BindIdentity(ctx context.Context, provider, subject, email strin
 	return err
 }
 
-// RebindIdentity moves an identity to a new user unconditionally,
-// inserting when absent. Reserved for the heal path, where the caller
-// has verified the previous owner no longer exists at the user service.
+// RebindIdentity moves an identity to a new user unconditionally, inserting when absent.
+// Reserved for the heal path, where the caller has verified the previous owner is gone.
 func (s *Store) RebindIdentity(ctx context.Context, provider, subject, email string, userID uuid.UUID) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO identities (provider, provider_subject, email, user_id)
@@ -239,7 +203,7 @@ func (s *Store) ListIdentities(ctx context.Context, userID uuid.UUID) ([]Identit
 	if err != nil {
 		return nil, fmt.Errorf("store: list identities: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (Identity, error) {
+	return pgkit.ScanAll(rows, nil, func(r pgx.Rows) (Identity, error) {
 		var id Identity
 		if err := r.Scan(&id.ID, &id.Provider, &id.Subject, &id.Email, &id.UserID, &id.CreatedAt); err != nil {
 			return Identity{}, fmt.Errorf("store: scan identity: %w", err)
@@ -248,10 +212,8 @@ func (s *Store) ListIdentities(ctx context.Context, userID uuid.UUID) ([]Identit
 	})
 }
 
-// DeleteIdentity unlinks one login. The row lock on the user's
-// identities serializes concurrent unlinks so the last-identity guard
-// cannot be raced into a locked-out account. A foreign or unknown id
-// answers ErrIdentityNotFound (no oracle about other users' rows).
+// DeleteIdentity unlinks one login. The row lock on the user's identities serializes
+// concurrent unlinks so the last-identity guard can't be raced; unknown ids answer ErrIdentityNotFound.
 func (s *Store) DeleteIdentity(ctx context.Context, userID, identityID uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		rows, err := tx.Query(ctx,
@@ -286,9 +248,8 @@ func (s *Store) DeleteIdentity(ctx context.Context, userID, identityID uuid.UUID
 	})
 }
 
-// DeleteUserAuth erases a user's auth footprint for account deletion:
-// every identity plus a revocation of every live refresh family, in
-// one transaction. Idempotent.
+// DeleteUserAuth erases a user's auth footprint for account deletion: every identity plus
+// revoking every live refresh family, in one transaction. Idempotent.
 func (s *Store) DeleteUserAuth(ctx context.Context, userID uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx,
@@ -304,17 +265,10 @@ func (s *Store) DeleteUserAuth(ctx context.Context, userID uuid.UUID) error {
 	})
 }
 
-// CreateSession starts a new refresh family at login. accessJTI is the
-// jti of the access token minted alongside this refresh token.
-//
-// Before inserting, it opportunistically sweeps dead rows outside the
-// retention window (same placement as CreateState's auth_states sweep:
-// the table self-cleans without a background job). A row is eligible
-// once it is dead (used or revoked) AND its expiry is more than 30 days
-// past - 30 days keeps short-horizon reuse forensics available after a
-// family dies while bounding table growth. A swept row still named as
-// some live descendant's parent_hash is fine: migration 000004 nulls
-// that link out on delete instead of blocking the sweep.
+// CreateSession starts a refresh family; accessJTI is the jti of the access token minted
+// alongside it. It sweeps dead rows (used/revoked) past a 30-day retention before inserting,
+// keeping reuse forensics available while bounding table growth (no background job needed).
+// migration 000004 nulls a swept row's parent_hash link on delete, so the sweep never blocks.
 func (s *Store) CreateSession(ctx context.Context, tokenHash string, userID uuid.UUID, accessJTI string, expiresAt time.Time) error {
 	if _, err := s.pool.Exec(ctx, `
 		DELETE FROM refresh_tokens
@@ -336,15 +290,10 @@ type Session struct {
 	UserID uuid.UUID
 }
 
-// PeekSession resolves a presented token to its user without consuming
-// it. Callers fetch roles BEFORE Rotate so that an upstream failure
-// cannot strand the client with a consumed token and no replacement.
-// Returns ErrRefreshRevoked when the token's family has been explicitly
-// revoked (logout or reuse detection), so the handler can short-circuit
-// to refresh_reused without going through Rotate. Tokens with only
-// used_at set (consumed by a normal rotation) are not short-circuited;
-// they still go to Rotate so that the full reuse-detection path runs
-// and live JTIs are collected and reported.
+// PeekSession resolves a token to its user without consuming it; callers fetch roles BEFORE
+// Rotate so an upstream failure can't strand the client with a consumed token and no replacement.
+// ErrRefreshRevoked (explicit logout/reuse revocation) lets the handler short-circuit to
+// refresh_reused; a used_at-only row still goes through Rotate so the full reuse path collects live JTIs.
 func (s *Store) PeekSession(ctx context.Context, tokenHash string) (Session, error) {
 	var sess Session
 	var revokedAt *time.Time
@@ -368,17 +317,10 @@ type RotateResult struct {
 	ExpiresAt time.Time // absolute family expiry, inherited by the new token
 }
 
-// Rotate consumes the presented token and issues its child in one
-// transaction (the row lock serializes concurrent refreshes of the
-// same token; the loser sees used_at and takes the reuse path).
-//
-// Presenting a consumed or revoked token is reuse: the whole family is
-// revoked and a ReuseError carries the last_access_jti of every family
-// row created within jtiWindow (older access tokens have expired on
-// their own and are not worth denylisting). The revocation commits
-// even though an error is returned (a transaction aborted before
-// commit, e.g. by cancellation, rolls back as usual; the next
-// presentation retriggers detection).
+// Rotate consumes the presented token and issues its child in one transaction; the row lock
+// serializes concurrent refreshes, and the loser (used_at set) takes the reuse path.
+// A consumed/revoked token means reuse: the family is revoked, and ReuseError carries
+// last_access_jti for rows created within jtiWindow. This revocation commits even on error return; only a pre-commit abort (e.g. cancellation) rolls back.
 func (s *Store) Rotate(ctx context.Context, presentedHash, newHash, newAccessJTI string, jtiWindow time.Duration) (RotateResult, error) {
 	var res RotateResult
 	var reuse *ReuseError
@@ -398,20 +340,16 @@ func (s *Store) Rotate(ctx context.Context, presentedHash, newHash, newAccessJTI
 		}
 
 		if usedAt != nil || revokedAt != nil {
-			// Reuse (or use after logout). Lock every current family row
-			// first: a concurrent legitimate rotation holds its parent's
-			// row lock while inserting a child, so this lock serializes
-			// against it, and the UPDATE below runs on a fresh statement
-			// snapshot that includes any child committed while we waited.
-			// Without this, a mid-flight rotation could fork a live child
-			// out of a family the system believes fully revoked.
+			// Reuse or use-after-logout. Lock every family row first: a concurrent legitimate
+			// rotation holds its parent's row lock while inserting a child, so this lock serializes
+			// against it and the UPDATE below sees any child committed while we waited. Without it, a
+			// mid-flight rotation could fork a live child out of a family the system believes fully revoked.
 			if _, err := tx.Exec(ctx, `
 				SELECT token_hash FROM refresh_tokens
 				WHERE family_id = $1 FOR UPDATE`, familyID); err != nil {
 				return fmt.Errorf("store: lock family: %w", err)
 			}
-			// Revoke and collect in one statement: the revocation can
-			// never commit partially relative to the jtis it reports.
+			// Revoke and collect in one statement: revocation can never commit partially relative to the reported jtis.
 			rows, err := tx.Query(ctx, `
 				UPDATE refresh_tokens SET revoked_at = now()
 				WHERE family_id = $1 AND revoked_at IS NULL
@@ -444,8 +382,7 @@ func (s *Store) Rotate(ctx context.Context, presentedHash, newHash, newAccessJTI
 			`UPDATE refresh_tokens SET used_at = now() WHERE token_hash = $1`, presentedHash); err != nil {
 			return fmt.Errorf("store: consume refresh token: %w", err)
 		}
-		// The child inherits the family's ABSOLUTE expiry: a session hard
-		// stops 30 days after login no matter how actively it refreshes.
+		// The child inherits the family's ABSOLUTE expiry: a session hard stops 30 days after login regardless of refresh activity.
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO refresh_tokens
 				(token_hash, parent_hash, family_id, user_id, last_access_jti, expires_at)
@@ -464,10 +401,8 @@ func (s *Store) Rotate(ctx context.Context, presentedHash, newHash, newAccessJTI
 	return res, nil
 }
 
-// RevokeFamilyByToken revokes the whole family the presented token
-// belongs to (logout). Unknown tokens are a no-op: logout is idempotent.
-// The family-wide lock serializes against an in-flight rotation so no
-// freshly inserted child slips past the revocation.
+// RevokeFamilyByToken revokes the token's whole family (logout); an unknown token is a
+// no-op, so logout is idempotent. The family-wide lock serializes against an in-flight rotation.
 func (s *Store) RevokeFamilyByToken(ctx context.Context, tokenHash string) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		var familyID uuid.UUID

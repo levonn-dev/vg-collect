@@ -2,10 +2,8 @@ package server
 
 import "golang.org/x/text/language"
 
-// bestLanguageTag picks the highest-quality tag from an
-// Accept-Language header; empty when the header is absent or
-// unparseable. Auth only forwards it: the user service owns mapping
-// it to an account default.
+// bestLanguageTag picks the highest-quality tag from Accept-Language, empty when absent
+// or unparseable. Auth only forwards it; the user service owns the account-default mapping.
 func bestLanguageTag(header string) string {
 	if header == "" {
 		return ""

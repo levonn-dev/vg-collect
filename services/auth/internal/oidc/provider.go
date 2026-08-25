@@ -1,6 +1,5 @@
-// Package oidc implements the OpenID Connect relying-party side of
-// login: provider adapters that produce authorize URLs and exchange
-// authorization codes for verified identity claims.
+// Package oidc implements the OpenID Connect relying-party side of login: provider adapters
+// that produce authorize URLs and exchange authorization codes for verified identity claims.
 package oidc
 
 import (
@@ -22,19 +21,14 @@ type IDClaims struct {
 // Provider is one configured "login with" target.
 type Provider interface {
 	Name() string
-	// AuthorizeURL builds the provider redirect carrying state, nonce,
-	// and the PKCE S256 challenge.
+	// AuthorizeURL builds the provider redirect with state, nonce, and the PKCE S256 challenge.
 	AuthorizeURL(ctx context.Context, state, nonce, challenge string) (string, error)
-	// Exchange redeems an authorization code (with the PKCE verifier),
-	// verifies the returned ID token, and checks it carries nonce.
+	// Exchange redeems the code (with PKCE verifier), verifies the ID token, and checks nonce.
 	Exchange(ctx context.Context, code, verifier, nonce string) (IDClaims, error)
 }
 
-// RandomToken returns 32 bytes of CSPRNG output, base64url encoded;
-// used for state, nonce, and PKCE verifiers. crypto/rand.Read is
-// documented to never fail on supported platforms, so a failure is
-// unrecoverable corruption and panics (the same stance uuid.NewString
-// takes).
+// RandomToken returns 32 bytes of CSPRNG output, base64url encoded, for state/nonce/PKCE.
+// crypto/rand.Read is documented to never fail on supported platforms; a failure panics.
 func RandomToken() string {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {

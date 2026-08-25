@@ -16,7 +16,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/auth/internal/oidc"
 )
 
-func newRP(t *testing.T, f *fakeIDP, hc *http.Client) *oidc.RP {
+func newRP(t *testing.T, f *stubIDP, hc *http.Client) *oidc.RP {
 	t.Helper()
 	return oidc.NewRP(oidc.RPConfig{
 		Name:         "fake",
@@ -31,7 +31,7 @@ func newRP(t *testing.T, f *fakeIDP, hc *http.Client) *oidc.RP {
 	}, hc)
 }
 
-func newRPRefetch(t *testing.T, f *fakeIDP, interval time.Duration) *oidc.RP {
+func newRPRefetch(t *testing.T, f *stubIDP, interval time.Duration) *oidc.RP {
 	t.Helper()
 	return oidc.NewRPWithRefetchInterval(oidc.RPConfig{
 		Name:         "fake",
@@ -54,7 +54,7 @@ func TestRandomTokenAndPKCE(t *testing.T) {
 }
 
 func TestAuthorizeURL(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 
 	raw, err := p.AuthorizeURL(context.Background(), "st1", "n1", "ch1")
@@ -96,7 +96,7 @@ func TestAuthorizeURL(t *testing.T) {
 }
 
 func TestDiscovery_FailureIsRetriedNextCall(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	f.discoveryStatus = http.StatusInternalServerError
 	p := newRP(t, f, nil)
 
@@ -110,30 +110,26 @@ func TestDiscovery_FailureIsRetriedNextCall(t *testing.T) {
 }
 
 func TestDiscovery_IssuerMismatchRejected(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := oidc.NewRP(oidc.RPConfig{
 		Name: "fake", IssuerURL: f.issuer() + "/not-the-issuer",
 		ClientID: "c", ClientSecret: "s", RedirectURL: "https://x",
 		Scopes: []string{"openid"},
 	}, nil)
-	// The discovery document lives under the configured issuer path, so
-	// the fetch itself 404s; a mix-up where the doc loads but declares a
-	// different issuer is covered by TestDiscovery_DocumentIssuerMismatchRejected.
+	// This issuer path 404s at fetch time; a mix-up where the document loads but
+	// declares a different issuer is TestDiscovery_DocumentIssuerMismatchRejected.
 	if _, err := p.AuthorizeURL(context.Background(), "s", "n", "c"); err == nil {
 		t.Fatal("want error for issuer mismatch")
 	}
 }
 
 func TestDiscovery_DocumentIssuerMismatchRejected(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	f.discoveryIssuer = "https://not-the-real-issuer.example"
 	p := newRP(t, f, nil)
 
-	// The fetch succeeds (the document lives under the configured issuer
-	// path and answers 200), but the document itself asserts a different
-	// issuer than the one we were configured to talk to. fetchDiscovery's
-	// mix-up defense must reject this before AuthorizeURL ever gets an
-	// authorization endpoint out of it.
+	// Fetch succeeds and answers 200, but the document asserts a different issuer than
+	// configured; fetchDiscovery's mix-up defense must reject it before AuthorizeURL proceeds.
 	_, err := p.AuthorizeURL(context.Background(), "s", "n", "c")
 	var pe *oidc.ProviderError
 	if !errors.As(err, &pe) {
@@ -148,7 +144,7 @@ func TestDiscovery_DocumentIssuerMismatchRejected(t *testing.T) {
 }
 
 func TestExchange_HappyPath(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 	f.registerCode("code-1", "client-1", "n1", jwt.MapClaims{
 		"sub": "prov-sub-1", "email": "a@example.com", "email_verified": true,
@@ -182,7 +178,7 @@ func TestExchange_HappyPath(t *testing.T) {
 }
 
 func TestExchange_DisplayNameFallbacks(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 
 	// Twitch shape: preferred_username, no name.
@@ -206,7 +202,7 @@ func TestExchange_DisplayNameFallbacks(t *testing.T) {
 }
 
 func TestExchange_VerificationFailures(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 
 	f.registerCode("bad-nonce", "client-1", "expected", jwt.MapClaims{"sub": "s"})
@@ -238,7 +234,7 @@ func TestExchange_VerificationFailures(t *testing.T) {
 }
 
 func TestExchange_BadSignatureRejected(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRP(t, f, nil)
 
 	// Sign with a key the JWKS does not serve.
@@ -262,7 +258,7 @@ func TestExchange_ProviderFailureModes(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("429", func(t *testing.T) {
-		f := newFakeIDP(t)
+		f := newStubIDP(t)
 		p := newRP(t, f, nil)
 		f.tokenStatus = http.StatusTooManyRequests
 		var pe *oidc.ProviderError
@@ -272,7 +268,7 @@ func TestExchange_ProviderFailureModes(t *testing.T) {
 	})
 
 	t.Run("timeout", func(t *testing.T) {
-		f := newFakeIDP(t)
+		f := newStubIDP(t)
 		f.tokenDelay = 300 * time.Millisecond
 		p := newRP(t, f, &http.Client{Timeout: 50 * time.Millisecond})
 		var pe *oidc.ProviderError
@@ -282,7 +278,7 @@ func TestExchange_ProviderFailureModes(t *testing.T) {
 	})
 
 	t.Run("malformed body", func(t *testing.T) {
-		f := newFakeIDP(t)
+		f := newStubIDP(t)
 		p := newRP(t, f, nil)
 		f.tokenRawBody = "{not json"
 		if _, err := p.Exchange(ctx, "c", "v", "n"); err == nil {
@@ -291,7 +287,7 @@ func TestExchange_ProviderFailureModes(t *testing.T) {
 	})
 
 	t.Run("missing id_token", func(t *testing.T) {
-		f := newFakeIDP(t)
+		f := newStubIDP(t)
 		p := newRP(t, f, nil)
 		f.tokenRawBody = `{"access_token":"only"}`
 		if _, err := p.Exchange(ctx, "c", "v", "n"); err == nil {
@@ -301,9 +297,8 @@ func TestExchange_ProviderFailureModes(t *testing.T) {
 }
 
 func TestJWKS_RotatedKidTriggersRefetch(t *testing.T) {
-	f := newFakeIDP(t)
-	// Throttle disabled (0): the rotated kid is unknown, so the cache
-	// refetches immediately instead of waiting out the default window.
+	f := newStubIDP(t)
+	// Throttle disabled (0): unknown kid refetches immediately instead of waiting the default window.
 	p := newRPRefetch(t, f, 0)
 
 	f.registerCode("c1", "client-1", "n", jwt.MapClaims{"sub": "s"})
@@ -324,7 +319,7 @@ func TestJWKS_RotatedKidTriggersRefetch(t *testing.T) {
 }
 
 func TestJWKS_EmptyRefetchDoesNotEvictGoodKeys(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := newRPRefetch(t, f, 0) // throttle disabled so refetch is attempted
 
 	// Prime the cache with the provider's real key via a normal exchange.
@@ -333,8 +328,7 @@ func TestJWKS_EmptyRefetchDoesNotEvictGoodKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Provider goes briefly degraded: its JWKS now serves no keys. A
-	// token with an unknown kid forces a refetch that returns empty.
+	// Provider degrades: JWKS serves no keys; an unknown kid forces a refetch that returns empty.
 	f.serveEmptyJWKS = true
 	bad := f.mintWithKid(jwt.MapClaims{
 		"iss": f.issuer(), "aud": "client-1", "nonce": "n",
@@ -345,9 +339,8 @@ func TestJWKS_EmptyRefetchDoesNotEvictGoodKeys(t *testing.T) {
 		t.Fatal("unknown kid against an empty JWKS should fail")
 	}
 
-	// The good key must survive the empty refetch: a token with the
-	// original kid still verifies, served from the preserved cache
-	// (the JWKS is still empty, so this proves no eviction occurred).
+	// Good key must survive the empty refetch: the original kid still verifies from the
+	// preserved cache (JWKS is still empty, proving no eviction).
 	f.tokenRawBody = ""
 	f.registerCode("c2", "client-1", "n", jwt.MapClaims{"sub": "s"})
 	if _, err := p.Exchange(context.Background(), "c2", "v", "n"); err != nil {

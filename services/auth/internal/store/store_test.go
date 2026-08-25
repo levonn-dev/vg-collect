@@ -49,8 +49,7 @@ func TestSigningKeys(t *testing.T) {
 	if len(keys) != 1 || keys[0].Kid != "kid-1" {
 		t.Fatalf("keys = %+v", keys)
 	}
-	// The stored encoding IS the JWKS x field: it must round-trip as
-	// base64url back to the exact key bytes (std base64 would not).
+	// The stored encoding IS the JWKS x field: it must round-trip via base64url, not std base64.
 	decoded, err := base64.RawURLEncoding.DecodeString(keys[0].PublicKeyB64)
 	if err != nil || !bytes.Equal(decoded, pub) {
 		t.Fatalf("public_key not base64url of the registered key: %q (%v)", keys[0].PublicKeyB64, err)
@@ -204,8 +203,7 @@ func TestRotate_ReuseRevokesWholeFamilyAndReportsRecentJTIs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Replaying the consumed h0 is reuse: the whole family dies and the
-	// recently minted jtis come back for denylisting.
+	// Replaying the consumed h0 is reuse: the whole family dies and recent jtis come back for denylisting.
 	_, err := s.Rotate(ctx, "h0", "hx", "jti-x", window)
 	var reuse *store.ReuseError
 	if !errors.As(err, &reuse) {
@@ -243,8 +241,7 @@ func TestRotate_ReuseReportsOnlyRecentJTIs(t *testing.T) {
 	if _, err := s.Rotate(ctx, "h0", "h1", "jti-1", window); err != nil {
 		t.Fatal(err)
 	}
-	// Age h0 past the window: its access token is long dead, so its jti
-	// is not worth denylisting.
+	// Age h0 past the window: its access token is long dead, so its jti is not worth denylisting.
 	if _, err := pool.Exec(ctx,
 		`UPDATE refresh_tokens SET created_at = now() - interval '1 hour' WHERE token_hash = 'h0'`); err != nil {
 		t.Fatal(err)
@@ -330,9 +327,8 @@ func TestRotate_ConcurrentSameToken_SingleUse(t *testing.T) {
 		t.Fatalf("want exactly one success and one ReuseError, got %v / %v", a.err, b.err)
 	}
 
-	// Concurrent presentation of one token IS reuse: the loser's
-	// detection must have revoked everything, including the winner's
-	// fresh child, and reported its jti for denylisting.
+	// Concurrent presentation of one token IS reuse: the loser's detection must revoke
+	// everything, including the winner's fresh child, and report its jti for denylisting.
 	got := map[string]bool{}
 	for _, j := range reuse.RevokedJTIs {
 		got[j] = true
@@ -350,9 +346,8 @@ func TestRotate_ConcurrentSameToken_SingleUse(t *testing.T) {
 	}
 }
 
-// rawRotate mirrors Rotate's statements on a caller-held transaction,
-// simulating another replica mid-rotation (lock taken, child inserted,
-// commit deferred to the caller).
+// rawRotate mirrors Rotate's statements on a caller-held transaction, simulating another
+// replica mid-rotation (lock taken, child inserted, commit deferred to the caller).
 func rawRotate(t *testing.T, ctx context.Context, tx pgx.Tx, parentHash, childHash, childJTI string) {
 	t.Helper()
 	var familyID uuid.UUID
@@ -385,8 +380,7 @@ func TestRotate_ReuseRacingLiveRotation_NoSurvivors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Another replica is mid-rotation of the live tip h1: child h2
-	// inserted but not yet committed.
+	// Another replica is mid-rotation of the live tip h1: child h2 inserted but not yet committed.
 	tx, err := pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -394,8 +388,7 @@ func TestRotate_ReuseRacingLiveRotation_NoSurvivors(t *testing.T) {
 	defer func() { _ = tx.Rollback(ctx) }()
 	rawRotate(t, ctx, tx, "h1", "h2", "jti-2")
 
-	// Replaying the consumed h0 now must block on the family lock,
-	// then catch h2 once the in-flight rotation commits.
+	// Replaying the consumed h0 now must block on the family lock, then catch h2 once the in-flight rotation commits.
 	done := make(chan error, 1)
 	go func() {
 		_, err := s.Rotate(ctx, "h0", "hx", "jti-x", window)
@@ -492,9 +485,8 @@ func TestCreateSession_SweepPreservesLiveTipAndRecentDeadRows(t *testing.T) {
 	ctx := context.Background()
 	user := uuid.New()
 
-	// Chain h0 -> h1 -> h2; h2 is the live tip, h0 and h1 are dead
-	// (used) by rotation, all three sharing one far-future family
-	// expiry until the direct UPDATE below ages h0 alone.
+	// Chain h0 -> h1 -> h2; h2 is the live tip, h0/h1 are dead (used) by rotation, all sharing
+	// one far-future family expiry until the UPDATE below ages h0 alone.
 	mustCreateSession(t, s, "h0", user, "jti-0")
 	if _, err := s.Rotate(ctx, "h0", "h1", "jti-1", window); err != nil {
 		t.Fatal(err)
@@ -503,8 +495,7 @@ func TestCreateSession_SweepPreservesLiveTipAndRecentDeadRows(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Only h0 ages past the retention window; h1 and h2 keep the
-	// family's real (far-future) expiry.
+	// Only h0 ages past the retention window; h1 and h2 keep the family's real (far-future) expiry.
 	if _, err := pool.Exec(ctx,
 		`UPDATE refresh_tokens SET expires_at = now() - interval '31 days' WHERE token_hash = 'h0'`); err != nil {
 		t.Fatal(err)
@@ -521,10 +512,8 @@ func TestCreateSession_SweepPreservesLiveTipAndRecentDeadRows(t *testing.T) {
 		t.Fatal("stale dead ancestor past retention survived the sweep")
 	}
 
-	// h1 is dead but recent (not past retention): it survives as both
-	// a live descendant's parent and the swept row's child, and its
-	// parent_hash link to h0 nulls out via the FK instead of the
-	// sweep's DELETE failing.
+	// h1 is dead but recent: it survives as both a live descendant's parent and the swept row's
+	// child; its parent_hash link to h0 nulls out via the FK instead of blocking the sweep's DELETE.
 	var parentHash *string
 	if err := pool.QueryRow(ctx,
 		`SELECT parent_hash FROM refresh_tokens WHERE token_hash = 'h1'`).Scan(&parentHash); err != nil {

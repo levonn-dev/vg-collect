@@ -23,7 +23,7 @@ func authorizeQuery(t *testing.T, p oidc.Provider) url.Values {
 }
 
 func TestNewGoogle(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := oidc.NewGoogle("gid", "gsecret", "https://app/cb", f.issuer())
 	if p.Name() != "google" {
 		t.Fatalf("name = %s", p.Name())
@@ -38,7 +38,7 @@ func TestNewGoogle(t *testing.T) {
 }
 
 func TestNewTwitch(t *testing.T) {
-	f := newFakeIDP(t)
+	f := newStubIDP(t)
 	p := oidc.NewTwitch("tid", "tsecret", "https://app/cb", f.issuer())
 	if p.Name() != "twitch" {
 		t.Fatalf("name = %s", p.Name())
@@ -47,8 +47,7 @@ func TestNewTwitch(t *testing.T) {
 	if q.Get("scope") != "openid user:read:email" {
 		t.Fatalf("twitch scope = %q", q.Get("scope"))
 	}
-	// Twitch only puts email/profile fields in the ID token when asked
-	// via the OIDC claims request parameter.
+	// Twitch only puts email/profile fields in the ID token via the claims param.
 	for _, claim := range []string{"email", "email_verified", "preferred_username", "picture"} {
 		if !strings.Contains(q.Get("claims"), `"`+claim+`"`) {
 			t.Fatalf("twitch claims param missing %s: %s", claim, q.Get("claims"))

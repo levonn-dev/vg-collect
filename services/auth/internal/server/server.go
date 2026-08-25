@@ -1,6 +1,5 @@
-// Package server maps HTTP (generated ServerInterface) onto the oidc
-// adapters, token minter, store, and user-service client. It owns the
-// login and token lifecycle orchestration.
+// Package server maps HTTP (generated ServerInterface) onto the oidc adapters, token
+// minter, store, and user-service client, owning login and token lifecycle orchestration.
 package server
 
 import (
@@ -24,12 +23,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/auth/internal/userclient"
 )
 
-// Store is the persistence surface the handlers consume. It is the
-// methods of *store.Store that handlers.go actually calls; sentinel and
-// typed errors (store.ErrStateNotFound, store.ErrIdentityNotFound,
-// store.ErrIdentityTaken, store.ErrRefreshNotFound,
-// store.ErrRefreshExpired, store.ErrRefreshRevoked, *store.ReuseError)
-// are returned as-is, since handlers branch on them via errors.Is/As.
+// Store is the persistence surface handlers.go calls. Its sentinel and typed errors
+// return as-is: handlers branch on them via errors.Is/As.
 type Store interface {
 	CreateState(ctx context.Context, st store.AuthState) error
 	ConsumeState(ctx context.Context, state string) (store.AuthState, error)
@@ -46,35 +41,27 @@ type Store interface {
 	ActiveSigningKeys(ctx context.Context) ([]store.SigningKey, error)
 }
 
-// Minter is the slice of *token.Minter the handlers invoke: signing an
-// access token and reporting its TTL. The router wires PublicKey()/Kid()
-// off the concrete minter at boot, so they are deliberately absent here;
-// this interface backs only the Handlers minter field.
+// Minter is the *token.Minter surface handlers invoke (sign + TTL). PublicKey()/Kid()
+// are wired directly off the concrete minter at boot, so they are absent here.
 type Minter interface {
 	Mint(sub string, roles []string, jti string) (string, error)
 	MintService(sub string, ttl time.Duration) (string, error)
 	TTL() time.Duration
 }
 
-// UserService is the user-service surface the login and refresh paths
-// consume (implemented by *userclient.Client). Get returns
-// userclient.ErrUserNotFound when the account is gone; handlers branch on
-// it via errors.Is.
+// UserService is the surface login/refresh consume. Get returns userclient.ErrUserNotFound
+// when the account is gone; handlers branch on it via errors.Is.
 type UserService interface {
 	Upsert(ctx context.Context, email, displayName string, avatarURL *string, localeHint string) (userclient.User, error)
 	Get(ctx context.Context, id uuid.UUID) (userclient.User, error)
 }
 
-// Verifier validates the caller's Bearer token on self-service
-// endpoints (implemented by *jwtauth.Validator against this service's
-// own JWKS).
+// Verifier validates the caller's Bearer token on self-service endpoints (jwtauth.Validator against this service's own JWKS).
 type Verifier interface {
 	Validate(ctx context.Context, raw string) (jwtauth.Claims, error)
 }
 
-// The concrete collaborators must satisfy the surfaces the server needs.
-// main.go passes these same concrete types into New, so these assertions
-// also document the production wiring.
+// Concrete collaborators satisfy these surfaces; main.go wires the same types, documenting production wiring.
 var (
 	_ Store       = (*store.Store)(nil)
 	_ Minter      = (*token.Minter)(nil)
@@ -82,8 +69,15 @@ var (
 	_ Verifier    = (*jwtauth.Validator)(nil)
 )
 
-// Handlers owns the backing services and tunable knobs for every HTTP
-// handler in the auth service.
+// Options carries tunables that vary between environments.
+type Options struct {
+	DevProviderEnabled     bool
+	RefreshTokenTTL        time.Duration
+	InternalServiceSecrets []string
+	Logger                 *slog.Logger
+}
+
+// Handlers owns the backing services and tunable knobs for every HTTP handler in the auth service.
 type Handlers struct {
 	store      Store
 	minter     Minter
@@ -93,38 +87,30 @@ type Handlers struct {
 	devEnabled bool
 	refreshTTL time.Duration
 
-	// internalServiceSecrets is the accepted X-Internal-Token set for
-	// POST /internal/service-token (an A/B pair during rotation).
+	// internalServiceSecrets is the accepted X-Internal-Token set for POST /internal/service-token (A/B pair during rotation).
 	internalServiceSecrets []string
 
-	// logger backs the domain instrument registration logs and the
-	// signing-keys gauge's setup errors (same configured-logger shape
-	// as the other services' Handlers, instead of the package-level
-	// slog default).
+	// logger backs instrument-registration and signing-keys-gauge setup error logs.
 	logger *slog.Logger
 
-	// Domain instruments (best-effort: nil when registration failed,
-	// and the record helpers no-op).
+	// Domain instruments; best-effort: nil on registration failure, record helpers no-op.
 	loginOutcomes  metric.Int64Counter
 	tokenRefreshes metric.Int64Counter
 	signingKeys    metric.Int64ObservableGauge
 }
 
-// New builds a Handlers wired to the given collaborators. Instruments
-// are best-effort, like the bff cache counter: a registration failure
-// is logged but never prevents startup. logger defaults to
-// slog.Default() when nil, matching bff/enrichment's Options.Logger
-// idiom.
+// New builds Handlers wired to the given collaborators. Instrument registration failures
+// log but never block startup; opts.Logger defaults to slog.Default() when nil.
 func New(st Store, m Minter, users UserService, providers map[string]oidc.Provider,
-	verifier Verifier, devEnabled bool, refreshTTL time.Duration, internalServiceSecrets []string, logger *slog.Logger) *Handlers {
-	if logger == nil {
-		logger = slog.Default()
+	verifier Verifier, opts Options) *Handlers {
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
 	}
 	h := &Handlers{
 		store: st, minter: m, users: users, providers: providers,
-		verifier: verifier, devEnabled: devEnabled, refreshTTL: refreshTTL,
-		internalServiceSecrets: internalServiceSecrets,
-		logger:                 logger,
+		verifier: verifier, devEnabled: opts.DevProviderEnabled, refreshTTL: opts.RefreshTokenTTL,
+		internalServiceSecrets: opts.InternalServiceSecrets,
+		logger:                 opts.Logger,
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/auth")
 	h.loginOutcomes = vgotel.CounterLogged(meter, h.logger, "vg.auth.login.outcomes",
@@ -143,9 +129,8 @@ func New(st Store, m Minter, users UserService, providers map[string]oidc.Provid
 	return h
 }
 
-// observeSigningKeys reports how many keys the JWKS serves. On a store
-// error it observes nothing: a gap in the series, never a false zero
-// (zero is the platform-wide-401 alert condition).
+// observeSigningKeys reports how many keys the JWKS serves. A store error observes
+// nothing (gap, never false zero): zero triggers the platform-wide-401 alert.
 func (h *Handlers) observeSigningKeys(ctx context.Context, o metric.Observer) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
@@ -157,11 +142,8 @@ func (h *Handlers) observeSigningKeys(ctx context.Context, o metric.Observer) er
 	return nil
 }
 
-// Label values for the outcome counters; all bounded sets, and the
-// dashboards key on these exact spellings. There is deliberately no
-// provider="unknown": terminals without an attributable provider
-// (malformed body, unknown_provider, invalid_state) are not counted
-// and stay visible as 4xx in the RED panels.
+// Bounded label values; dashboards key on these exact spellings. No provider="unknown":
+// unattributable terminals go uncounted and stay visible as 4xx in the RED panels.
 const (
 	flowLogin = "login"
 	flowLink  = "link"
@@ -174,8 +156,7 @@ const (
 	outcomeReuseDetected = "reuse_detected"
 )
 
-// recordLogin counts one terminal of a provider dance whose provider
-// is known.
+// recordLogin counts one terminal of a provider dance whose provider is known.
 func (h *Handlers) recordLogin(ctx context.Context, provider, flow, outcome string) {
 	vgotel.Count(ctx, h.loginOutcomes,
 		attribute.String("provider", provider),
@@ -188,27 +169,23 @@ func (h *Handlers) recordRefresh(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.tokenRefreshes, attribute.String("outcome", outcome))
 }
 
-// Problem responses never echo internal error details to callers, so
-// these events carry them server-side (the shared slog handler
-// attaches trace ids). Never log token material: no refresh tokens,
-// no hashes, no minted JWTs.
+// Problem responses never echo error details to callers; these log server-side (trace ids
+// attached). Never log token material: no refresh tokens, hashes, or minted JWTs.
 
-// logProviderError reports an identity-provider hop failing behind a
-// 502 (the ProviderError string carries op and status).
-func logProviderError(ctx context.Context, provider string, err error) {
-	slog.ErrorContext(ctx, "provider request failed", "provider", provider, "err", err)
+// logProviderError reports an identity-provider hop failing behind a 502 (ProviderError string carries op/status).
+func (h *Handlers) logProviderError(ctx context.Context, provider string, err error) {
+	h.logger.ErrorContext(ctx, "provider request failed", "provider", provider, "err", err)
 }
 
-// logStoreError reports the branch detail behind a 500 internal
-// answer; op names the operation that failed.
-func logStoreError(ctx context.Context, op string, err error) {
-	slog.ErrorContext(ctx, "auth store error", "op", op, "err", err)
+// logStoreError reports the branch behind a 500; op names the failed operation. Minter
+// failures route through here too, so the message stays generic and op carries the subsystem.
+func (h *Handlers) logStoreError(ctx context.Context, op string, err error) {
+	h.logger.ErrorContext(ctx, "handler error", "op", op, "err", err)
 }
 
-// logUserServiceError reports the user service failing behind a login
-// 502 or a refresh 503.
-func logUserServiceError(ctx context.Context, op string, err error) {
-	slog.ErrorContext(ctx, "user service unavailable", "op", op, "err", err)
+// logUserServiceError reports the user service failing behind a login 502 or a refresh 503.
+func (h *Handlers) logUserServiceError(ctx context.Context, op string, err error) {
+	h.logger.ErrorContext(ctx, "user service unavailable", "op", op, "err", err)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) { httpkit.WriteJSON(w, status, v) }
@@ -216,9 +193,8 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// requireUserOrService authenticates a Bearer caller that may be
-// either a user (uuid subject) or a service token (uuid.Nil returned;
-// the claims carry the role for the caller to authorize on).
+// requireUserOrService authenticates a Bearer caller: a user (uuid subject) or a service
+// token (uuid.Nil; claims carry the role to authorize on).
 func (h *Handlers) requireUserOrService(w http.ResponseWriter, r *http.Request) (uuid.UUID, jwtauth.Claims, bool) {
 	raw, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if !ok || raw == "" {
@@ -234,9 +210,8 @@ func (h *Handlers) requireUserOrService(w http.ResponseWriter, r *http.Request) 
 	return userID, claims, true
 }
 
-// requireUser authenticates a self-service call and pins it to a real
-// user subject (service tokens carry a non-uuid sub and are rejected:
-// these endpoints act on "my account", which a service is not).
+// requireUser pins a self-service call to a real user subject; service tokens (non-uuid
+// sub) are rejected since these endpoints act on "my account".
 func (h *Handlers) requireUser(w http.ResponseWriter, r *http.Request) (uuid.UUID, jwtauth.Claims, bool) {
 	userID, claims, ok := h.requireUserOrService(w, r)
 	if !ok {
@@ -249,6 +224,5 @@ func (h *Handlers) requireUser(w http.ResponseWriter, r *http.Request) (uuid.UUI
 	return userID, claims, true
 }
 
-// maxBodyBytes caps request bodies; every auth-service body is a
-// small OAuth/token fragment, far under this.
+// maxBodyBytes caps request bodies; every auth-service body is a small OAuth/token fragment, far under this.
 const maxBodyBytes = 64 << 10
