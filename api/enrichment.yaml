@@ -38,6 +38,7 @@ paths:
           schema: { $ref: './common.yaml#/components/schemas/SearchResultType' }
         - $ref: './common.yaml#/components/parameters/catalogQ'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Search results (possibly degraded)
           content:
@@ -68,6 +69,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ResolveRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The canonical product (found or created)
           content:
@@ -94,6 +96,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Product
           content:
@@ -118,6 +121,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/PricesBatchRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Prices keyed by product id
           content:
@@ -141,6 +145,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/PriceHistoryRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Snapshot series keyed by product id
           content:
@@ -167,6 +172,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ScoreRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Ranked recommendations with display metadata
           content:
@@ -185,6 +191,7 @@ paths:
         good snapshot, so only a cold cache answers 502. Rates power
         display-side conversion only; nothing stored depends on them.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Rate snapshot
           content:
@@ -207,6 +214,7 @@ paths:
         platform sweep lands new rows. A cold catalog with the provider
         down is the only 502.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The platform catalog
           content:
@@ -224,6 +232,7 @@ paths:
         provider rates); the runner logs its summary. 409 code
         refresh_in_progress when a refresh is already running.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "202":
           description: Refresh started
           content:
@@ -243,6 +252,7 @@ paths:
         operators use /admin/refresh. Answers 202 and detaches; one
         run at a time (409 refresh_in_progress).
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "202":
           description: Refresh started
           content:
@@ -267,6 +277,7 @@ paths:
         platform/region levers). Idempotent and re-runnable; promoted
         rows leave the selection set.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -298,8 +309,11 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CommunityProductSpec" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The minted community product
+          headers:
+            Location: { schema: { type: string } }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Product" }
@@ -345,6 +359,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/MappingRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The product with its corrected mapping
           content:
@@ -391,6 +406,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/PromoteRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The promoted product
           content:
@@ -430,11 +446,13 @@ paths:
           required: false
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One candidates page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PromoteCandidatesPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /admin/products/{productId}/promote-candidates/dismiss:
@@ -457,6 +475,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DismissCandidateRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Dismissed
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -481,6 +500,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted (snapshots included)
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -508,11 +528,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One worklist page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /admin/products/community:
@@ -533,11 +555,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One community listing page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CommunityProductsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 components:
@@ -551,6 +575,11 @@ components:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }

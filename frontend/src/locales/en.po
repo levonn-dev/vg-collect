@@ -37,13 +37,17 @@ msgstr "{email} - linked {linkedDate}"
 msgid "{entryCount, plural, one {# entry} other {# entries}}"
 msgstr "{entryCount, plural, one {# entry} other {# entries}}"
 
+#: src/components/insights/StatCards.tsx
+msgid "{excludedCount, plural, one {# excluded} other {# excluded}}"
+msgstr "{excludedCount, plural, one {# excluded} other {# excluded}}"
+
 #: src/pages/Profile.tsx
 msgid "{followerCount, plural, one {# follower} other {# followers}}"
 msgstr "{followerCount, plural, one {# follower} other {# followers}}"
 
 #: src/pages/Profile.tsx
-msgid "{followingCount} following"
-msgstr "{followingCount} following"
+msgid "{followingCount, plural, one {# following} other {# following}}"
+msgstr "{followingCount, plural, one {# following} other {# following}}"
 
 #: src/components/collection/Pager.tsx
 msgid "{from}-{to} of {totalCount}"
@@ -90,12 +94,12 @@ msgid "{name} on {platformName} ({regionText})"
 msgstr "{name} on {platformName} ({regionText})"
 
 #: src/components/insights/StatCards.tsx
-msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
-msgstr "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
+msgid "{pricedCount, plural, one {# priced} other {# priced}}"
+msgstr "{pricedCount, plural, one {# priced} other {# priced}}"
 
 #: src/components/collection/BulkEditBar.tsx
-msgid "{selectedCount} selected"
-msgstr "{selectedCount} selected"
+msgid "{selectedCount, plural, one {# selected} other {# selected}}"
+msgstr "{selectedCount, plural, one {# selected} other {# selected}}"
 
 #: src/pages/Profile.tsx
 msgid "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
@@ -120,6 +124,10 @@ msgstr "{totalCount, plural, one {# item} other {# items}}"
 #: src/pages/SharedShelf.tsx
 msgid "{totalEntries, plural, one {# entry} other {# entries}}"
 msgstr "{totalEntries, plural, one {# entry} other {# entries}}"
+
+#: src/components/insights/StatCards.tsx
+msgid "{unpricedCount, plural, one {# unpriced} other {# unpriced}}"
+msgstr "{unpricedCount, plural, one {# unpriced} other {# unpriced}}"
 
 #: src/pages/Feed.tsx
 msgid "<0/> commented on <1>{shelfName}</1>"
@@ -163,6 +171,7 @@ msgid "A tag with that name already exists."
 msgstr "A tag with that name already exists."
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "About"
 msgstr "About"
 
@@ -192,6 +201,7 @@ msgid "Acquisition"
 msgstr "Acquisition"
 
 #: src/components/AppBar.tsx
+#: src/pages/AddWizard.tsx
 msgid "Add"
 msgstr "Add"
 
@@ -492,6 +502,10 @@ msgid "Comment could not be posted. Please try again."
 msgstr "Comment could not be posted. Please try again."
 
 #: src/components/social/CommentList.tsx
+msgid "Comment could not be removed. Please try again."
+msgstr "Comment could not be removed. Please try again."
+
+#: src/components/social/CommentList.tsx
 msgid "Comment deleted - <0>Undo</0>"
 msgstr "Comment deleted - <0>Undo</0>"
 
@@ -706,10 +720,6 @@ msgstr "Delete your account? Your collection, tags, shelves, linked logins, and 
 msgid "Delete your comment: {bodyPreview}"
 msgstr "Delete your comment: {bodyPreview}"
 
-#: src/components/social/CommentList.tsx
-msgid "Deleted user"
-msgstr "Deleted user"
-
 #: src/pages/Account.tsx
 msgid "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
 msgstr "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
@@ -809,6 +819,10 @@ msgstr "Entries"
 #: src/pages/SharedShelf.tsx
 msgid "Entries cannot be loaded right now. Please try again."
 msgstr "Entries cannot be loaded right now. Please try again."
+
+#: src/pages/EntryDetail.tsx
+msgid "Entry"
+msgstr "Entry"
 
 #: src/pages/EntryDetail.tsx
 msgid "Entry detail"
@@ -967,6 +981,7 @@ msgid "held"
 msgstr "held"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Help"
 msgstr "Help"
 
@@ -981,6 +996,10 @@ msgstr "Hold"
 #: src/components/admin/MappingFix.tsx
 msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 msgstr "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
+
+#: src/pages/Home.tsx
+msgid "Home"
+msgstr "Home"
 
 #: src/components/account/ProfileForm.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -1579,6 +1598,7 @@ msgid "Primary"
 msgstr "Primary"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Privacy"
 msgstr "Privacy"
 
@@ -1989,6 +2009,10 @@ msgstr "Site"
 msgid "Site footer"
 msgstr "Site footer"
 
+#: src/components/SkipLink.tsx
+msgid "Skip to content"
+msgstr "Skip to content"
+
 #: src/components/Layout.tsx
 msgid "Something went wrong. Please try again."
 msgstr "Something went wrong. Please try again."
@@ -2083,6 +2107,7 @@ msgid "Tags cannot be loaded right now."
 msgstr "Tags cannot be loaded right now."
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Terms"
 msgstr "Terms"
 

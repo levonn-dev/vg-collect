@@ -40,54 +40,15 @@ paths:
         flags that enrichment could not be reached and every
         value_cents is null.
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/entriesItemType'
         - $ref: './common.yaml#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/Packaging' }
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items: { type: string }
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items: { type: string }
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items: { type: string }
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/entriesPackaging'
+        - $ref: './common.yaml#/components/parameters/entriesRegion'
+        - $ref: './common.yaml#/components/parameters/entriesDeveloper'
+        - $ref: './common.yaml#/components/parameters/entriesPublisher'
+        - $ref: './common.yaml#/components/parameters/entriesItemCondition'
         - $ref: './common.yaml#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items: { type: string, format: uuid }
+        - $ref: './common.yaml#/components/parameters/entriesTagId'
         - $ref: './common.yaml#/components/parameters/entriesSort'
         - $ref: './common.yaml#/components/parameters/order'
         - $ref: './common.yaml#/components/parameters/groupBy'
@@ -97,6 +58,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The filtered entries, flat or grouped (exactly one of entries/groups is present)
           content:
@@ -132,8 +94,11 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/EntryCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The created entry
+          headers:
+            Location: { schema: { type: string } }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Entry" }
@@ -167,6 +132,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/BulkUpdateRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The count of the caller's own entries among entry_ids (present even when every requested change already held)
           content:
@@ -186,6 +152,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Entry
           content:
@@ -225,6 +192,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/EntryUpdate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The updated entry
           content:
@@ -245,6 +213,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -273,6 +242,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ReorderRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The entry at its new position
           content:
@@ -299,6 +269,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Acknowledged
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -325,6 +296,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The pending submission
           content:
@@ -351,6 +323,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The latest submission
           content:
@@ -374,6 +347,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Cancelled
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -397,6 +371,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Acknowledged (or already acknowledged)
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -408,6 +383,7 @@ paths:
       operationId: listTags
       summary: List the caller's tags with usage counts
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Tags ordered by name
           content:
@@ -429,6 +405,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/TagCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The created tag
           content:
@@ -455,6 +432,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/TagCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The renamed tag
           content:
@@ -475,6 +453,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -486,6 +465,7 @@ paths:
       operationId: listViews
       summary: List the caller's saved views
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Views ordered by name
           content:
@@ -512,6 +492,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ViewCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The saved view
           content:
@@ -525,7 +506,12 @@ paths:
   /views/{viewId}:
     put:
       operationId: updateView
-      summary: Replace a saved view's name and params
+      summary: Replace a saved view's name, params, and visibility
+      description: >
+        Full replacement: name, params, and visibility are all
+        overwritten from the body. An absent visibility resets to
+        private (ViewCreate's default), not left unchanged - this is
+        how a listed shelf is unpublished.
       parameters:
         - name: viewId
           in: path
@@ -537,6 +523,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ViewCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The updated view
           content:
@@ -559,6 +546,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -591,6 +579,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page of summaries plus the total
           content:
@@ -603,6 +592,7 @@ paths:
                   shelves:
                     type: array
                     items: { $ref: "#/components/schemas/SharedShelfSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /shared/shelves/by-slug:
     get:
@@ -618,11 +608,13 @@ paths:
           required: true
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The shelf (non-private)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SharedShelf" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           $ref: "#/components/responses/NotFound"
@@ -640,6 +632,7 @@ paths:
             maxItems: 100
             items: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Summaries for the ids that resolve non-private
           content:
@@ -651,6 +644,7 @@ paths:
                   shelves:
                     type: array
                     items: { $ref: "#/components/schemas/SharedShelfSummary" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /shared/shelves/{shelfId}:
     get:
@@ -662,6 +656,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The shelf
           content:
@@ -692,11 +687,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page of the shelf's entries
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SharedEntryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404":
           $ref: "#/components/responses/NotFound"
@@ -719,55 +716,17 @@ paths:
         pricing.available=false (and the degraded result is not
         cached).
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/entriesItemType'
         - $ref: './common.yaml#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/Packaging' }
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items: { type: string }
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items: { type: string }
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items: { type: string }
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/entriesPackaging'
+        - $ref: './common.yaml#/components/parameters/entriesRegion'
+        - $ref: './common.yaml#/components/parameters/entriesDeveloper'
+        - $ref: './common.yaml#/components/parameters/entriesPublisher'
+        - $ref: './common.yaml#/components/parameters/entriesItemCondition'
         - $ref: './common.yaml#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items: { type: string, format: uuid }
+        - $ref: './common.yaml#/components/parameters/entriesTagId'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The dashboard
           content:
@@ -791,6 +750,7 @@ paths:
         dashboard. When enrichment is unreachable the endpoint answers
         available=false with no points, and that answer is not cached.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The value series, oldest first
           content:
@@ -808,6 +768,7 @@ paths:
         scoring contract's library array so a caller pipes it through
         without reshaping.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The library summary
           content:
@@ -819,6 +780,7 @@ paths:
       operationId: purgeUserData
       summary: Delete every collection row belonging to the caller (entries, tags, saved views); idempotent
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Purged (also when there was nothing to purge)
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -837,6 +799,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The reference count
           content:
@@ -866,11 +829,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One queue page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminSubmissionsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /admin/submissions/{submissionId}/verdict:
@@ -905,6 +870,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/VerdictRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The resolved submission
           content:
@@ -935,6 +901,7 @@ paths:
         row is written only when a recomputed field differs from what
         is stored.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -957,6 +924,7 @@ paths:
         through its counts and logs). Idempotent and re-runnable;
         stamped rows leave the selection set.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -981,6 +949,7 @@ paths:
         region's pricing class corrects the same night). Idempotent
         and re-runnable; promoted rows leave the selection set.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -1006,6 +975,7 @@ paths:
         Idempotent and re-runnable; each repoint is logged (entry,
         from, to, region).
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "202":
           description: Rematch started
           content:
@@ -1027,6 +997,11 @@ components:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }

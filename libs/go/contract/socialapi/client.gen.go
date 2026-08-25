@@ -73,6 +73,9 @@ type BadRequest = externalRef0.Problem
 // Forbidden defines model for Forbidden.
 type Forbidden = externalRef0.Problem
 
+// InternalError defines model for InternalError.
+type InternalError = externalRef0.Problem
+
 // NotFound defines model for NotFound.
 type NotFound = externalRef0.Problem
 
@@ -1344,6 +1347,8 @@ type GetCommentsByIdsResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1361,6 +1366,11 @@ func (r GetCommentsByIdsResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetCommentsByIdsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetCommentsByIdsResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1401,6 +1411,8 @@ type DeleteCommentResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -1416,6 +1428,11 @@ func (r DeleteCommentResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r DeleteCommentResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteCommentResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1458,6 +1475,8 @@ type RecordShelfPublishedResponse struct {
 	ApplicationproblemJSON404 *NotFound
 	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
 	ApplicationproblemJSON502 *UpstreamError
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -1478,6 +1497,11 @@ func (r RecordShelfPublishedResponse) GetApplicationproblemJSON404() *NotFound {
 // GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
 func (r RecordShelfPublishedResponse) GetApplicationproblemJSON502() *UpstreamError {
 	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r RecordShelfPublishedResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1520,6 +1544,8 @@ type GetTopShelvesResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1537,6 +1563,11 @@ func (r GetTopShelvesResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetTopShelvesResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetTopShelvesResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1582,6 +1613,8 @@ type GetFeedResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1602,6 +1635,11 @@ func (r GetFeedResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetFeedResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetFeedResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1638,11 +1676,18 @@ type UnfollowResponse struct {
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UnfollowResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnfollowResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1687,6 +1732,8 @@ type FollowResponse struct {
 	ApplicationproblemJSON429 *TooManyRequests
 	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
 	ApplicationproblemJSON502 *UpstreamError
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -1712,6 +1759,11 @@ func (r FollowResponse) GetApplicationproblemJSON429() *TooManyRequests {
 // GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
 func (r FollowResponse) GetApplicationproblemJSON502() *UpstreamError {
 	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r FollowResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1748,11 +1800,18 @@ type UnlikeShelfResponse struct {
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r UnlikeShelfResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UnlikeShelfResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1795,6 +1854,8 @@ type LikeShelfResponse struct {
 	ApplicationproblemJSON429 *TooManyRequests
 	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
 	ApplicationproblemJSON502 *UpstreamError
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
@@ -1815,6 +1876,11 @@ func (r LikeShelfResponse) GetApplicationproblemJSON429() *TooManyRequests {
 // GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
 func (r LikeShelfResponse) GetApplicationproblemJSON502() *UpstreamError {
 	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r LikeShelfResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1853,6 +1919,8 @@ type GetProfileSocialSummaryResponse struct {
 	JSON200 *ProfileSocialSummary
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1863,6 +1931,11 @@ func (r GetProfileSocialSummaryResponse) GetJSON200() *ProfileSocialSummary {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetProfileSocialSummaryResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetProfileSocialSummaryResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1905,6 +1978,8 @@ type GetShelvesSocialSummaryResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1922,6 +1997,11 @@ func (r GetShelvesSocialSummaryResponse) GetApplicationproblemJSON400() *BadRequ
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetShelvesSocialSummaryResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetShelvesSocialSummaryResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1965,6 +2045,8 @@ type ListShelfCommentsResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1983,6 +2065,11 @@ func (r ListShelfCommentsResponse) GetApplicationproblemJSON400() *BadRequest {
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r ListShelfCommentsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ListShelfCommentsResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -2029,6 +2116,8 @@ type CreateShelfCommentResponse struct {
 	ApplicationproblemJSON429 *TooManyRequests
 	// ApplicationproblemJSON502 the response for an HTTP 502 `application/problem+json` response
 	ApplicationproblemJSON502 *UpstreamError
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -2059,6 +2148,11 @@ func (r CreateShelfCommentResponse) GetApplicationproblemJSON429() *TooManyReque
 // GetApplicationproblemJSON502 returns the response for an HTTP 502 `application/problem+json` response
 func (r CreateShelfCommentResponse) GetApplicationproblemJSON502() *UpstreamError {
 	return r.ApplicationproblemJSON502
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r CreateShelfCommentResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -2095,11 +2189,18 @@ type PurgeUserDataResponse struct {
 	HTTPResponse *http.Response
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r PurgeUserDataResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r PurgeUserDataResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -2378,6 +2479,13 @@ func ParseGetCommentsByIdsResponse(rsp *http.Response) (*GetCommentsByIdsRespons
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2420,6 +2528,13 @@ func ParseDeleteCommentResponse(rsp *http.Response) (*DeleteCommentResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2471,6 +2586,13 @@ func ParseRecordShelfPublishedResponse(rsp *http.Response) (*RecordShelfPublishe
 		}
 		response.ApplicationproblemJSON502 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2512,6 +2634,13 @@ func ParseGetTopShelvesResponse(rsp *http.Response) (*GetTopShelvesResponse, err
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2558,6 +2687,13 @@ func ParseGetFeedResponse(rsp *http.Response) (*GetFeedResponse, error) {
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2586,6 +2722,13 @@ func ParseUnfollowResponse(rsp *http.Response) (*UnfollowResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2644,6 +2787,13 @@ func ParseFollowResponse(rsp *http.Response) (*FollowResponse, error) {
 		}
 		response.ApplicationproblemJSON502 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2672,6 +2822,13 @@ func ParseUnlikeShelfResponse(rsp *http.Response) (*UnlikeShelfResponse, error) 
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2723,6 +2880,13 @@ func ParseLikeShelfResponse(rsp *http.Response) (*LikeShelfResponse, error) {
 		}
 		response.ApplicationproblemJSON502 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2755,6 +2919,13 @@ func ParseGetProfileSocialSummaryResponse(rsp *http.Response) (*GetProfileSocial
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2798,6 +2969,13 @@ func ParseGetShelvesSocialSummaryResponse(rsp *http.Response) (*GetShelvesSocial
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2840,6 +3018,13 @@ func ParseListShelfCommentsResponse(rsp *http.Response) (*ListShelfCommentsRespo
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -2902,6 +3087,13 @@ func ParseCreateShelfCommentResponse(rsp *http.Response) (*CreateShelfCommentRes
 		}
 		response.ApplicationproblemJSON502 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2931,6 +3123,13 @@ func ParsePurgeUserDataResponse(rsp *http.Response) (*PurgeUserDataResponse, err
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -2941,48 +3140,56 @@ func ParsePurgeUserDataResponse(rsp *http.Response) (*PurgeUserDataResponse, err
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"xYXw9jcmn7+svqz+EwAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

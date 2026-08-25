@@ -37,13 +37,17 @@ msgstr "{email}（{linkedDate}に連携）"
 msgid "{entryCount, plural, one {# entry} other {# entries}}"
 msgstr "{entryCount, plural, other {アイテム#件}}"
 
+#: src/components/insights/StatCards.tsx
+msgid "{excludedCount, plural, one {# excluded} other {# excluded}}"
+msgstr "{excludedCount, plural, other {除外#件}}"
+
 #: src/pages/Profile.tsx
 msgid "{followerCount, plural, one {# follower} other {# followers}}"
 msgstr "{followerCount, plural, other {フォロワー#人}}"
 
 #: src/pages/Profile.tsx
-msgid "{followingCount} following"
-msgstr "フォロー中{followingCount}人"
+msgid "{followingCount, plural, one {# following} other {# following}}"
+msgstr "{followingCount, plural, other {フォロー中#人}}"
 
 #: src/components/collection/Pager.tsx
 msgid "{from}-{to} of {totalCount}"
@@ -90,12 +94,12 @@ msgid "{name} on {platformName} ({regionText})"
 msgstr "{name}（{platformName}）（{regionText}）"
 
 #: src/components/insights/StatCards.tsx
-msgid "{pricedCount} priced - {unpricedCount} unpriced - {excludedCount} excluded"
-msgstr "価格あり{pricedCount}件 - 価格なし{unpricedCount}件 - 対象外{excludedCount}件"
+msgid "{pricedCount, plural, one {# priced} other {# priced}}"
+msgstr "{pricedCount, plural, other {価格あり#件}}"
 
 #: src/components/collection/BulkEditBar.tsx
-msgid "{selectedCount} selected"
-msgstr "{selectedCount}件を選択中"
+msgid "{selectedCount, plural, one {# selected} other {# selected}}"
+msgstr "{selectedCount, plural, other {#件選択}}"
 
 #: src/pages/Profile.tsx
 msgid "{total_count, plural, one {# shared shelf} other {# shared shelves}}"
@@ -120,6 +124,10 @@ msgstr "{totalCount, plural, other {アイテム#件}}"
 #: src/pages/SharedShelf.tsx
 msgid "{totalEntries, plural, one {# entry} other {# entries}}"
 msgstr "{totalEntries, plural, other {アイテム#件}}"
+
+#: src/components/insights/StatCards.tsx
+msgid "{unpricedCount, plural, one {# unpriced} other {# unpriced}}"
+msgstr "{unpricedCount, plural, other {価格なし#件}}"
 
 #: src/pages/Feed.tsx
 msgid "<0/> commented on <1>{shelfName}</1>"
@@ -163,6 +171,7 @@ msgid "A tag with that name already exists."
 msgstr "その名前のタグはすでに存在します。"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "About"
 msgstr "このサイトについて"
 
@@ -192,6 +201,7 @@ msgid "Acquisition"
 msgstr "入手情報"
 
 #: src/components/AppBar.tsx
+#: src/pages/AddWizard.tsx
 msgid "Add"
 msgstr "追加"
 
@@ -492,6 +502,10 @@ msgid "Comment could not be posted. Please try again."
 msgstr "コメントを投稿できませんでした。もう一度お試しください。"
 
 #: src/components/social/CommentList.tsx
+msgid "Comment could not be removed. Please try again."
+msgstr "コメントを削除できませんでした。もう一度お試しください。"
+
+#: src/components/social/CommentList.tsx
 msgid "Comment deleted - <0>Undo</0>"
 msgstr "コメントを削除しました - <0>元に戻す</0>"
 
@@ -706,10 +720,6 @@ msgstr "アカウントを削除しますか？コレクション、タグ、棚
 msgid "Delete your comment: {bodyPreview}"
 msgstr "自分のコメントを削除：{bodyPreview}"
 
-#: src/components/social/CommentList.tsx
-msgid "Deleted user"
-msgstr "退会したユーザー"
-
 #: src/pages/Account.tsx
 msgid "Deleting your account removes your collection, tags, shelves, linked logins, and profile. This cannot be undone."
 msgstr "アカウントを削除すると、コレクション、タグ、棚、連携済みログイン、プロフィールが削除されます。この操作は元に戻せません。"
@@ -809,6 +819,10 @@ msgstr "アイテム"
 #: src/pages/SharedShelf.tsx
 msgid "Entries cannot be loaded right now. Please try again."
 msgstr "アイテムを読み込めませんでした。もう一度お試しください。"
+
+#: src/pages/EntryDetail.tsx
+msgid "Entry"
+msgstr "アイテム"
 
 #: src/pages/EntryDetail.tsx
 msgid "Entry detail"
@@ -967,6 +981,7 @@ msgid "held"
 msgstr "保留中"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Help"
 msgstr "ヘルプ"
 
@@ -981,6 +996,10 @@ msgstr "保留"
 #: src/components/admin/MappingFix.tsx
 msgid "Hold this product out of the nightly entry rematch? Setting any mapping lifts the hold."
 msgstr "この商品を保留にして、毎晩のエントリー再照合の対象から外しますか？マッピングを設定すると保留は解除されます。"
+
+#: src/pages/Home.tsx
+msgid "Home"
+msgstr "ホーム"
 
 #: src/components/account/ProfileForm.tsx
 #: src/components/admin/ReviewPanel.tsx
@@ -1579,6 +1598,7 @@ msgid "Primary"
 msgstr "メイン"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Privacy"
 msgstr "プライバシー"
 
@@ -1989,6 +2009,10 @@ msgstr "サイト"
 msgid "Site footer"
 msgstr "サイトフッター"
 
+#: src/components/SkipLink.tsx
+msgid "Skip to content"
+msgstr "コンテンツにスキップ"
+
 #: src/components/Layout.tsx
 msgid "Something went wrong. Please try again."
 msgstr "問題が発生しました。もう一度お試しください。"
@@ -2083,6 +2107,7 @@ msgid "Tags cannot be loaded right now."
 msgstr "タグを読み込めませんでした。"
 
 #: src/components/Footer.tsx
+#: src/components/ProsePage.tsx
 msgid "Terms"
 msgstr "利用規約"
 

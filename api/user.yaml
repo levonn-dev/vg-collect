@@ -8,7 +8,7 @@ paths:
   /internal/users/upsert:
     post:
       operationId: upsertUser
-      summary: Create-or-update a user at login time (auth service only; role `service`)
+      summary: Create-or-update a user at login time (auth service credential only)
       requestBody:
         required: true
         content:
@@ -16,6 +16,7 @@ paths:
             schema:
               $ref: "#/components/schemas/UpsertUserRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Upserted user
           content:
@@ -28,13 +29,14 @@ paths:
   /users/{userId}:
     get:
       operationId: getUser
-      summary: Fetch a user (self, or role `service`/`admin`)
+      summary: Fetch a user (self, a service credential, or admin)
       parameters:
         - name: userId
           in: path
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: User
           content:
@@ -60,6 +62,7 @@ paths:
             schema:
               $ref: "#/components/schemas/UpdateUserRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Updated user
           content:
@@ -81,6 +84,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted (or already gone)
         "400": { $ref: "#/components/responses/BadRequest" }
@@ -96,6 +100,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Profile card
           content:
@@ -118,6 +123,7 @@ paths:
             maxItems: 100
             items: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Cards for the ids that exist
           content:
@@ -138,6 +144,7 @@ paths:
       parameters:
         - $ref: './common.yaml#/components/parameters/userSearchQ'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Up to 20 listed matches, folded-key order
           content:
@@ -157,6 +164,11 @@ components:
   responses:
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }

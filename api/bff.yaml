@@ -14,6 +14,7 @@ paths:
       operationId: listProviders
       summary: Login provider names currently enabled (drives the login page buttons)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: "Subset of: google, twitch, dev; display order"
           content:
@@ -36,6 +37,7 @@ paths:
           schema: { type: string }
           description: "Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "302":
           description: >
             Location is the provider authorize URL; for the dev provider,
@@ -57,6 +59,7 @@ paths:
           required: false
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "302":
           description: / with Set-Cookie on success, /login?error=<email_unverified|provider_error|login_failed> otherwise
           headers:
@@ -66,6 +69,7 @@ paths:
       operationId: logout
       summary: Revoke the session (jti denylist + refresh chain) and clear the cookie; idempotent
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Logged out (also when no session existed)
         "403": { $ref: "#/components/responses/OriginForbidden" }
@@ -74,6 +78,7 @@ paths:
       operationId: getMe
       summary: The signed-in user's profile (composed from the user service; briefly cached)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Profile
           content:
@@ -91,6 +96,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/UpdateMeRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Updated profile (the /api/me cache is refreshed)
           content:
@@ -120,6 +126,7 @@ paths:
         retried; an abandoned partial deletion re-attaches to the
         surviving account on next login.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Account deleted; the session cookie is cleared
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -130,6 +137,7 @@ paths:
       operationId: getMyIdentities
       summary: Provider logins linked to the signed-in account
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Linked identities, oldest first
           content:
@@ -147,6 +155,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Unlinked
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -180,6 +189,7 @@ paths:
           schema: { type: string }
           description: "Dev provider only: fixture handle (alice, bob, admin, or an e2e-* test fixture)"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "302":
           description: Provider authorize URL, or /account with the outcome params
           headers:
@@ -207,6 +217,7 @@ paths:
               type: string
               format: binary
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Collector export response, relayed verbatim
           content:
@@ -241,6 +252,7 @@ paths:
               type: string
               format: binary
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Collector export response, relayed verbatim
           content:
@@ -264,6 +276,7 @@ paths:
           schema: { $ref: './common.yaml#/components/schemas/SearchResultType' }
         - $ref: './common.yaml#/components/parameters/catalogQ'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Search results (possibly degraded)
           content:
@@ -284,6 +297,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ResolveRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The canonical product
           content:
@@ -305,6 +319,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Product
           content:
@@ -318,54 +333,15 @@ paths:
       operationId: listEntries
       summary: List collection entries (proxied to the collection service, uncached)
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/entriesItemType'
         - $ref: './common.yaml#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/Packaging' }
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items: { type: string }
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items: { type: string }
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items: { type: string }
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/entriesPackaging'
+        - $ref: './common.yaml#/components/parameters/entriesRegion'
+        - $ref: './common.yaml#/components/parameters/entriesDeveloper'
+        - $ref: './common.yaml#/components/parameters/entriesPublisher'
+        - $ref: './common.yaml#/components/parameters/entriesItemCondition'
         - $ref: './common.yaml#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items: { type: string, format: uuid }
+        - $ref: './common.yaml#/components/parameters/entriesTagId'
         - $ref: './common.yaml#/components/parameters/entriesSort'
         - $ref: './common.yaml#/components/parameters/order'
         - $ref: './common.yaml#/components/parameters/groupBy'
@@ -375,6 +351,7 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page of the filtered entries, flat or grouped
           content:
@@ -394,6 +371,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/EntryCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The created entry
           content:
@@ -425,6 +403,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/BulkUpdateRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The count of the caller's own entries among entry_ids
           content:
@@ -445,6 +424,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Entry
           content:
@@ -467,6 +447,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/EntryUpdate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The updated entry
           content:
@@ -487,6 +468,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -507,6 +489,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ReorderRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The entry at its new position
           content:
@@ -533,6 +516,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Acknowledged
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -553,6 +537,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The pending submission
           content:
@@ -581,6 +566,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The latest submission
           content:
@@ -600,6 +586,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Cancelled
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -621,6 +608,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Acknowledged
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -633,6 +621,7 @@ paths:
       operationId: listTags
       summary: List tags with usage counts (proxied, uncached)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Tags
           content:
@@ -655,6 +644,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/TagCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The created tag
           content:
@@ -682,6 +672,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/TagCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The renamed tag
           content:
@@ -701,6 +692,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -711,6 +703,7 @@ paths:
       operationId: listViews
       summary: List saved views (proxied, uncached)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Views
           content:
@@ -733,6 +726,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ViewCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The saved view
           content:
@@ -745,7 +739,12 @@ paths:
   /api/views/{viewId}:
     put:
       operationId: updateView
-      summary: Replace a saved view (proxied)
+      summary: Replace a saved view's name, params, and visibility (proxied)
+      description: >
+        Full replacement: name, params, and visibility are all
+        overwritten from the body. An absent visibility resets to
+        private (ViewCreate's default), not left unchanged - this is
+        how a listed shelf is unpublished.
       parameters:
         - name: viewId
           in: path
@@ -757,6 +756,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/ViewCreate" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The updated view
           content:
@@ -776,6 +776,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -790,55 +791,17 @@ paths:
         the aggregates then cover exactly the filtered slice. Only the
         unfiltered dashboard is cached upstream.
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemType' }
+        - $ref: './common.yaml#/components/parameters/entriesItemType'
         - $ref: './common.yaml#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/Packaging' }
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items: { type: string }
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items: { type: string }
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items: { type: string }
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items: { $ref: './common.yaml#/components/schemas/ItemCondition' }
+        - $ref: './common.yaml#/components/parameters/entriesPackaging'
+        - $ref: './common.yaml#/components/parameters/entriesRegion'
+        - $ref: './common.yaml#/components/parameters/entriesDeveloper'
+        - $ref: './common.yaml#/components/parameters/entriesPublisher'
+        - $ref: './common.yaml#/components/parameters/entriesItemCondition'
         - $ref: './common.yaml#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items: { type: string, format: uuid }
+        - $ref: './common.yaml#/components/parameters/entriesTagId'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The dashboard
           content:
@@ -854,6 +817,7 @@ paths:
       operationId: getValueHistory
       summary: Collection value over time (proxied; cached by the collection service, never here)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The value series, oldest first
           content:
@@ -870,6 +834,7 @@ paths:
         from the map. The SPA converts market values client-side with
         these; a failure only degrades display to USD.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Rate snapshot
           content:
@@ -885,6 +850,7 @@ paths:
         Reference data for the custom-entry platform picker: igdb id +
         name + aliases, sorted by name.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The platform catalog
           content:
@@ -904,6 +870,7 @@ paths:
         immediately; degraded results (provider fetches skipped) are
         served but never cached.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Ranked recommendations with display metadata
           content:
@@ -927,11 +894,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One worklist page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/UnmatchedProductsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
@@ -951,11 +920,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One community listing page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CommunityProductsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
@@ -981,6 +952,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Deleted
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -1020,6 +992,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/MappingRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The product with its corrected mapping
           content:
@@ -1042,6 +1015,7 @@ paths:
       operationId: triggerRefresh
       summary: Trigger an immediate catalog refresh (relay; enrichment enforces role admin)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "202":
           description: Refresh started
           content:
@@ -1058,6 +1032,7 @@ paths:
       operationId: triggerRematch
       summary: Trigger an immediate entry rematch (relay; collection enforces role admin)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "202":
           description: Rematch started
           content:
@@ -1074,6 +1049,7 @@ paths:
       operationId: resnapshot
       summary: Run the entry snapshot recompute sweep (relay; collection enforces admin or service)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -1087,6 +1063,7 @@ paths:
       operationId: normalizePlatforms
       summary: Run the platform canonicalization sweep (relay; collection enforces admin or service)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -1100,6 +1077,7 @@ paths:
       operationId: normalizeRegions
       summary: Run the region normalization sweep (relay; collection enforces admin or service)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -1113,6 +1091,7 @@ paths:
       operationId: normalizeCommunityRegions
       summary: Run the community-product region normalization sweep (relay; enrichment enforces admin or service)
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Sweep summary
           content:
@@ -1132,11 +1111,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 500, default: 200 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One queue page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminSubmissionsPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
@@ -1155,6 +1136,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/VerdictRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The resolved submission
           content:
@@ -1182,6 +1164,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CommunityProductSpec" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The minted community product
           content:
@@ -1212,6 +1195,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/PromoteRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: The promoted product
           content:
@@ -1244,11 +1228,13 @@ paths:
           required: false
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One candidates page
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PromoteCandidatesPage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "502": { $ref: "#/components/responses/UpstreamError" }
@@ -1267,6 +1253,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DismissCandidateRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Dismissed
         "400":
@@ -1294,6 +1281,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Profile page
           content:
@@ -1327,6 +1315,7 @@ paths:
           required: true
           schema: { type: string }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Shelf page
           content:
@@ -1353,6 +1342,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Shelf page
           content:
@@ -1382,11 +1372,13 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page of the shelf's entries
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SharedEntryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404":
           $ref: "#/components/responses/NotFound"
@@ -1414,6 +1406,7 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page
           content:
@@ -1442,6 +1435,7 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CreateCommentRequest" }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The comment
           content:
@@ -1472,6 +1466,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Tombstoned
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -1492,6 +1487,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Following (already or newly)
         "400":
@@ -1514,13 +1510,14 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Not following (already or newly)
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /api/social/likes/{shelfId}:
     put:
-      operationId: like
+      operationId: likeShelf
       summary: Like a shelf (idempotent) (proxied)
       parameters:
         - name: shelfId
@@ -1528,6 +1525,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Liked (already or newly)
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -1539,7 +1537,7 @@ paths:
           description: Like cap reached (code cap_exceeded)
         "502": { $ref: "#/components/responses/UpstreamError" }
     delete:
-      operationId: unlike
+      operationId: unlikeShelf
       summary: Remove a like (idempotent) (proxied)
       parameters:
         - name: shelfId
@@ -1547,6 +1545,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Not liked (already or newly)
         "401": { $ref: "#/components/responses/Unauthenticated" }
@@ -1558,6 +1557,7 @@ paths:
       parameters:
         - $ref: './common.yaml#/components/parameters/userSearchQ'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Up to 20 listed matches
           content:
@@ -1589,6 +1589,7 @@ paths:
             maxItems: 100
             items: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Cards for the ids that exist
           content:
@@ -1600,6 +1601,7 @@ paths:
                   profiles:
                     type: array
                     items: { $ref: "#/components/schemas/ProfileCard" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
   /api/feed:
@@ -1628,6 +1630,7 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One filled page
           content:
@@ -1664,17 +1667,24 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
         - $ref: './common.yaml#/components/parameters/offset'
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page of shelf cards
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ExplorePage" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "502": { $ref: "#/components/responses/UpstreamError" }
 components:
   responses:
     Unauthenticated:
       description: No valid session (cookie missing, malformed, expired, revoked, or denylisted)
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }
@@ -1760,9 +1770,8 @@ components:
       $ref: './common.yaml#/components/schemas/Identity'
     Identities:
       $ref: './common.yaml#/components/schemas/Identities'
-    # The catalog schemas below mirror the enrichment service contract
-    # verbatim: these routes relay the upstream body without reshaping,
-    # so the browser types must describe exactly what enrichment emits.
+    # Catalog schemas below mirror the enrichment contract verbatim:
+    # these routes relay the upstream body unreshaped.
     PlatformRef:
       $ref: './common.yaml#/components/schemas/PlatformRef'
     CatalogPlatform:
@@ -1819,10 +1828,8 @@ components:
       $ref: './common.yaml#/components/schemas/NormalizeResult'
     Problem:
       $ref: './common.yaml#/components/schemas/Problem'
-    # The collection schemas below mirror the collection service
-    # contract verbatim: these routes relay the upstream body without
-    # reshaping, so the browser types must describe exactly what the
-    # collection service emits.
+    # Collection schemas below mirror the collection service contract
+    # verbatim: these routes relay the upstream body unreshaped.
     EntryPlatform:
       $ref: './common.yaml#/components/schemas/EntryPlatform'
     Entry:
@@ -1873,13 +1880,10 @@ components:
       $ref: './common.yaml#/components/schemas/ValuePoint'
     ValueHistory:
       $ref: './common.yaml#/components/schemas/ValueHistory'
-    # The social/shared schemas below compose the public profile and
-    # shelf pages across the user, collection, and social services.
-    # ProfileCard mirrors the user service contract verbatim;
-    # ShelfSocialSummary/ProfileSocialSummary/Comment mirror the social
-    # service contract verbatim; SharedEntry/SharedEntryGroup mirror
-    # the collection service's shared-shelf contract verbatim (reusing
-    # EntryPlatform/TagRef above - the same fields, the same rules).
+    # Each schema below mirrors another service's contract verbatim:
+    # ProfileCard (user), ShelfSocialSummary/ProfileSocialSummary/Comment
+    # (social), SharedEntry/SharedEntryGroup (collection, reusing
+    # EntryPlatform/TagRef above).
     ProfileCard:
       $ref: './common.yaml#/components/schemas/ProfileCard'
     ShelfSocialSummary:
@@ -1959,22 +1963,19 @@ components:
           description: The owner's full listed-shelf count, beyond this page.
     Comment:
       description: >
-        A live comment; tombstones never serialize. author_id is null
-        for a purge-anonymized comment (the row survives with its
-        body; only the account link is severed) and a uuid otherwise -
-        the key is always present, only the value varies. author is
-        the bff's batched ProfileCard hydration of author_id (the same
-        composition FeedItem.actor uses): present on a GET list page
-        when the author resolves, absent for an anonymized comment
-        (there is no id left to hydrate) or when the hydration batch
-        itself fails open; never populated on the POST response (a
-        verbatim create relay).
+        A live comment; tombstones never serialize (purge tombstones
+        the row and clears the body; an anonymized comment never
+        serializes again). author is the bff's batched ProfileCard
+        hydration of author_id (the same composition FeedItem.actor
+        uses): present on a GET list page when the author resolves,
+        absent when the hydration batch fails open; never populated on
+        the POST response (a verbatim create relay).
       type: object
       required: [id, shelf_id, author_id, body, created_at]
       properties:
         id: { type: string, format: uuid }
         shelf_id: { type: string, format: uuid }
-        author_id: { type: string, format: uuid, nullable: true }
+        author_id: { type: string, format: uuid }
         body: { type: string }
         created_at: { type: string, format: date-time }
         author: { $ref: "#/components/schemas/ProfileCard" }
@@ -2020,15 +2021,9 @@ components:
           items: { $ref: "#/components/schemas/FeedItem" }
         next_cursor: { type: string }
     ExplorePage:
-      description: >
-        total_count is never sent: top is a fixed leaderboard with no
-        deeper page to count, and recent supersedes it with
-        next_offset (kept in the shape, never populated, for forward
-        compatibility only).
       type: object
       required: [shelves]
       properties:
-        total_count: { type: integer }
         next_offset:
           type: integer
           minimum: 0

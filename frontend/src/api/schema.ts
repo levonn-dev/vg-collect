@@ -437,7 +437,10 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Replace a saved view (proxied) */
+        /**
+         * Replace a saved view's name, params, and visibility (proxied)
+         * @description Full replacement: name, params, and visibility are all overwritten from the body. An absent visibility resets to private (ViewCreate's default), not left unchanged - this is how a listed shelf is unpublished.
+         */
         put: operations["updateView"];
         post?: never;
         /** Delete a saved view (proxied) */
@@ -982,10 +985,10 @@ export interface paths {
         };
         get?: never;
         /** Like a shelf (idempotent) (proxied) */
-        put: operations["like"];
+        put: operations["likeShelf"];
         post?: never;
         /** Remove a like (idempotent) (proxied) */
-        delete: operations["unlike"];
+        delete: operations["unlikeShelf"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1388,7 +1391,7 @@ export interface components {
             status: number;
             detail?: string;
             instance?: string;
-            code?: string;
+            code?: components["schemas"]["ProblemCode"];
         };
         /** @description The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists. */
         EntryPlatform: {
@@ -1897,14 +1900,14 @@ export interface components {
             /** @description The owner's full listed-shelf count, beyond this page. */
             total_count: number;
         };
-        /** @description A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay). */
+        /** @description A live comment; tombstones never serialize (purge tombstones the row and clears the body; an anonymized comment never serializes again). author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent when the hydration batch fails open; never populated on the POST response (a verbatim create relay). */
         Comment: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
             shelf_id: string;
             /** Format: uuid */
-            author_id: string | null;
+            author_id: string;
             body: string;
             /** Format: date-time */
             created_at: string;
@@ -1933,9 +1936,7 @@ export interface components {
             items: components["schemas"]["FeedItem"][];
             next_cursor?: string;
         };
-        /** @description total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only). */
         ExplorePage: {
-            total_count?: number;
             /** @description Present when more listed shelves remain to page through - recent sort only. The raw collection-space offset to resume from; absent once the listed-shelf stream is exhausted. */
             next_offset?: number;
             shelves: components["schemas"]["ShelfCard"][];
@@ -1987,6 +1988,11 @@ export interface components {
             entries?: components["schemas"]["SharedEntry"][];
             groups?: components["schemas"]["SharedEntryGroup"][];
         };
+        /**
+         * @description The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+         * @enum {string}
+         */
+        ProblemCode: "cap_exceeded" | "comment_not_found" | "conflicting_order" | "email_unverified" | "enrichment_unavailable" | "entry_not_custom" | "entry_not_found" | "forbidden" | "handle_cooldown" | "handle_taken" | "identity_already_linked" | "identity_not_found" | "identity_taken" | "internal" | "invalid_body" | "invalid_callback" | "invalid_internal_token" | "invalid_param" | "invalid_product_change" | "invalid_refresh" | "invalid_state" | "invalid_token" | "last_identity" | "link_email_unverified" | "link_failed" | "missing_token" | "not_found" | "not_in_backlog" | "not_ready" | "origin_forbidden" | "product_matched" | "product_not_community" | "product_not_found" | "product_not_provider" | "product_referenced" | "profile_not_found" | "provider_error" | "refresh_in_progress" | "refresh_reused" | "rematch_in_progress" | "self_follow" | "shelf_not_found" | "submission_not_found" | "submission_pending" | "submission_rate_limited" | "submission_resolved" | "tag_cap_exceeded" | "tag_exists" | "tag_not_found" | "too_many_pending_submissions" | "unauthenticated" | "unknown_fixture" | "unknown_game" | "unknown_pc_product" | "unknown_pricing_product" | "unknown_product" | "unknown_provider" | "upstream_error" | "upstream_unavailable" | "user_not_found" | "user_service_error" | "user_unavailable" | "view_exists" | "view_not_found";
         Handle: string;
         /** @enum {string} */
         Role: "user" | "admin";
@@ -2027,6 +2033,15 @@ export interface components {
     responses: {
         /** @description No valid session (cookie missing, malformed, expired, revoked, or denylisted) */
         Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Unexpected server-side failure */
+        InternalError: {
             headers: {
                 [name: string]: unknown;
             };
@@ -2109,9 +2124,20 @@ export interface components {
     };
     parameters: {
         catalogQ: string;
+        entriesItemType: components["schemas"]["ItemType"][];
         statusFilter: components["schemas"]["EntryStatus"][];
+        entriesPackaging: components["schemas"]["Packaging"][];
+        /** @description Known-value buckets; other stored strings only surface unfiltered. */
+        entriesRegion: string[];
+        /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
+        entriesDeveloper: string[];
+        /** @description Publisher names; same overlap matching as developer. */
+        entriesPublisher: string[];
+        entriesItemCondition: components["schemas"]["ItemCondition"][];
         /** @description IGDB platform ids (matches the creation-time snapshot). */
         platformId: number[];
+        /** @description Entries carrying ALL listed tags. */
+        entriesTagId: string[];
         entriesSort: "name" | "release_date" | "purchased_at" | "created_at" | "value" | "paid" | "rating" | "backlog_rank";
         order: "asc" | "desc";
         groupBy: "platform" | "status" | "item_type" | "location" | "tag";
@@ -2145,6 +2171,7 @@ export interface operations {
                 };
             };
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     login: {
@@ -2169,6 +2196,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            default: components["responses"]["InternalError"];
         };
     };
     callback: {
@@ -2191,6 +2219,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            default: components["responses"]["InternalError"];
         };
     };
     logout: {
@@ -2210,6 +2239,7 @@ export interface operations {
                 content?: never;
             };
             403: components["responses"]["OriginForbidden"];
+            default: components["responses"]["InternalError"];
         };
     };
     getMe: {
@@ -2233,6 +2263,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
             503: components["responses"]["ServiceUnavailable"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteMe: {
@@ -2254,6 +2285,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["OriginForbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     updateMe: {
@@ -2288,6 +2320,7 @@ export interface operations {
             409: components["responses"]["Conflict"];
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getMyIdentities: {
@@ -2310,6 +2343,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteMyIdentity: {
@@ -2337,6 +2371,7 @@ export interface operations {
             /** @description Refusing to remove the last login (code last_identity) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     linkLogin: {
@@ -2362,6 +2397,7 @@ export interface operations {
                 content?: never;
             };
             401: components["responses"]["Unauthenticated"];
+            default: components["responses"]["InternalError"];
         };
     };
     proxyTraces: {
@@ -2391,6 +2427,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     proxyMetrics: {
@@ -2420,6 +2457,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     searchCatalog: {
@@ -2447,6 +2485,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     resolveProduct: {
@@ -2476,6 +2515,7 @@ export interface operations {
             /** @description The provider does not know the requested id */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getProduct: {
@@ -2501,25 +2541,26 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listEntries: {
         parameters: {
             query?: {
-                item_type?: components["schemas"]["ItemType"][];
+                item_type?: components["parameters"]["entriesItemType"];
                 status?: components["parameters"]["statusFilter"];
-                packaging?: components["schemas"]["Packaging"][];
+                packaging?: components["parameters"]["entriesPackaging"];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
-                region?: string[];
+                region?: components["parameters"]["entriesRegion"];
                 /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
-                developer?: string[];
+                developer?: components["parameters"]["entriesDeveloper"];
                 /** @description Publisher names; same overlap matching as developer. */
-                publisher?: string[];
-                item_condition?: components["schemas"]["ItemCondition"][];
+                publisher?: components["parameters"]["entriesPublisher"];
+                item_condition?: components["parameters"]["entriesItemCondition"];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: components["parameters"]["platformId"];
                 /** @description Entries carrying ALL listed tags. */
-                tag_id?: string[];
+                tag_id?: components["parameters"]["entriesTagId"];
                 sort?: components["parameters"]["entriesSort"];
                 order?: components["parameters"]["order"];
                 group_by?: components["parameters"]["groupBy"];
@@ -2545,6 +2586,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createEntry: {
@@ -2574,6 +2616,7 @@ export interface operations {
             /** @description A referenced product or tag does not exist */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     bulkUpdateEntries: {
@@ -2602,6 +2645,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getEntry: {
@@ -2627,6 +2671,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     updateEntry: {
@@ -2658,6 +2703,7 @@ export interface operations {
             /** @description No such entry, pricing product, or tag */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteEntry: {
@@ -2681,6 +2727,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     reorderEntry: {
@@ -2713,6 +2760,7 @@ export interface operations {
             /** @description Not in the backlog, or the neighbors do not straddle (code conflicting_order) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     ackEntryRegionMismatch: {
@@ -2736,6 +2784,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getSubmission: {
@@ -2762,6 +2811,7 @@ export interface operations {
             /** @description Not found (code entry_not_found or submission_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createSubmission: {
@@ -2794,6 +2844,7 @@ export interface operations {
             /** @description A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited) */
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     cancelSubmission: {
@@ -2818,6 +2869,7 @@ export interface operations {
             /** @description Nothing pending (code submission_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     ackSubmissionResolution: {
@@ -2842,6 +2894,7 @@ export interface operations {
             /** @description Not found (code entry_not_found or submission_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listTags: {
@@ -2866,6 +2919,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createTag: {
@@ -2896,6 +2950,7 @@ export interface operations {
             /** @description Tag cap reached - at most 200 distinct tags per user (code cap_exceeded) */
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     renameTag: {
@@ -2927,6 +2982,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteTag: {
@@ -2950,6 +3006,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listViews: {
@@ -2974,6 +3031,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createView: {
@@ -3002,6 +3060,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     updateView: {
@@ -3033,6 +3092,7 @@ export interface operations {
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteView: {
@@ -3056,25 +3116,26 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getDashboard: {
         parameters: {
             query?: {
-                item_type?: components["schemas"]["ItemType"][];
+                item_type?: components["parameters"]["entriesItemType"];
                 status?: components["parameters"]["statusFilter"];
-                packaging?: components["schemas"]["Packaging"][];
+                packaging?: components["parameters"]["entriesPackaging"];
                 /** @description Known-value buckets; other stored strings only surface unfiltered. */
-                region?: string[];
+                region?: components["parameters"]["entriesRegion"];
                 /** @description Developer names; an entry matches when any of its snapshotted developers is listed. */
-                developer?: string[];
+                developer?: components["parameters"]["entriesDeveloper"];
                 /** @description Publisher names; same overlap matching as developer. */
-                publisher?: string[];
-                item_condition?: components["schemas"]["ItemCondition"][];
+                publisher?: components["parameters"]["entriesPublisher"];
+                item_condition?: components["parameters"]["entriesItemCondition"];
                 /** @description IGDB platform ids (matches the creation-time snapshot). */
                 platform_id?: components["parameters"]["platformId"];
                 /** @description Entries carrying ALL listed tags. */
-                tag_id?: string[];
+                tag_id?: components["parameters"]["entriesTagId"];
             };
             header?: never;
             path?: never;
@@ -3095,6 +3156,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getValueHistory: {
@@ -3117,6 +3179,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getFx: {
@@ -3139,6 +3202,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listPlatforms: {
@@ -3161,6 +3225,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getRecommendations: {
@@ -3183,6 +3248,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listUnmatchedProducts: {
@@ -3206,9 +3272,11 @@ export interface operations {
                     "application/json": components["schemas"]["UnmatchedProductsPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listCommunityProducts: {
@@ -3232,9 +3300,11 @@ export interface operations {
                     "application/json": components["schemas"]["CommunityProductsPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteProduct: {
@@ -3262,6 +3332,7 @@ export interface operations {
             /** @description Entries reference the product (code product_referenced) or it carries a mapping (code product_matched) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     setProductMapping: {
@@ -3297,6 +3368,7 @@ export interface operations {
             /** @description Another product already carries that identity (code identity_taken) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     triggerRefresh: {
@@ -3322,6 +3394,7 @@ export interface operations {
             /** @description A refresh is already running (code refresh_in_progress) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     triggerRematch: {
@@ -3347,6 +3420,7 @@ export interface operations {
             /** @description An entry rematch is already running (code rematch_in_progress) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     resnapshot: {
@@ -3370,6 +3444,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     normalizePlatforms: {
@@ -3393,6 +3468,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     normalizeRegions: {
@@ -3416,6 +3492,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     normalizeCommunityRegions: {
@@ -3439,6 +3516,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listSubmissions: {
@@ -3462,9 +3540,11 @@ export interface operations {
                     "application/json": components["schemas"]["AdminSubmissionsPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     submitVerdict: {
@@ -3500,6 +3580,7 @@ export interface operations {
             /** @description Another admin already resolved it (code submission_resolved) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createCommunityProduct: {
@@ -3529,6 +3610,7 @@ export interface operations {
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     promoteProduct: {
@@ -3564,6 +3646,7 @@ export interface operations {
             /** @description Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken) */
             409: components["responses"]["Conflict"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listPromoteCandidates: {
@@ -3588,9 +3671,11 @@ export interface operations {
                     "application/json": components["schemas"]["PromoteCandidatesPage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             403: components["responses"]["Forbidden"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     dismissPromoteCandidate: {
@@ -3622,6 +3707,7 @@ export interface operations {
             /** @description No such product (code product_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getProfilePage: {
@@ -3648,6 +3734,7 @@ export interface operations {
             /** @description Unknown or private (deliberately indistinguishable; code profile_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getProfileShelfPage: {
@@ -3675,6 +3762,7 @@ export interface operations {
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getShelfPage: {
@@ -3701,6 +3789,7 @@ export interface operations {
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listShelfEntries: {
@@ -3726,10 +3815,12 @@ export interface operations {
                     "application/json": components["schemas"]["SharedEntryList"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     listShelfComments: {
@@ -3761,6 +3852,7 @@ export interface operations {
             /** @description Unknown or private (deliberately indistinguishable; code shelf_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     createShelfComment: {
@@ -3795,6 +3887,7 @@ export interface operations {
             /** @description Comment cap reached - tombstones count (code cap_exceeded) */
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     deleteComment: {
@@ -3821,6 +3914,7 @@ export interface operations {
             /** @description Unknown or already tombstoned (code comment_not_found) */
             404: components["responses"]["NotFound"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     follow: {
@@ -3849,6 +3943,7 @@ export interface operations {
             /** @description Follow cap reached (code cap_exceeded) */
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     unfollow: {
@@ -3871,9 +3966,10 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
-    like: {
+    likeShelf: {
         parameters: {
             query?: never;
             header?: never;
@@ -3897,9 +3993,10 @@ export interface operations {
             /** @description Like cap reached (code cap_exceeded) */
             429: components["responses"]["TooManyRequests"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
-    unlike: {
+    unlikeShelf: {
         parameters: {
             query?: never;
             header?: never;
@@ -3919,6 +4016,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     searchUsers: {
@@ -3945,6 +4043,7 @@ export interface operations {
             };
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getSharedProfilesByIds: {
@@ -3969,8 +4068,10 @@ export interface operations {
                     };
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getFeed: {
@@ -3999,6 +4100,7 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
     getExplore: {
@@ -4023,8 +4125,10 @@ export interface operations {
                     "application/json": components["schemas"]["ExplorePage"];
                 };
             };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthenticated"];
             502: components["responses"]["UpstreamError"];
+            default: components["responses"]["InternalError"];
         };
     };
 }
@@ -4041,6 +4145,7 @@ export const entrySourceValues: ReadonlyArray<FlattenedDeepRequired<components>[
 export const verdictRequestActionValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["VerdictRequest"]["action"]> = ["approve_new", "approve_existing", "reject"];
 export const entryCreateMedia_typeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["EntryCreate"]["media_type"]> = ["physical"];
 export const entryCreateMatch_provenanceValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["EntryCreate"]["match_provenance"]> = ["auto", "user"];
+export const problemCodeValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["ProblemCode"]> = ["cap_exceeded", "comment_not_found", "conflicting_order", "email_unverified", "enrichment_unavailable", "entry_not_custom", "entry_not_found", "forbidden", "handle_cooldown", "handle_taken", "identity_already_linked", "identity_not_found", "identity_taken", "internal", "invalid_body", "invalid_callback", "invalid_internal_token", "invalid_param", "invalid_product_change", "invalid_refresh", "invalid_state", "invalid_token", "last_identity", "link_email_unverified", "link_failed", "missing_token", "not_found", "not_in_backlog", "not_ready", "origin_forbidden", "product_matched", "product_not_community", "product_not_found", "product_not_provider", "product_referenced", "profile_not_found", "provider_error", "refresh_in_progress", "refresh_reused", "rematch_in_progress", "self_follow", "shelf_not_found", "submission_not_found", "submission_pending", "submission_rate_limited", "submission_resolved", "tag_cap_exceeded", "tag_exists", "tag_not_found", "too_many_pending_submissions", "unauthenticated", "unknown_fixture", "unknown_game", "unknown_pc_product", "unknown_pricing_product", "unknown_product", "unknown_provider", "upstream_error", "upstream_unavailable", "user_not_found", "user_service_error", "user_unavailable", "view_exists", "view_not_found"];
 export const roleValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Role"]> = ["user", "admin"];
 export const visibilityValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["Visibility"]> = ["private", "unlisted", "listed"];
 export const landingPageValues: ReadonlyArray<FlattenedDeepRequired<components>["schemas"]["LandingPage"]> = ["collection", "feed", "explore"];

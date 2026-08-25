@@ -18,6 +18,8 @@ paths:
                 $ref: '#/components/schemas/Providers'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/auth/login:
     get:
       operationId: login
@@ -43,6 +45,8 @@ paths:
             Location:
               schema:
                 type: string
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/auth/callback:
     get:
       operationId: callback
@@ -65,6 +69,8 @@ paths:
             Location:
               schema:
                 type: string
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/auth/logout:
     post:
       operationId: logout
@@ -74,6 +80,8 @@ paths:
           description: Logged out (also when no session existed)
         '403':
           $ref: '#/components/responses/OriginForbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/me:
     get:
       operationId: getMe
@@ -91,6 +99,8 @@ paths:
           $ref: '#/components/responses/UpstreamError'
         '503':
           $ref: '#/components/responses/ServiceUnavailable'
+        default:
+          $ref: '#/components/responses/InternalError'
     patch:
       operationId: updateMe
       summary: Edit the signed-in user's profile (handle, avatar URL)
@@ -124,6 +134,8 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteMe
       summary: Delete the account everywhere (collection, linked logins, profile) and end the session
@@ -138,6 +150,8 @@ paths:
           $ref: '#/components/responses/OriginForbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/me/identities:
     get:
       operationId: getMyIdentities
@@ -153,6 +167,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/me/identities/{identityId}:
     delete:
       operationId: deleteMyIdentity
@@ -179,6 +195,8 @@ paths:
           description: Refusing to remove the last login (code last_identity)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/auth/link:
     get:
       operationId: linkLogin
@@ -207,6 +225,8 @@ paths:
                 type: string
         '401':
           $ref: '#/components/responses/Unauthenticated'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/otlp/v1/traces:
     post:
       operationId: proxyTraces
@@ -238,6 +258,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/otlp/v1/metrics:
     post:
       operationId: proxyMetrics
@@ -269,6 +291,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/search:
     get:
       operationId: searchCatalog
@@ -294,6 +318,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/products/resolve:
     post:
       operationId: resolveProduct
@@ -320,6 +346,8 @@ paths:
           description: The provider does not know the requested id
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/products/{productId}:
     get:
       operationId: getProduct
@@ -344,67 +372,22 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries:
     get:
       operationId: listEntries
       summary: List collection entries (proxied to the collection service, uncached)
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/entriesItemType'
         - $ref: '#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/Packaging'
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/entriesPackaging'
+        - $ref: '#/components/parameters/entriesRegion'
+        - $ref: '#/components/parameters/entriesDeveloper'
+        - $ref: '#/components/parameters/entriesPublisher'
+        - $ref: '#/components/parameters/entriesItemCondition'
         - $ref: '#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items:
-              type: string
-              format: uuid
+        - $ref: '#/components/parameters/entriesTagId'
         - $ref: '#/components/parameters/entriesSort'
         - $ref: '#/components/parameters/order'
         - $ref: '#/components/parameters/groupBy'
@@ -431,6 +414,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createEntry
       summary: Add an entry (proxied, uncached)
@@ -456,6 +441,8 @@ paths:
           description: A referenced product or tag does not exist
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/bulk-update:
     post:
       operationId: bulkUpdateEntries
@@ -482,6 +469,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/{entryId}:
     get:
       operationId: getEntry
@@ -506,6 +495,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     put:
       operationId: updateEntry
       summary: Replace an entry's mutable state (proxied, uncached)
@@ -538,6 +529,8 @@ paths:
           description: No such entry, pricing product, or tag
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteEntry
       summary: Delete an entry (proxied)
@@ -557,6 +550,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/{entryId}/reorder:
     post:
       operationId: reorderEntry
@@ -592,6 +587,8 @@ paths:
           description: Not in the backlog, or the neighbors do not straddle (code conflicting_order)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/{entryId}/region-mismatch-ack:
     post:
       operationId: ackEntryRegionMismatch
@@ -614,6 +611,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/{entryId}/submission:
     post:
       operationId: createSubmission
@@ -650,6 +649,8 @@ paths:
           description: A submission cap is exceeded (code too_many_pending_submissions or submission_rate_limited)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     get:
       operationId: getSubmission
       summary: The entry's latest submission (relay)
@@ -674,6 +675,8 @@ paths:
           description: Not found (code entry_not_found or submission_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: cancelSubmission
       summary: Cancel the entry's pending submission (relay)
@@ -694,6 +697,8 @@ paths:
           description: Nothing pending (code submission_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/entries/{entryId}/submission/ack:
     post:
       operationId: ackSubmissionResolution
@@ -717,6 +722,8 @@ paths:
           description: Not found (code entry_not_found or submission_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/tags:
     get:
       operationId: listTags
@@ -739,6 +746,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createTag
       summary: Create a tag (proxied)
@@ -766,6 +775,8 @@ paths:
           description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/tags/{tagId}:
     put:
       operationId: renameTag
@@ -800,6 +811,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteTag
       summary: Delete a tag (proxied)
@@ -819,6 +832,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/views:
     get:
       operationId: listViews
@@ -841,6 +856,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createView
       summary: Save a view (proxied)
@@ -865,10 +882,14 @@ paths:
           $ref: '#/components/responses/Conflict'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/views/{viewId}:
     put:
       operationId: updateView
-      summary: Replace a saved view (proxied)
+      summary: Replace a saved view's name, params, and visibility (proxied)
+      description: |
+        Full replacement: name, params, and visibility are all overwritten from the body. An absent visibility resets to private (ViewCreate's default), not left unchanged - this is how a listed shelf is unpublished.
       parameters:
         - name: viewId
           in: path
@@ -899,6 +920,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteView
       summary: Delete a saved view (proxied)
@@ -918,6 +941,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/dashboard:
     get:
       operationId: getDashboard
@@ -925,62 +950,15 @@ paths:
       description: |
         Accepts the entries-list filter dimensions and forwards them; the aggregates then cover exactly the filtered slice. Only the unfiltered dashboard is cached upstream.
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/entriesItemType'
         - $ref: '#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/Packaging'
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/entriesPackaging'
+        - $ref: '#/components/parameters/entriesRegion'
+        - $ref: '#/components/parameters/entriesDeveloper'
+        - $ref: '#/components/parameters/entriesPublisher'
+        - $ref: '#/components/parameters/entriesItemCondition'
         - $ref: '#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items:
-              type: string
-              format: uuid
+        - $ref: '#/components/parameters/entriesTagId'
       responses:
         '200':
           description: The dashboard
@@ -995,6 +973,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/dashboard/value-history:
     get:
       operationId: getValueHistory
@@ -1010,6 +990,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/fx:
     get:
       operationId: getFx
@@ -1027,6 +1009,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/platforms:
     get:
       operationId: listPlatforms
@@ -1044,6 +1028,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/recommendations:
     get:
       operationId: getRecommendations
@@ -1061,6 +1047,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/unmatched:
     get:
       operationId: listUnmatchedProducts
@@ -1084,12 +1072,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnmatchedProductsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/community:
     get:
       operationId: listCommunityProducts
@@ -1113,12 +1105,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CommunityProductsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/{productId}:
     delete:
       operationId: deleteProduct
@@ -1147,6 +1143,8 @@ paths:
           description: Entries reference the product (code product_referenced) or it carries a mapping (code product_matched)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/{productId}/pricecharting:
     put:
       operationId: setProductMapping
@@ -1188,6 +1186,8 @@ paths:
           description: Another product already carries that identity (code identity_taken)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/refresh:
     post:
       operationId: triggerRefresh
@@ -1208,6 +1208,8 @@ paths:
           description: A refresh is already running (code refresh_in_progress)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/rematch:
     post:
       operationId: triggerRematch
@@ -1228,6 +1230,8 @@ paths:
           description: An entry rematch is already running (code rematch_in_progress)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/resnapshot:
     post:
       operationId: resnapshot
@@ -1245,6 +1249,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/normalize-platforms:
     post:
       operationId: normalizePlatforms
@@ -1262,6 +1268,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/normalize-regions:
     post:
       operationId: normalizeRegions
@@ -1279,6 +1287,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/normalize-community-regions:
     post:
       operationId: normalizeCommunityRegions
@@ -1296,6 +1306,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/submissions:
     get:
       operationId: listSubmissions
@@ -1317,12 +1329,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminSubmissionsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/submissions/{submissionId}/verdict:
     post:
       operationId: submitVerdict
@@ -1362,6 +1378,8 @@ paths:
           description: Another admin already resolved it (code submission_resolved)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products:
     post:
       operationId: createCommunityProduct
@@ -1388,6 +1406,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/{productId}/promote:
     post:
       operationId: promoteProduct
@@ -1429,6 +1449,8 @@ paths:
           description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/promote-candidates:
     get:
       operationId: listPromoteCandidates
@@ -1456,12 +1478,16 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PromoteCandidatesPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/admin/products/{productId}/promote-candidates/dismiss:
     post:
       operationId: dismissPromoteCandidate
@@ -1494,6 +1520,8 @@ paths:
           description: No such product (code product_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/profiles/{handle}:
     get:
       operationId: getProfilePage
@@ -1520,6 +1548,8 @@ paths:
           description: Unknown or private (deliberately indistinguishable; code profile_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/profiles/{handle}/shelves/{slug}:
     get:
       operationId: getProfileShelfPage
@@ -1551,6 +1581,8 @@ paths:
           description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/shelves/{shelfId}:
     get:
       operationId: getShelfPage
@@ -1578,6 +1610,8 @@ paths:
           description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/shelves/{shelfId}/entries:
     get:
       operationId: listShelfEntries
@@ -1607,6 +1641,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SharedEntryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '404':
@@ -1614,6 +1650,8 @@ paths:
           description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/shelves/{shelfId}/comments:
     get:
       operationId: listShelfComments
@@ -1653,6 +1691,8 @@ paths:
           description: Unknown or private (deliberately indistinguishable; code shelf_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createShelfComment
       summary: Comment on a shelf (proxied)
@@ -1690,6 +1730,8 @@ paths:
           description: Comment cap reached - tombstones count (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/comments/{commentId}:
     delete:
       operationId: deleteComment
@@ -1716,6 +1758,8 @@ paths:
           description: Unknown or already tombstoned (code comment_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/social/follows/{userId}:
     put:
       operationId: follow
@@ -1743,6 +1787,8 @@ paths:
           description: Follow cap reached (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: unfollow
       summary: Unfollow a user (idempotent) (proxied)
@@ -1760,9 +1806,11 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/social/likes/{shelfId}:
     put:
-      operationId: like
+      operationId: likeShelf
       summary: Like a shelf (idempotent) (proxied)
       parameters:
         - name: shelfId
@@ -1784,8 +1832,10 @@ paths:
           description: Like cap reached (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
-      operationId: unlike
+      operationId: unlikeShelf
       summary: Remove a like (idempotent) (proxied)
       parameters:
         - name: shelfId
@@ -1801,6 +1851,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/search/users:
     get:
       operationId: searchUsers
@@ -1825,6 +1877,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/shared/profiles/by-ids:
     get:
       operationId: getSharedProfilesByIds
@@ -1855,10 +1909,14 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ProfileCard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/feed:
     get:
       operationId: getFeed
@@ -1890,6 +1948,8 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /api/explore:
     get:
       operationId: getExplore
@@ -1921,14 +1981,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExplorePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
 components:
   responses:
     Unauthenticated:
       description: No valid session (cookie missing, malformed, expired, revoked, or denylisted)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema:
@@ -2676,7 +2746,7 @@ components:
         instance:
           type: string
         code:
-          type: string
+          $ref: '#/components/schemas/ProblemCode'
     EntryPlatform:
       description: |
         The entry's platform: a creation-time snapshot of the product's platform (both fields) on product-backed entries, or a user-supplied platform on custom entries - both fields when picked from the catalog or normalized by the admin lever, name-only for escape-hatch free text. Absent when neither exists.
@@ -3723,7 +3793,7 @@ components:
           description: The owner's full listed-shelf count, beyond this page.
     Comment:
       description: |
-        A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay).
+        A live comment; tombstones never serialize (purge tombstones the row and clears the body; an anonymized comment never serializes again). author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent when the hydration batch fails open; never populated on the POST response (a verbatim create relay).
       type: object
       required:
         - id
@@ -3741,7 +3811,6 @@ components:
         author_id:
           type: string
           format: uuid
-          nullable: true
         body:
           type: string
         created_at:
@@ -3807,14 +3876,10 @@ components:
         next_cursor:
           type: string
     ExplorePage:
-      description: |
-        total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only).
       type: object
       required:
         - shelves
       properties:
-        total_count:
-          type: integer
         next_offset:
           type: integer
           minimum: 0
@@ -3936,6 +4001,75 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SharedEntryGroup'
+    ProblemCode:
+      description: |
+        The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     Handle:
       type: string
       minLength: 2
@@ -4064,14 +4198,75 @@ components:
       schema:
         type: string
         minLength: 1
+    entriesItemType:
+      name: item_type
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/ItemType'
     statusFilter:
       name: status
       in: query
       required: false
       schema:
         type: array
+        maxItems: 50
         items:
           $ref: '#/components/schemas/EntryStatus'
+    entriesPackaging:
+      name: packaging
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/Packaging'
+    entriesRegion:
+      name: region
+      in: query
+      required: false
+      description: Known-value buckets; other stored strings only surface unfiltered.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 32
+    entriesDeveloper:
+      name: developer
+      in: query
+      required: false
+      description: Developer names; an entry matches when any of its snapshotted developers is listed.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 120
+    entriesPublisher:
+      name: publisher
+      in: query
+      required: false
+      description: Publisher names; same overlap matching as developer.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 120
+    entriesItemCondition:
+      name: item_condition
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/ItemCondition'
     platformId:
       name: platform_id
       in: query
@@ -4079,9 +4274,21 @@ components:
       description: IGDB platform ids (matches the creation-time snapshot).
       schema:
         type: array
+        maxItems: 50
         items:
           type: integer
           format: int64
+    entriesTagId:
+      name: tag_id
+      in: query
+      required: false
+      description: Entries carrying ALL listed tags.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          format: uuid
     entriesSort:
       name: sort
       in: query

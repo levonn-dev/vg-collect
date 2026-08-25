@@ -24,6 +24,57 @@ components:
       in: query
       required: false
       schema: { type: string }
+    entriesDeveloper:
+      name: developer
+      in: query
+      required: false
+      description: Developer names; an entry matches when any of its snapshotted developers is listed.
+      schema:
+        type: array
+        maxItems: 50
+        items: { type: string, maxLength: 120 }
+    entriesItemCondition:
+      name: item_condition
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items: { $ref: "#/components/schemas/ItemCondition" }
+    entriesItemType:
+      name: item_type
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items: { $ref: "#/components/schemas/ItemType" }
+    entriesPackaging:
+      name: packaging
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items: { $ref: "#/components/schemas/Packaging" }
+    entriesPublisher:
+      name: publisher
+      in: query
+      required: false
+      description: Publisher names; same overlap matching as developer.
+      schema:
+        type: array
+        maxItems: 50
+        items: { type: string, maxLength: 120 }
+    entriesRegion:
+      name: region
+      in: query
+      required: false
+      description: Known-value buckets; other stored strings only surface unfiltered.
+      schema:
+        type: array
+        maxItems: 50
+        items: { type: string, maxLength: 32 }
     entriesSort:
       name: sort
       in: query
@@ -32,6 +83,15 @@ components:
         type: string
         enum: [name, release_date, purchased_at, created_at, value, paid, rating, backlog_rank]
         default: created_at
+    entriesTagId:
+      name: tag_id
+      in: query
+      required: false
+      description: Entries carrying ALL listed tags.
+      schema:
+        type: array
+        maxItems: 50
+        items: { type: string, format: uuid }
     groupBy:
       name: group_by
       in: query
@@ -56,6 +116,7 @@ components:
       description: IGDB platform ids (matches the creation-time snapshot).
       schema:
         type: array
+        maxItems: 50
         items: { type: integer, format: int64 }
     statusFilter:
       name: status
@@ -63,6 +124,7 @@ components:
       required: false
       schema:
         type: array
+        maxItems: 50
         items: { $ref: "#/components/schemas/EntryStatus" }
     tab:
       name: tab
@@ -936,7 +998,77 @@ components:
         status: { type: integer }
         detail: { type: string }
         instance: { type: string }
-        code: { type: string }
+        code: { $ref: "#/components/schemas/ProblemCode" }
+    ProblemCode:
+      description: >
+        The full house code vocabulary across every service (Problem
+        is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     Product:
       type: object
       required: [id, type, name, created_at, updated_at]

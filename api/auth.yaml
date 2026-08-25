@@ -23,6 +23,7 @@ paths:
             schema:
               $ref: "#/components/schemas/StartRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Authorize URL with state, nonce, and PKCE challenge bound server-side
           content:
@@ -42,6 +43,7 @@ paths:
             schema:
               $ref: "#/components/schemas/CallbackRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: >
             First-party session tokens. linked_provider is present when
@@ -72,6 +74,7 @@ paths:
             schema:
               $ref: "#/components/schemas/LinkStartRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Authorize URL; the pending state is bound server-side to the caller's user id
           content:
@@ -87,6 +90,7 @@ paths:
       operationId: listProviders
       summary: Login provider names currently enabled, in display order
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: >
             Always 200. Real providers with credentials configured, plus dev
@@ -106,6 +110,7 @@ paths:
             schema:
               $ref: "#/components/schemas/DevTokenRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: First-party session tokens for the fixture
           content:
@@ -129,6 +134,7 @@ paths:
             schema:
               $ref: "#/components/schemas/DevLinkRequest"
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Fresh session tokens for the caller, with linked_provider set to dev
           content:
@@ -147,7 +153,7 @@ paths:
   /users/{userId}/identities:
     get:
       operationId: listIdentities
-      summary: Provider logins linked to a user (self, or role service)
+      summary: Provider logins linked to a user (self, or a service credential)
       security:
         - bearerAuth: []
       parameters:
@@ -156,6 +162,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Linked identities, oldest first
           content:
@@ -176,6 +183,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Unlinked
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -198,6 +206,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204":
           description: Auth footprint erased (idempotent)
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -243,6 +252,7 @@ paths:
       operationId: getJwks
       summary: Public signing keys (Ed25519) for access-JWT verification
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: JWKS document
           content:
@@ -279,6 +289,7 @@ paths:
               properties:
                 service: { type: string, enum: [catalog-refresh, entry-rematch] }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Minted service token
           content:

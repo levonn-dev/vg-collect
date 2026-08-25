@@ -8,7 +8,7 @@ paths:
   /internal/users/upsert:
     post:
       operationId: upsertUser
-      summary: Create-or-update a user at login time (auth service only; role `service`)
+      summary: Create-or-update a user at login time (auth service credential only)
       requestBody:
         required: true
         content:
@@ -28,10 +28,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /users/{userId}:
     get:
       operationId: getUser
-      summary: Fetch a user (self, or role `service`/`admin`)
+      summary: Fetch a user (self, a service credential, or admin)
       parameters:
         - name: userId
           in: path
@@ -54,6 +56,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/InternalError'
     patch:
       operationId: updateUser
       summary: Self-service profile update (handle, avatar URL, currency, visibility)
@@ -89,6 +93,8 @@ paths:
           $ref: '#/components/responses/Conflict'
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteUser
       summary: Delete a user account (self only); idempotent
@@ -108,6 +114,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/profiles/{handle}:
     get:
       operationId: getSharedProfile
@@ -130,6 +138,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Unknown or private (deliberately indistinguishable)
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/profiles/by-ids:
     get:
       operationId: getSharedProfilesByIds
@@ -162,6 +172,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/profiles/search:
     get:
       operationId: searchSharedProfiles
@@ -186,6 +198,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     bearerAuth:
@@ -195,6 +209,12 @@ components:
   responses:
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema:
@@ -350,7 +370,76 @@ components:
         instance:
           type: string
         code:
-          type: string
+          $ref: '#/components/schemas/ProblemCode'
+    ProblemCode:
+      description: |
+        The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     Handle:
       type: string
       minLength: 2

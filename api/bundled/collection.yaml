@@ -14,62 +14,15 @@ paths:
       description: |
         Filters combine AND across dimensions and OR within one, except tag_id which requires ALL listed tags. pinned entries always sort first (within each group when grouped), except under sort=backlog_rank, the drag-order read, which is pure rank order. Nullable sort dimensions place nulls last in both directions; ties break on created_at (newest first) then id. sort=value composes current prices from enrichment before ordering; sort=backlog_rank is meaningful with status=backlog. group_by partitions the sorted list: groups order by label ascending with the catch-all group (Unknown/Unassigned/ Untagged) last, and group_by=tag repeats a multi-tagged entry in each of its tag groups. Responses are paginated: limit (default 200, max 500) and offset slice the sorted flat sequence and total_count reports the full filtered count; when grouped, the groups partition the requested page, so a group may continue on the next page. pricing_available=false flags that enrichment could not be reached and every value_cents is null.
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/entriesItemType'
         - $ref: '#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/Packaging'
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/entriesPackaging'
+        - $ref: '#/components/parameters/entriesRegion'
+        - $ref: '#/components/parameters/entriesDeveloper'
+        - $ref: '#/components/parameters/entriesPublisher'
+        - $ref: '#/components/parameters/entriesItemCondition'
         - $ref: '#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items:
-              type: string
-              format: uuid
+        - $ref: '#/components/parameters/entriesTagId'
         - $ref: '#/components/parameters/entriesSort'
         - $ref: '#/components/parameters/order'
         - $ref: '#/components/parameters/groupBy'
@@ -93,6 +46,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createEntry
       summary: Add an entry (catalog-backed, or custom for off-catalog items)
@@ -107,6 +62,10 @@ paths:
       responses:
         '201':
           description: The created entry
+          headers:
+            Location:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -120,6 +79,8 @@ paths:
           description: A referenced product or tag does not exist (code unknown_product, unknown_pricing_product, or tag_not_found)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/bulk-update:
     post:
       operationId: bulkUpdateEntries
@@ -144,6 +105,8 @@ paths:
           description: Bounds violated, no action specified, or the per-entry tag cap exceeded (code invalid_body or tag_cap_exceeded)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/{entryId}:
     get:
       operationId: getEntry
@@ -167,6 +130,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code entry_not_found; foreign entries answer identically)
+        default:
+          $ref: '#/components/responses/InternalError'
     put:
       operationId: updateEntry
       summary: Replace an entry's mutable state (the edit form submits everything)
@@ -201,6 +166,8 @@ paths:
           description: No such entry, or a referenced pricing product or tag does not exist
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteEntry
       summary: Delete an entry (tag links cascade)
@@ -218,6 +185,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/{entryId}/reorder:
     post:
       operationId: reorderEntry
@@ -253,6 +222,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
           description: The entry or a neighbor is not in the backlog, or the neighbors do not straddle (code not_in_backlog or conflicting_order)
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/{entryId}/region-mismatch-ack:
     post:
       operationId: ackEntryRegionMismatch
@@ -274,6 +245,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code entry_not_found; foreign entries answer identically)
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/{entryId}/submission:
     post:
       operationId: createSubmission
@@ -305,6 +278,8 @@ paths:
           description: A submission is already pending for the entry (code submission_pending)
         '429':
           $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/InternalError'
     get:
       operationId: getSubmission
       summary: The entry's latest submission, any status
@@ -329,6 +304,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code entry_not_found or submission_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: cancelSubmission
       summary: Cancel the entry's pending submission
@@ -349,6 +326,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Nothing pending (code submission_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /entries/{entryId}/submission/ack:
     post:
       operationId: ackSubmissionResolution
@@ -370,6 +349,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code entry_not_found or submission_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /tags:
     get:
       operationId: listTags
@@ -390,6 +371,8 @@ paths:
                       $ref: '#/components/schemas/Tag'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createTag
       summary: Create a tag (names are unique per user, case-insensitively)
@@ -415,6 +398,8 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
           description: Tag cap reached - at most 200 distinct tags per user (code cap_exceeded)
+        default:
+          $ref: '#/components/responses/InternalError'
   /tags/{tagId}:
     put:
       operationId: renameTag
@@ -448,6 +433,8 @@ paths:
           description: Not found (code tag_not_found)
         '409':
           $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteTag
       summary: Delete a tag (entry links cascade; entries survive)
@@ -466,6 +453,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code tag_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /views:
     get:
       operationId: listViews
@@ -486,6 +475,8 @@ paths:
                       $ref: '#/components/schemas/SavedView'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createView
       summary: Save a view (an opaque frontend params document; names unique per user)
@@ -511,10 +502,14 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
           description: Name already taken (code view_exists)
+        default:
+          $ref: '#/components/responses/InternalError'
   /views/{viewId}:
     put:
       operationId: updateView
-      summary: Replace a saved view's name and params
+      summary: Replace a saved view's name, params, and visibility
+      description: |
+        Full replacement: name, params, and visibility are all overwritten from the body. An absent visibility resets to private (ViewCreate's default), not left unchanged - this is how a listed shelf is unpublished.
       parameters:
         - name: viewId
           in: path
@@ -545,6 +540,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
           description: Name already taken (code view_exists)
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: deleteView
       summary: Delete a saved view
@@ -563,6 +560,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code view_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/shelves:
     get:
       operationId: listSharedShelves
@@ -607,8 +606,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/SharedShelfSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/shelves/by-slug:
     get:
       operationId: getSharedShelfBySlug
@@ -632,11 +635,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SharedShelf'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
           description: Unknown or private (indistinguishable; code shelf_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/shelves/by-ids:
     get:
       operationId: getSharedShelvesByIds
@@ -665,8 +672,12 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/SharedShelfSummary'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/shelves/{shelfId}:
     get:
       operationId: getSharedShelf
@@ -690,6 +701,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Unknown or private (indistinguishable; code shelf_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /shared/shelves/{shelfId}/entries:
     get:
       operationId: listSharedShelfEntries
@@ -719,11 +732,15 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SharedEntryList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
           description: Unknown or private (indistinguishable; code shelf_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /dashboard:
     get:
       operationId: getDashboard
@@ -731,62 +748,15 @@ paths:
       description: |
         Counts and spend come from SQL; total value composes each entry's effective pricing product (auto uses the entry's own product, proxy the override, disabled is excluded) with the packaging-appropriate price field. The entries-list filter dimensions narrow every aggregate exactly as they narrow the list (AND across dimensions, OR within one, tag_id requiring ALL listed tags). Only the unfiltered dashboard is cached (about five minutes, invalidated by the caller's own entry mutations); filtered requests are computed live. When enrichment is unreachable the dashboard still answers with pricing.available=false (and the degraded result is not cached).
       parameters:
-        - name: item_type
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemType'
+        - $ref: '#/components/parameters/entriesItemType'
         - $ref: '#/components/parameters/statusFilter'
-        - name: packaging
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/Packaging'
-        - name: region
-          in: query
-          required: false
-          description: Known-value buckets; other stored strings only surface unfiltered.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: developer
-          in: query
-          required: false
-          description: Developer names; an entry matches when any of its snapshotted developers is listed.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: publisher
-          in: query
-          required: false
-          description: Publisher names; same overlap matching as developer.
-          schema:
-            type: array
-            items:
-              type: string
-        - name: item_condition
-          in: query
-          required: false
-          schema:
-            type: array
-            items:
-              $ref: '#/components/schemas/ItemCondition'
+        - $ref: '#/components/parameters/entriesPackaging'
+        - $ref: '#/components/parameters/entriesRegion'
+        - $ref: '#/components/parameters/entriesDeveloper'
+        - $ref: '#/components/parameters/entriesPublisher'
+        - $ref: '#/components/parameters/entriesItemCondition'
         - $ref: '#/components/parameters/platformId'
-        - name: tag_id
-          in: query
-          required: false
-          description: Entries carrying ALL listed tags.
-          schema:
-            type: array
-            items:
-              type: string
-              format: uuid
+        - $ref: '#/components/parameters/entriesTagId'
       responses:
         '200':
           description: The dashboard
@@ -798,6 +768,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /dashboard/value-history:
     get:
       operationId: getValueHistory
@@ -813,6 +785,8 @@ paths:
                 $ref: '#/components/schemas/ValueHistory'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /library/summary:
     get:
       operationId: getLibrarySummary
@@ -828,6 +802,8 @@ paths:
                 $ref: '#/components/schemas/LibrarySummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /user-data:
     delete:
       operationId: purgeUserData
@@ -837,6 +813,8 @@ paths:
           description: Purged (also when there was nothing to purge)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/{productId}/references:
     get:
       operationId: countProductReferences
@@ -867,6 +845,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/submissions:
     get:
       operationId: listSubmissions
@@ -890,10 +870,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminSubmissionsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/submissions/{submissionId}/verdict:
     post:
       operationId: submitVerdict
@@ -934,6 +918,8 @@ paths:
           description: Another admin already resolved it (code submission_resolved)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/resnapshot:
     post:
       operationId: internalResnapshot
@@ -953,6 +939,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/normalize-platforms:
     post:
       operationId: internalNormalizePlatforms
@@ -972,6 +960,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/normalize-regions:
     post:
       operationId: internalNormalizeRegions
@@ -991,6 +981,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/rematch-entries:
     post:
       operationId: internalRematchEntries
@@ -1013,6 +1005,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
           description: An entry rematch is already running (code rematch_in_progress)
+        default:
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     bearerAuth:
@@ -1028,6 +1022,12 @@ components:
             $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema:
@@ -2182,7 +2182,7 @@ components:
         instance:
           type: string
         code:
-          type: string
+          $ref: '#/components/schemas/ProblemCode'
     RematchAccepted:
       type: object
       required:
@@ -2246,6 +2246,75 @@ components:
         - good
         - acceptable
         - poor
+    ProblemCode:
+      description: |
+        The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     MediaType:
       type: string
       enum:
@@ -2276,14 +2345,75 @@ components:
       enum:
         - started
   parameters:
+    entriesItemType:
+      name: item_type
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/ItemType'
     statusFilter:
       name: status
       in: query
       required: false
       schema:
         type: array
+        maxItems: 50
         items:
           $ref: '#/components/schemas/EntryStatus'
+    entriesPackaging:
+      name: packaging
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/Packaging'
+    entriesRegion:
+      name: region
+      in: query
+      required: false
+      description: Known-value buckets; other stored strings only surface unfiltered.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 32
+    entriesDeveloper:
+      name: developer
+      in: query
+      required: false
+      description: Developer names; an entry matches when any of its snapshotted developers is listed.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 120
+    entriesPublisher:
+      name: publisher
+      in: query
+      required: false
+      description: Publisher names; same overlap matching as developer.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          maxLength: 120
+    entriesItemCondition:
+      name: item_condition
+      in: query
+      required: false
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          $ref: '#/components/schemas/ItemCondition'
     platformId:
       name: platform_id
       in: query
@@ -2291,9 +2421,21 @@ components:
       description: IGDB platform ids (matches the creation-time snapshot).
       schema:
         type: array
+        maxItems: 50
         items:
           type: integer
           format: int64
+    entriesTagId:
+      name: tag_id
+      in: query
+      required: false
+      description: Entries carrying ALL listed tags.
+      schema:
+        type: array
+        maxItems: 50
+        items:
+          type: string
+          format: uuid
     entriesSort:
       name: sort
       in: query

@@ -31,6 +31,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /products/resolve:
     post:
       operationId: resolveProduct
@@ -59,6 +61,8 @@ paths:
           description: Provider does not know the requested id (code unknown_game or unknown_pc_product)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /products/{productId}:
     get:
       operationId: getProduct
@@ -84,6 +88,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Not found (code product_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /products/prices:batch:
     post:
       operationId: batchPrices
@@ -107,6 +113,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /products/price-history:batch:
     post:
       operationId: batchPriceHistory
@@ -130,6 +138,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /recommendations:score:
     post:
       operationId: scoreRecommendations
@@ -153,6 +163,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /fx/latest:
     get:
       operationId: getFxLatest
@@ -170,6 +182,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /platforms:
     get:
       operationId: listPlatforms
@@ -187,6 +201,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/refresh:
     post:
       operationId: triggerRefresh
@@ -206,6 +222,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/refresh:
     post:
       operationId: internalRefresh
@@ -227,6 +245,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '409':
           $ref: '#/components/responses/Conflict'
+        default:
+          $ref: '#/components/responses/InternalError'
   /internal/normalize-community-regions:
     post:
       operationId: internalNormalizeCommunityRegions
@@ -246,6 +266,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products:
     post:
       operationId: createCommunityProduct
@@ -261,6 +283,10 @@ paths:
       responses:
         '201':
           description: The minted community product
+          headers:
+            Location:
+              schema:
+                type: string
           content:
             application/json:
               schema:
@@ -271,6 +297,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/{productId}/pricecharting:
     put:
       operationId: setProductMapping
@@ -311,6 +339,8 @@ paths:
           description: Another product already carries that identity (code identity_taken), or the product is community-origin (code product_not_provider)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/{productId}/promote:
     post:
       operationId: promoteProduct
@@ -351,6 +381,8 @@ paths:
           description: Not community-origin (code product_not_community) or a provider twin holds the identity (code identity_taken)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/promote-candidates:
     get:
       operationId: listPromoteCandidates
@@ -380,10 +412,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PromoteCandidatesPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/{productId}/promote-candidates/dismiss:
     post:
       operationId: dismissPromoteCandidate
@@ -414,6 +450,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/{productId}:
     delete:
       operationId: deleteProduct
@@ -439,6 +477,8 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
           description: The product carries a mapping (code product_matched)
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/unmatched:
     get:
       operationId: listUnmatchedProducts
@@ -462,10 +502,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UnmatchedProductsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
   /admin/products/community:
     get:
       operationId: listCommunityProducts
@@ -489,10 +533,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CommunityProductsPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        default:
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     bearerAuth:
@@ -508,6 +556,12 @@ components:
             $ref: '#/components/schemas/Problem'
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema:
@@ -1285,13 +1339,82 @@ components:
         instance:
           type: string
         code:
-          type: string
+          $ref: '#/components/schemas/ProblemCode'
     SearchResultType:
       type: string
       enum:
         - game
         - hardware
         - pc_listing
+    ProblemCode:
+      description: |
+        The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     ReleaseRegion:
       type: string
       enum:

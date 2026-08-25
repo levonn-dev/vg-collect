@@ -20,6 +20,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Following (already or newly) }
         "400":
           $ref: "#/components/responses/BadRequest"
@@ -39,6 +40,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Not following (already or newly) }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /profiles/{userId}/summary:
@@ -51,6 +53,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Summary
           content:
@@ -67,6 +70,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Liked (already or newly) }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -83,6 +87,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Not liked (already or newly) }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /shelves/summary:
@@ -98,6 +103,7 @@ paths:
             maxItems: 100
             items: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Summaries (ids without social rows still answer, zeroed)
           content:
@@ -126,6 +132,7 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One page
           content:
@@ -158,6 +165,7 @@ paths:
               properties:
                 body: { type: string, minLength: 1, maxLength: 2000 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "201":
           description: The comment
           content:
@@ -182,6 +190,7 @@ paths:
           required: true
           schema: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Tombstoned }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -201,6 +210,7 @@ paths:
             maxItems: 100
             items: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Live comments among the ids
           content:
@@ -226,6 +236,7 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: One raw page (the bff hydrates, gates, and fills)
           content:
@@ -256,6 +267,7 @@ paths:
               properties:
                 shelf_id: { type: string, format: uuid }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Recorded (created, refreshed, or throttled) }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
@@ -271,6 +283,7 @@ paths:
           required: false
           schema: { type: integer, minimum: 1, maximum: 50, default: 50 }
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "200":
           description: Ids, most-liked first
           content:
@@ -296,6 +309,7 @@ paths:
         (author and body NULLed, tombstoned). deleted_by references to
         the caller are NULLed. Irreversible.
       responses:
+        default: { $ref: "#/components/responses/InternalError" }
         "204": { description: Purged }
         "401": { $ref: "#/components/responses/Unauthorized" }
 components:
@@ -304,6 +318,11 @@ components:
   responses:
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema: { $ref: './common.yaml#/components/schemas/Problem' }
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema: { $ref: './common.yaml#/components/schemas/Problem' }

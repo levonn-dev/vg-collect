@@ -33,6 +33,8 @@ paths:
           $ref: '#/components/responses/TooManyRequests'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: unfollow
       summary: Unfollow a user (idempotent)
@@ -48,6 +50,8 @@ paths:
           description: Not following (already or newly)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /profiles/{userId}/summary:
     get:
       operationId: getProfileSocialSummary
@@ -68,6 +72,8 @@ paths:
                 $ref: '#/components/schemas/ProfileSocialSummary'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /likes/{shelfId}:
     put:
       operationId: likeShelf
@@ -91,6 +97,8 @@ paths:
           description: Like cap reached - unliking does not reset it (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
     delete:
       operationId: unlikeShelf
       summary: Remove a like (idempotent)
@@ -106,6 +114,8 @@ paths:
           description: Not liked (already or newly)
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shelves/summary:
     get:
       operationId: getShelvesSocialSummary
@@ -138,6 +148,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /shelves/{shelfId}/comments:
     get:
       operationId: listShelfComments
@@ -178,6 +190,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
     post:
       operationId: createShelfComment
       summary: Comment on a shelf (validates the shelf via collection)
@@ -220,6 +234,8 @@ paths:
           description: Comment cap reached - tombstones count (code cap_exceeded)
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /comments/{commentId}:
     delete:
       operationId: deleteComment
@@ -241,6 +257,8 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
           description: Unknown or already tombstoned (code comment_not_found)
+        default:
+          $ref: '#/components/responses/InternalError'
   /comments/by-ids:
     get:
       operationId: getCommentsByIds
@@ -273,6 +291,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /feed:
     get:
       operationId: getFeed
@@ -309,6 +329,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /events/shelf-published:
     post:
       operationId: recordShelfPublished
@@ -338,6 +360,8 @@ paths:
           $ref: '#/components/responses/NotFound'
         '502':
           $ref: '#/components/responses/UpstreamError'
+        default:
+          $ref: '#/components/responses/InternalError'
   /explore/top-shelves:
     get:
       operationId: getTopShelves
@@ -370,6 +394,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
   /user-data:
     delete:
       operationId: purgeUserData
@@ -381,6 +407,8 @@ paths:
           description: Purged
         '401':
           $ref: '#/components/responses/Unauthorized'
+        default:
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     bearerAuth:
@@ -390,6 +418,12 @@ components:
   responses:
     Unauthorized:
       description: Missing/invalid token
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    InternalError:
+      description: Unexpected server-side failure
       content:
         application/problem+json:
           schema:
@@ -527,7 +561,76 @@ components:
         instance:
           type: string
         code:
-          type: string
+          $ref: '#/components/schemas/ProblemCode'
+    ProblemCode:
+      description: |
+        The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).
+      type: string
+      enum:
+        - cap_exceeded
+        - comment_not_found
+        - conflicting_order
+        - email_unverified
+        - enrichment_unavailable
+        - entry_not_custom
+        - entry_not_found
+        - forbidden
+        - handle_cooldown
+        - handle_taken
+        - identity_already_linked
+        - identity_not_found
+        - identity_taken
+        - internal
+        - invalid_body
+        - invalid_callback
+        - invalid_internal_token
+        - invalid_param
+        - invalid_product_change
+        - invalid_refresh
+        - invalid_state
+        - invalid_token
+        - last_identity
+        - link_email_unverified
+        - link_failed
+        - missing_token
+        - not_found
+        - not_in_backlog
+        - not_ready
+        - origin_forbidden
+        - product_matched
+        - product_not_community
+        - product_not_found
+        - product_not_provider
+        - product_referenced
+        - profile_not_found
+        - provider_error
+        - refresh_in_progress
+        - refresh_reused
+        - rematch_in_progress
+        - self_follow
+        - shelf_not_found
+        - submission_not_found
+        - submission_pending
+        - submission_rate_limited
+        - submission_resolved
+        - tag_cap_exceeded
+        - tag_exists
+        - tag_not_found
+        - too_many_pending_submissions
+        - unauthenticated
+        - unknown_fixture
+        - unknown_game
+        - unknown_pc_product
+        - unknown_pricing_product
+        - unknown_product
+        - unknown_provider
+        - upstream_error
+        - upstream_unavailable
+        - user_not_found
+        - user_service_error
+        - user_unavailable
+        - view_exists
+        - view_not_found
     ActivityVerb:
       type: string
       enum:

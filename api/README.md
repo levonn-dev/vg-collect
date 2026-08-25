@@ -17,6 +17,13 @@ OpenAPI contracts for the vgkeep services, plus the domain tables.
   the bundler, and CI fails on drift.
 - `domain.yaml` - region/platform domain tables consumed by domaingen
   (`task gen:domain`); not an OpenAPI document.
+- `enrichment.yaml`'s colon custom-method routes (`prices:batch`,
+  `price-history:batch`, `recommendations:score`) are a deliberate
+  AIP-136 form: the segment before `:` is the resource, the segment
+  after is a custom verb applied to it (two things). The hyphenated
+  `bulk-update`/`by-ids` forms elsewhere name one compound
+  sub-resource (a single thing), not a resource-plus-verb. The split
+  marks two different shapes, not one shape spelled two ways.
 
 ## Editing flow
 
@@ -30,6 +37,12 @@ OpenAPI contracts for the vgkeep services, plus the domain tables.
    references it. A site that keeps a per-site `description` or `default`
    beside the reference wraps it as `allOf: [$ref]` with the extra keys as
    siblings (a bare `$ref` drops sibling keys in every consumer). Enums that
-   appear at exactly one site stay inline.
+   appear at exactly one site stay inline. Response references are the
+   exception: a Response Object has no `allOf`, so a per-site `description`
+   beside a response `$ref` (the machine-readable error codes) stays a bare
+   sibling. Strict OAS 3.0.3 drops it, but the toolchain here keeps it
+   (Redocly and openapi-typescript both preserve it; the Go codegen ignores
+   it either way), so these sites are a deliberate 3.0.3 deviation, not the
+   schema rule left unapplied.
 2. Run `task gen` to rebundle `bundled/` and regenerate code, then commit the
    authored change together with the regenerated output.

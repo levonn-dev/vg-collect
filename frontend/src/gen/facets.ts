@@ -161,14 +161,13 @@ export const CatalogPlatform = {
 } as const;
 
 export const Comment = {
-  "description": "A live comment; tombstones never serialize. author_id is null for a purge-anonymized comment (the row survives with its body; only the account link is severed) and a uuid otherwise - the key is always present, only the value varies. author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent for an anonymized comment (there is no id left to hydrate) or when the hydration batch itself fails open; never populated on the POST response (a verbatim create relay).\n",
+  "description": "A live comment; tombstones never serialize (purge tombstones the row and clears the body; an anonymized comment never serializes again). author is the bff's batched ProfileCard hydration of author_id (the same composition FeedItem.actor uses): present on a GET list page when the author resolves, absent when the hydration batch fails open; never populated on the POST response (a verbatim create relay).\n",
   "properties": {
     "author": {
       "$ref": "#/components/schemas/ProfileCard",
     },
     "author_id": {
       "format": "uuid",
-      "nullable": true,
       "type": "string",
     },
     "body": {
@@ -1032,7 +1031,6 @@ export const EntryUpdate = {
 } as const;
 
 export const ExplorePage = {
-  "description": "total_count is never sent: top is a fixed leaderboard with no deeper page to count, and recent supersedes it with next_offset (kept in the shape, never populated, for forward compatibility only).\n",
   "properties": {
     "next_offset": {
       "description": "Present when more listed shelves remain to page through - recent sort only. The raw collection-space offset to resume from; absent once the listed-shelf stream is exhausted.\n",
@@ -1044,9 +1042,6 @@ export const ExplorePage = {
         "$ref": "#/components/schemas/ShelfCard",
       },
       "type": "array",
-    },
-    "total_count": {
-      "type": "integer",
     },
   },
   "required": ["shelves"],
@@ -1427,7 +1422,7 @@ export const PricechartingMeta = {
 export const Problem = {
   "properties": {
     "code": {
-      "type": "string",
+      "$ref": "#/components/schemas/ProblemCode",
     },
     "detail": {
       "type": "string",
@@ -1447,6 +1442,11 @@ export const Problem = {
   },
   "required": ["type", "title", "status"],
   "type": "object",
+} as const;
+
+export const ProblemCode = {
+  "description": "The full house code vocabulary across every service (Problem is shared, and the bff relays upstream codes verbatim).\n",
+  "type": "string",
 } as const;
 
 export const Product = {
@@ -2438,9 +2438,16 @@ export const parameters = {
     "minLength": 1,
   },
   "cursor": {},
+  "entriesDeveloper": {},
+  "entriesItemCondition": {},
+  "entriesItemType": {},
+  "entriesPackaging": {},
+  "entriesPublisher": {},
+  "entriesRegion": {},
   "entriesSort": {
     "default": "created_at",
   },
+  "entriesTagId": {},
   "groupBy": {},
   "offset": {
     "default": 0,
@@ -2502,15 +2509,6 @@ export const operationParams = {
   "follow": {
     "userId": {},
   },
-  "getDashboard": {
-    "developer": {},
-    "item_condition": {},
-    "item_type": {},
-    "packaging": {},
-    "publisher": {},
-    "region": {},
-    "tag_id": {},
-  },
   "getEntry": {
     "entryId": {},
   },
@@ -2548,7 +2546,7 @@ export const operationParams = {
   "getSubmission": {
     "entryId": {},
   },
-  "like": {
+  "likeShelf": {
     "shelfId": {},
   },
   "linkLogin": {
@@ -2563,18 +2561,11 @@ export const operationParams = {
     },
   },
   "listEntries": {
-    "developer": {},
-    "item_condition": {},
-    "item_type": {},
     "limit": {
       "default": 200,
       "maximum": 500,
       "minimum": 1,
     },
-    "packaging": {},
-    "publisher": {},
-    "region": {},
-    "tag_id": {},
   },
   "listPromoteCandidates": {
     "limit": {
@@ -2639,7 +2630,7 @@ export const operationParams = {
   "unfollow": {
     "userId": {},
   },
-  "unlike": {
+  "unlikeShelf": {
     "shelfId": {},
   },
   "updateEntry": {

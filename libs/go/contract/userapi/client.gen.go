@@ -78,6 +78,9 @@ type Conflict = externalRef0.Problem
 // Forbidden defines model for Forbidden.
 type Forbidden = externalRef0.Problem
 
+// InternalError defines model for InternalError.
+type InternalError = externalRef0.Problem
+
 // NotFound defines model for NotFound.
 type NotFound = externalRef0.Problem
 
@@ -177,14 +180,14 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 // The interface specification for the client above.
 type ClientInterface interface {
 
-	// UpsertUserWithBody Create-or-update a user at login time (auth service only; role `service`)
+	// UpsertUserWithBody Create-or-update a user at login time (auth service credential only)
 	//
 	// Takes any type of body and a specified content type.
 	//
 	// Corresponds with POST /internal/users/upsert (the `UpsertUser` operationId).
 	UpsertUserWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// UpsertUser Create-or-update a user at login time (auth service only; role `service`)
+	// UpsertUser Create-or-update a user at login time (auth service credential only)
 	//
 	// Takes a body of the `application/json` content type.
 	//
@@ -211,7 +214,7 @@ type ClientInterface interface {
 	// Corresponds with DELETE /users/{userId} (the `DeleteUser` operationId).
 	DeleteUser(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetUser Fetch a user (self, or role `service`/`admin`)
+	// GetUser Fetch a user (self, a service credential, or admin)
 	//
 	// Corresponds with GET /users/{userId} (the `GetUser` operationId).
 	GetUser(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -231,7 +234,7 @@ type ClientInterface interface {
 	UpdateUser(ctx context.Context, userId openapi_types.UUID, body UpdateUserJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
-// UpsertUserWithBody Create-or-update a user at login time (auth service only; role `service`)
+// UpsertUserWithBody Create-or-update a user at login time (auth service credential only)
 //
 // Takes any type of body and a specified content type.
 //
@@ -248,7 +251,7 @@ func (c *Client) UpsertUserWithBody(ctx context.Context, contentType string, bod
 	return c.Client.Do(req)
 }
 
-// UpsertUser Create-or-update a user at login time (auth service only; role `service`)
+// UpsertUser Create-or-update a user at login time (auth service credential only)
 //
 // Takes a body of the `application/json` content type.
 //
@@ -325,7 +328,7 @@ func (c *Client) DeleteUser(ctx context.Context, userId openapi_types.UUID, reqE
 	return c.Client.Do(req)
 }
 
-// GetUser Fetch a user (self, or role `service`/`admin`)
+// GetUser Fetch a user (self, a service credential, or admin)
 //
 // Corresponds with GET /users/{userId} (the `GetUser` operationId).
 func (c *Client) GetUser(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -711,14 +714,14 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// UpsertUserWithBodyWithResponse Create-or-update a user at login time (auth service only; role `service`)
+	// UpsertUserWithBodyWithResponse Create-or-update a user at login time (auth service credential only)
 	//
 	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 	//
 	// Corresponds with POST /internal/users/upsert (the `UpsertUser` operationId).
 	UpsertUserWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpsertUserResponse, error)
 
-	// UpsertUserWithResponse Create-or-update a user at login time (auth service only; role `service`)
+	// UpsertUserWithResponse Create-or-update a user at login time (auth service credential only)
 	//
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	//
@@ -753,7 +756,7 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with DELETE /users/{userId} (the `DeleteUser` operationId).
 	DeleteUserWithResponse(ctx context.Context, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteUserResponse, error)
 
-	// GetUserWithResponse Fetch a user (self, or role `service`/`admin`)
+	// GetUserWithResponse Fetch a user (self, a service credential, or admin)
 	//
 	// Returns a wrapper object for the known response body format(s).
 	//
@@ -786,6 +789,8 @@ type UpsertUserResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -806,6 +811,11 @@ func (r UpsertUserResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r UpsertUserResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpsertUserResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -848,6 +858,8 @@ type GetSharedProfilesByIdsResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -865,6 +877,11 @@ func (r GetSharedProfilesByIdsResponse) GetApplicationproblemJSON400() *BadReque
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r GetSharedProfilesByIdsResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetSharedProfilesByIdsResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -907,6 +924,8 @@ type SearchSharedProfilesResponse struct {
 	ApplicationproblemJSON400 *BadRequest
 	// ApplicationproblemJSON401 the response for an HTTP 401 `application/problem+json` response
 	ApplicationproblemJSON401 *Unauthorized
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -924,6 +943,11 @@ func (r SearchSharedProfilesResponse) GetApplicationproblemJSON400() *BadRequest
 // GetApplicationproblemJSON401 returns the response for an HTTP 401 `application/problem+json` response
 func (r SearchSharedProfilesResponse) GetApplicationproblemJSON401() *Unauthorized {
 	return r.ApplicationproblemJSON401
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r SearchSharedProfilesResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -964,6 +988,8 @@ type GetSharedProfileResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -979,6 +1005,11 @@ func (r GetSharedProfileResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetSharedProfileResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetSharedProfileResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1019,6 +1050,8 @@ type DeleteUserResponse struct {
 	ApplicationproblemJSON401 *Unauthorized
 	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
 	ApplicationproblemJSON403 *Forbidden
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
@@ -1034,6 +1067,11 @@ func (r DeleteUserResponse) GetApplicationproblemJSON401() *Unauthorized {
 // GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
 func (r DeleteUserResponse) GetApplicationproblemJSON403() *Forbidden {
 	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r DeleteUserResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1078,6 +1116,8 @@ type GetUserResponse struct {
 	ApplicationproblemJSON403 *Forbidden
 	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
 	ApplicationproblemJSON404 *NotFound
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1103,6 +1143,11 @@ func (r GetUserResponse) GetApplicationproblemJSON403() *Forbidden {
 // GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
 func (r GetUserResponse) GetApplicationproblemJSON404() *NotFound {
 	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r GetUserResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
 }
 
 // GetBody returns the raw response body bytes
@@ -1151,6 +1196,8 @@ type UpdateUserResponse struct {
 	ApplicationproblemJSON409 *Conflict
 	// ApplicationproblemJSON429 the response for an HTTP 429 `application/problem+json` response
 	ApplicationproblemJSON429 *TooManyRequests
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *InternalError
 }
 
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
@@ -1188,6 +1235,11 @@ func (r UpdateUserResponse) GetApplicationproblemJSON429() *TooManyRequests {
 	return r.ApplicationproblemJSON429
 }
 
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r UpdateUserResponse) GetApplicationproblemJSONDefault() *InternalError {
+	return r.ApplicationproblemJSONDefault
+}
+
 // GetBody returns the raw response body bytes
 func (r UpdateUserResponse) GetBody() []byte {
 	return r.Body
@@ -1217,7 +1269,7 @@ func (r UpdateUserResponse) ContentType() string {
 	return ""
 }
 
-// UpsertUserWithBodyWithResponse Create-or-update a user at login time (auth service only; role `service`)
+// UpsertUserWithBodyWithResponse Create-or-update a user at login time (auth service credential only)
 //
 // Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1230,7 +1282,7 @@ func (c *ClientWithResponses) UpsertUserWithBodyWithResponse(ctx context.Context
 	return ParseUpsertUserResponse(rsp)
 }
 
-// UpsertUserWithResponse Create-or-update a user at login time (auth service only; role `service`)
+// UpsertUserWithResponse Create-or-update a user at login time (auth service credential only)
 //
 // Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 //
@@ -1295,7 +1347,7 @@ func (c *ClientWithResponses) DeleteUserWithResponse(ctx context.Context, userId
 	return ParseDeleteUserResponse(rsp)
 }
 
-// GetUserWithResponse Fetch a user (self, or role `service`/`admin`)
+// GetUserWithResponse Fetch a user (self, a service credential, or admin)
 //
 // Returns a wrapper object for the known response body format(s).
 //
@@ -1376,6 +1428,13 @@ func ParseUpsertUserResponse(rsp *http.Response) (*UpsertUserResponse, error) {
 		}
 		response.ApplicationproblemJSON403 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -1417,6 +1476,13 @@ func ParseGetSharedProfilesByIdsResponse(rsp *http.Response) (*GetSharedProfiles
 			return nil, err
 		}
 		response.ApplicationproblemJSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -1460,6 +1526,13 @@ func ParseSearchSharedProfilesResponse(rsp *http.Response) (*SearchSharedProfile
 		}
 		response.ApplicationproblemJSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -1499,6 +1572,13 @@ func ParseGetSharedProfileResponse(rsp *http.Response) (*GetSharedProfileRespons
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -1542,6 +1622,13 @@ func ParseDeleteUserResponse(rsp *http.Response) (*DeleteUserResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -1596,6 +1683,13 @@ func ParseGetUserResponse(rsp *http.Response) (*GetUserResponse, error) {
 			return nil, err
 		}
 		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
 
 	}
 
@@ -1665,6 +1759,13 @@ func ParseUpdateUserResponse(rsp *http.Response) (*UpdateUserResponse, error) {
 		}
 		response.ApplicationproblemJSON429 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest InternalError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
 	}
 
 	return response, nil
@@ -1675,44 +1776,53 @@ func ParseUpdateUserResponse(rsp *http.Response) (*UpdateUserResponse, error) {
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
+	"7eQj+/GKm+JTsJNudenT+fp8/Z8AAAD//w==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

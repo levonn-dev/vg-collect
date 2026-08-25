@@ -33,15 +33,12 @@ platforms:
   - igdb_id: 51
     name: Famicom Disk System
     region: ntsc_j
-# release_regions is IGDB's release_region vendor enum (the id an IGDB
-# release_dates or release_regions row carries on the wire), decoded to
-# its canonical name - services/enrichment/internal/igdb.RegionName.
-# entry_region is the collector's-entry region a release in that
-# region badges as, for a region with a direct 1:1 mapping; omitted
-# where there is none. worldwide has no entry_region: it expands to
-# the TV-standard trio (ntsc_u, ntsc_j, pal) instead of picking one, a
-# decision only the consuming picker can make
-# (frontend/src/lib/productTitle.ts's platformEntryRegions).
+# release_regions is IGDB's release_region vendor enum (the wire id),
+# decoded to its canonical name by services/enrichment/internal/igdb.RegionName.
+# entry_region is the collector's-entry region a release badges as
+# (1:1 mappings only; omitted otherwise). worldwide has none: it
+# expands to the TV-standard trio (ntsc_u, ntsc_j, pal) instead of
+# picking one - see frontend/src/lib/productTitle.ts's platformEntryRegions.
 release_regions:
   - igdb_id: 1
     name: europe
