@@ -1,8 +1,6 @@
 package otel_test
 
-// Tests for Count and Record. A nil instrument - the registered-
-// failed case every service already tolerates - must be a silent
-// no-op, never a panic.
+// Tests for Count and Record: a nil instrument must be a silent no-op, never a panic.
 
 import (
 	"context"
@@ -48,9 +46,7 @@ func TestCount_AddsOneWithAttributes(t *testing.T) {
 	}
 }
 
-// TestCount_NoAttributes matches call sites like collection's
-// rematch-repoint counter, which counts occurrences with no
-// attribute breakdown at all.
+// TestCount_NoAttributes covers a bare occurrence counter with no attribute breakdown.
 func TestCount_NoAttributes(t *testing.T) {
 	m, reader := newTestMeter(t)
 	c, err := vgotel.Counter(m, "vg.test.count_bare", "d", "u")
@@ -68,8 +64,7 @@ func TestCount_NoAttributes(t *testing.T) {
 	}
 }
 
-// TestCount_MultipleAttributes matches call sites like auth's
-// recordLogin, which tags a single Add with three attributes.
+// TestCount_MultipleAttributes covers tagging a single Add with three attributes.
 func TestCount_MultipleAttributes(t *testing.T) {
 	m, reader := newTestMeter(t)
 	c, err := vgotel.Counter(m, "vg.test.count_multi", "d", "u")
@@ -118,8 +113,7 @@ func TestRecord_RecordsValueWithAttributes(t *testing.T) {
 	}
 }
 
-// TestRecord_NoAttributes matches call sites like collection's
-// rematch-duration histogram, which records with no attributes.
+// TestRecord_NoAttributes covers recording with no attributes.
 func TestRecord_NoAttributes(t *testing.T) {
 	m, reader := newTestMeter(t)
 	h, err := vgotel.Histogram(m, "vg.test.record_bare", "d", "s")

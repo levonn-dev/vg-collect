@@ -10,9 +10,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
 )
 
-// TestServerURL_PrefersEnv pins the adoption seam: with PGTEST_URL
-// set, serverURL must hand it back verbatim without touching Docker
-// (the value is a sentinel no daemon could produce).
+// TestServerURL_PrefersEnv pins that PGTEST_URL, when set, is returned verbatim without touching Docker.
 func TestServerURL_PrefersEnv(t *testing.T) {
 	t.Setenv(envURL, "postgres://example.invalid:1/adopted")
 	got, err := serverURL(context.Background())
@@ -24,13 +22,8 @@ func TestServerURL_PrefersEnv(t *testing.T) {
 	}
 }
 
-// TestCreateFreshDB_RecreatesFresh pins the fresh-per-run guarantee:
-// a second createFreshDB for the same name must return a database
-// with the first call's data gone, and the returned URL must actually
-// point at that database. The binary's own database works as the
-// admin connection; the probe name goes through ctrtest.DBName so it
-// carries the run scope and the Taskfile clean collects it like any
-// other.
+// TestCreateFreshDB_RecreatesFresh pins that a second call for the same name drops the
+// first call's data and the returned URL points at the new database.
 func TestCreateFreshDB_RecreatesFresh(t *testing.T) {
 	ctx := context.Background()
 	base := URL(t)
@@ -56,8 +49,7 @@ func TestCreateFreshDB_RecreatesFresh(t *testing.T) {
 	}
 	_ = conn.Close(ctx)
 
-	// Recreate under the same name: the marker table must be gone,
-	// proving the drop happened even with the database already there.
+	// Recreate under the same name: the marker table must be gone.
 	second, err := createFreshDB(ctx, base, name)
 	if err != nil {
 		t.Fatal(err)
@@ -77,9 +69,7 @@ func TestCreateFreshDB_RecreatesFresh(t *testing.T) {
 	}
 }
 
-// TestCreateFreshDB_UnreachableServer pins the connect-failure return:
-// nothing listens on the target, so the error must come back instead
-// of dying inside a helper.
+// TestCreateFreshDB_UnreachableServer pins that a connect failure returns an error, not a panic.
 func TestCreateFreshDB_UnreachableServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -15,11 +15,9 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/specval"
 )
 
-// recordingHandler is the final handler in the chain: it records what it
-// was called with, so tests can prove a request reached it (pass-through,
-// success) or never did (rejected at the validator). Guarded by a mutex
-// because the httptest server runs it on a different goroutine than the
-// one issuing the request.
+// recordingHandler is the final handler in the chain: it records what it was called with, so
+// tests can prove a request reached it or never did. Guarded by a mutex: httptest runs it on a
+// different goroutine than the one issuing the request.
 type recordingHandler struct {
 	mu     sync.Mutex
 	called bool
@@ -60,9 +58,8 @@ func loadTestSpec(t *testing.T) *openapi3.T {
 	return doc
 }
 
-// newTestServer builds an httptest server wrapping a fresh recordingHandler
-// with specval.Middleware over a fresh copy of the test spec (the
-// middleware mutates Spec.Servers, so each server gets its own document).
+// newTestServer builds an httptest server wrapping a fresh recordingHandler with
+// specval.Middleware over a fresh spec copy (the middleware mutates Spec.Servers).
 func newTestServer(t *testing.T, maxBodyBytes int64) (*httptest.Server, *recordingHandler) {
 	t.Helper()
 	rec := &recordingHandler{}
@@ -105,9 +102,8 @@ func TestMiddleware_DoesNotMutateCallerSpec(t *testing.T) {
 	if doc.Servers == nil {
 		t.Fatal("test spec must declare servers for this test to be meaningful")
 	}
-	// Installing the middleware disables Host validation internally, but
-	// must do so on a copy: doc.Servers may be shared with, e.g., a
-	// self-hosted docs endpoint that still needs it intact.
+	// Installing the middleware disables Host validation internally, but must do so on a copy:
+	// doc.Servers may be shared with e.g. a docs endpoint that still needs it intact.
 	_ = specval.Middleware(specval.Options{Spec: doc, MaxBodyBytes: 1 << 20})(&recordingHandler{})
 	if doc.Servers == nil {
 		t.Fatal("Middleware mutated the caller's Spec.Servers to nil; it must build the validator from a copy")
@@ -135,18 +131,9 @@ func TestMiddleware_ValidRequestPassesAndBodyStaysReadable(t *testing.T) {
 	}
 }
 
-// TestMiddleware_DefaultsAreNotInjectedIntoTheBody pins
-// SkipSettingDefaults: kin-openapi's own default (false) rewrites an
-// absent property in place with its schema default before the
-// handler ever decodes the body - invisible to the handler, and
-// fatal to any caller logic that depends on telling "the field was
-// never sent" apart from "the field was sent with its default value"
-// (collection's CreateEntry does exactly this for pricing_mode).
-// testdata/spec.yaml's status property carries default: active; this
-// body omits it entirely, so the handler must see it exactly as sent,
-// byte for byte, same as
-// TestMiddleware_ValidRequestPassesAndBodyStaysReadable's readability
-// pin.
+// TestMiddleware_DefaultsAreNotInjectedIntoTheBody pins SkipSettingDefaults: testdata's status
+// property carries a schema default, and this body omits it, so the handler must see the body
+// exactly as sent, not with the default injected.
 func TestMiddleware_DefaultsAreNotInjectedIntoTheBody(t *testing.T) {
 	srv, rec := newTestServer(t, 1<<20)
 
@@ -239,8 +226,7 @@ func TestMiddleware_MalformedJSONBodyUsesHouseString(t *testing.T) {
 }
 
 func TestMiddleware_BodyOverMaxBodyBytesRejected(t *testing.T) {
-	// Cap far smaller than a valid, schema-passing body, so the rejection
-	// can only be the byte-count cap (MaxBytesReader), not the schema.
+	// Cap far smaller than a valid body, so the rejection can only be the byte-count cap, not the schema.
 	srv, rec := newTestServer(t, 10)
 	body := `{"name":"ab","status":"active","developers":["a","b"]}`
 	resp := postJSON(t, srv, "/items", body)
@@ -259,23 +245,11 @@ func TestMiddleware_BodyOverMaxBodyBytesRejected(t *testing.T) {
 	}
 }
 
-// TestMiddleware_NilBodyDoesNotPanic pins the MaxBodyBytes wrap
-// against a nil r.Body: http.NewRequest with a nil io.Reader leaves
-// Body literally nil (unlike a real net/http server, which guarantees
-// a non-nil Body for every incoming request, and unlike
-// httptest.NewRequest, which fills in http.NoBody itself). Every
-// direct-ServeHTTP test harness across specval's consumers builds
-// bodyless GET/DELETE requests exactly this way, so this is not a
-// synthetic case: http.MaxBytesReader always returns a non-nil
-// wrapper regardless of what it wraps, and reading (or closing) that
-// wrapper panics on a nil underlying reader.
-//
-// The target must be /secure, not /items: kin-openapi only reads the
-// body from validateSecurityRequirement - unconditionally, once per
-// request, ahead of calling AuthenticationFunc at all - for an
-// operation that actually carries a security requirement (/items has
-// none, so this exact case passed even with the nil-body bug live
-// until the target was corrected to the operation that reproduces it).
+// TestMiddleware_NilBodyDoesNotPanic pins the MaxBodyBytes wrap against a nil r.Body:
+// http.NewRequest with a nil io.Reader leaves Body literally nil (unlike a real net/http server
+// or httptest.NewRequest, which fill in a non-nil Body). MaxBytesReader always wraps regardless
+// and panics on read/close of a nil underlying reader. The target must be /secure, not /items:
+// kin-openapi only reads the body unconditionally for an operation with a security requirement.
 func TestMiddleware_NilBodyDoesNotPanic(t *testing.T) {
 	called := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -341,9 +315,8 @@ func TestMiddleware_BadQueryParamsWriteHouseProblem(t *testing.T) {
 func TestMiddleware_BadPathAndHeaderParamsWriteHouseProblem(t *testing.T) {
 	t.Run("path parameter", func(t *testing.T) {
 		srv, rec := newTestServer(t, 1<<20)
-		// itemId is constrained to enum [foo, bar]; "baz" violates it. No
-		// X-Priority header is sent, so this isolates the path-parameter
-		// failure from the header parameter declared on the same operation.
+		// itemId is constrained to enum [foo, bar]; "baz" violates it. No X-Priority header
+		// isolates this from the header parameter on the same operation.
 		resp, err := http.Get(srv.URL + "/items/baz")
 		if err != nil {
 			t.Fatalf("GET /items/baz: %v", err)
@@ -366,8 +339,7 @@ func TestMiddleware_BadPathAndHeaderParamsWriteHouseProblem(t *testing.T) {
 
 	t.Run("header parameter", func(t *testing.T) {
 		srv, rec := newTestServer(t, 1<<20)
-		// A valid itemId (foo) isolates this to the X-Priority header,
-		// constrained to 1-5; 99 violates the maximum.
+		// A valid itemId (foo) isolates this to X-Priority, constrained to 1-5; 99 violates the max.
 		req, err := http.NewRequest(http.MethodGet, srv.URL+"/items/foo", nil)
 		if err != nil {
 			t.Fatalf("build GET /items/foo: %v", err)
@@ -396,10 +368,8 @@ func TestMiddleware_BadPathAndHeaderParamsWriteHouseProblem(t *testing.T) {
 
 func TestMiddleware_SecuredOperationPassesWithoutAuth(t *testing.T) {
 	srv, rec := newTestServer(t, 1<<20)
-	// No Authorization header at all: with a real AuthenticationFunc this
-	// would 401. specval always installs the no-op, because jwtauth runs
-	// ahead of it in the real chain and is the only layer meant to enforce
-	// authentication.
+	// No Authorization header: a real AuthenticationFunc would 401. specval always installs the
+	// no-op since jwtauth, ahead of it in the real chain, is the only layer enforcing auth.
 	resp, err := http.Get(srv.URL + "/secure")
 	if err != nil {
 		t.Fatalf("GET /secure: %v", err)
@@ -421,8 +391,7 @@ func TestMiddleware_UnmatchedRoutesPassThroughUntouched(t *testing.T) {
 			t.Fatalf("GET /nope: %v", err)
 		}
 		t.Cleanup(func() { _ = resp.Body.Close() })
-		// The recordingHandler always answers 200; seeing that (not a
-		// problem+json body) proves specval did not intercept the request.
+		// recordingHandler always answers 200; seeing that (not problem+json) proves specval did not intercept.
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("status = %d, want 200 (the mux, not specval, owns unmatched routes)", resp.StatusCode)
 		}

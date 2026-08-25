@@ -35,13 +35,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
-// TestMain disables the testcontainers reaper when the shared server
-// is adopted: the only container this binary then boots is the TLS
-// test's throwaway, which terminates itself, so the reaper is pure
-// risk - its startup wait is hardcoded to the 60s default inside
-// testcontainers, the one window the 180s deadlines here cannot
-// cover when the Docker daemon stalls. Bare runs keep the reaper:
-// the shared per-binary container relies on it for cleanup.
+// TestMain: under the shared server every boot self-terminates; the reaper's
+// hardcoded 60s startup wait would be the only unprotected window.
 func TestMain(m *testing.M) {
 	if os.Getenv("VALKEYTEST_URL") != "" {
 		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -49,19 +44,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// Shared-server adoption state: one allocated logical database per
-// test binary (see testValkeyServer), flushed per test.
+// Shared-server adoption state: one allocated logical database per test binary, flushed per test.
 var (
 	valkeyOnce sync.Once
 	valkeyURL  string
 	valkeyErr  error
 )
 
-// newTestValkey hands back a connected client on a fresh keyspace
-// plus the URL it dialed: the binary's own logical database on the
-// shared test server when VALKEYTEST_URL is set (no Docker involved),
-// a throwaway per-binary container otherwise. FlushDB per call keeps
-// tests from seeing each other's keys either way.
+// newTestValkey returns a connected client on a fresh keyspace and the URL it dialed: the
+// binary's own database on the shared server when VALKEYTEST_URL is set, else a throwaway container.
 func newTestValkey(t *testing.T) (*redis.Client, string) {
 	t.Helper()
 	if testing.Short() {
@@ -83,12 +74,9 @@ func newTestValkey(t *testing.T) (*redis.Client, string) {
 	return client, valkeyURL
 }
 
-// testValkeyServer resolves the server once per binary. The adopted
-// branch speaks the same allocator protocol as libs/go/valkeytest
-// (identical key, atomic INCR), so this binary's index can never
-// collide with a kit-allocated one, and records it under the run
-// scope for the Taskfile's deferred clean. The boot branch leaves
-// cleanup to the testcontainers reaper.
+// testValkeyServer resolves the server once per binary. The adopted branch speaks valkeytest's
+// allocator protocol (same key, atomic INCR), so indexes never collide, and records this one
+// under the run scope for the Taskfile's deferred clean.
 func testValkeyServer(ctx context.Context) (string, error) {
 	base := os.Getenv("VALKEYTEST_URL")
 	if base == "" {
@@ -133,10 +121,8 @@ func testValkeyServer(ctx context.Context) (string, error) {
 
 func TestConnectAndRoundtrip(t *testing.T) {
 	ctx := context.Background()
-	// Pool metrics ride the same global meter the services install;
-	// drain it into a manual reader to see what Connect registered.
-	// Installed before the helper's Connect so the pool it creates is
-	// the one the reader observes.
+	// Pool metrics ride the global meter the services install; install the reader before
+	// Connect so it observes the pool Connect creates.
 	reader := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
@@ -155,8 +141,7 @@ func TestConnectAndRoundtrip(t *testing.T) {
 		t.Fatalf("Health: %v", err)
 	}
 
-	// The first command dialed a fresh connection (a miss) and the
-	// roundtrip left it pooled.
+	// The first command dials a fresh connection (a miss); the roundtrip leaves it pooled.
 	var rm metricdata.ResourceMetrics
 	if err := reader.Collect(ctx, &rm); err != nil {
 		t.Fatal(err)
@@ -168,8 +153,7 @@ func TestConnectAndRoundtrip(t *testing.T) {
 		t.Fatalf("want at least one pooled connection, got %d", v)
 	}
 
-	// A metric registration failure must fail Connect, not limp on
-	// half-instrumented.
+	// A metric registration failure must fail Connect, not limp on half-instrumented.
 	otel.SetMeterProvider(stubErrMeterProvider{})
 	if _, err := valkeykit.Connect(ctx, url); err == nil || !strings.Contains(err.Error(), "valkeykit: pool metrics") {
 		t.Fatalf("want pool metrics error, got %v", err)
@@ -206,8 +190,7 @@ func poolMetricInt64(t *testing.T, rm metricdata.ResourceMetrics, name string) i
 	return 0
 }
 
-// stubErrMeterProvider fails the first instrument registration so the
-// error leg of Connect is reachable against a live server.
+// stubErrMeterProvider fails the first instrument registration to reach Connect's error leg.
 type stubErrMeterProvider struct{ noop.MeterProvider }
 
 func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
@@ -227,8 +210,7 @@ func TestConnect_InvalidURL(t *testing.T) {
 	}
 }
 
-// TestConnect_PingFail tests the Ping error path: a valid redis URL pointing
-// at a port with no server causes Connect to return a valkeykit: ping error.
+// TestConnect_PingFail pins that an unreachable host surfaces a "valkeykit: ping:" error.
 func TestConnect_PingFail(t *testing.T) {
 	// Port 1 is administratively prohibited; connection refused is immediate.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -268,12 +250,9 @@ func TestConnectTLSBadPEM(t *testing.T) {
 	}
 }
 
-// TestConnectFromConfig_BranchSelection proves the branch itself
-// without a live server: an empty caFile takes the Connect leg (a
-// malformed URL fails with Connect's own parse error), and a
-// non-empty caFile takes the ConnectTLS leg even against a plain
-// redis:// URL (ConnectTLS's own "requires a rediss://" guard fires,
-// which Connect never would).
+// TestConnectFromConfig_BranchSelection pins the branch choice: empty caFile takes Connect
+// (its own parse error surfaces); non-empty caFile takes ConnectTLS even against a plain
+// redis:// URL (its "requires a rediss://" guard fires instead).
 func TestConnectFromConfig_BranchSelection(t *testing.T) {
 	if _, err := valkeykit.ConnectFromConfig(context.Background(), "://not-a-url", ""); err == nil {
 		t.Fatal("empty caFile: want Connect's parse error, got nil")
@@ -340,9 +319,8 @@ func TestConnectTLSAgainstPrivateCA(t *testing.T) {
 		t.Fatal("Connect without CA should fail certificate verification")
 	}
 
-	// An unrelated CA must also fail: this is the leg that proves the
-	// pinned pool is the verification mechanism (a regression that
-	// disabled verification would pass the other two assertions).
+	// An unrelated CA must also fail: proves the pinned CA is the verification mechanism
+	// (a regression disabling verification would still pass the other two assertions).
 	otherCAPath, _, _ := writeTestCerts(t, t.TempDir())
 	if _, err := valkeykit.ConnectTLS(ctx, url, otherCAPath); err == nil {
 		t.Fatal("ConnectTLS with an unrelated CA must fail certificate verification")

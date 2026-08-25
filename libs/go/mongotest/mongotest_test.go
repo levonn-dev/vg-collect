@@ -2,6 +2,7 @@ package mongotest_test
 
 import (
 	"context"
+	"embed"
 	"flag"
 	"strings"
 	"testing"
@@ -14,10 +15,10 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
 )
 
-// TestURL_BootsConnectsAndQueries drives the whole point of the
-// package: URL must hand back a live MongoDB connection string a
-// plain mongo.Connect can use, with no migration or schema of its own
-// required, and that connection must round-trip a real document.
+//go:embed testdata/migrations/*.json
+var testMigrations embed.FS
+
+// TestURL_BootsConnectsAndQueries pins that URL returns a live connection string that round-trips a real document.
 func TestURL_BootsConnectsAndQueries(t *testing.T) {
 	url := mongotest.URL(t)
 	ctx := context.Background()
@@ -44,9 +45,34 @@ func TestURL_BootsConnectsAndQueries(t *testing.T) {
 	}
 }
 
-// TestURL_SharedAcrossCalls pins the fixture's entire reason to exist:
-// a second call in the same test binary must reuse the first call's
-// container instead of booting another one.
+// TestFreshDB_MigratesAndResetsBetweenCalls pins that FreshDB applies migrations and resets data between calls.
+func TestFreshDB_MigratesAndResetsBetweenCalls(t *testing.T) {
+	ctx := context.Background()
+
+	db := mongotest.FreshDB(t, testMigrations, "testdata/migrations")
+	if _, err := db.Collection("t").InsertOne(ctx, bson.M{"k": "v"}); err != nil {
+		t.Fatalf("insert: %v", err)
+	}
+	count, err := db.Collection("t").CountDocuments(ctx, bson.M{})
+	if err != nil {
+		t.Fatalf("count after insert: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("count after insert = %d, want 1", count)
+	}
+
+	// A second call reuses the shared container but must hand back a reset, re-migrated database.
+	db2 := mongotest.FreshDB(t, testMigrations, "testdata/migrations")
+	count, err = db2.Collection("t").CountDocuments(ctx, bson.M{})
+	if err != nil {
+		t.Fatalf("count after reset: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("count after reset = %d, want 0 (FreshDB must reset between calls)", count)
+	}
+}
+
+// TestURL_SharedAcrossCalls pins that a second call in the same binary reuses the first call's container.
 func TestURL_SharedAcrossCalls(t *testing.T) {
 	first := mongotest.URL(t)
 	second := mongotest.URL(t)
@@ -55,10 +81,7 @@ func TestURL_SharedAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestDBName_StableAndPrefixed pins the isolation contract suites
-// depend on: the same binary always gets the same name (fixtures and
-// tests in different files must land in one database) and the name
-// carries the t_ prefix the Taskfile's post-run sweep matches.
+// TestDBName_StableAndPrefixed pins that DBName is stable within a binary and carries the t_ sweep prefix.
 func TestDBName_StableAndPrefixed(t *testing.T) {
 	name := mongotest.DBName(t)
 	if name != mongotest.DBName(t) {
@@ -69,10 +92,8 @@ func TestDBName_StableAndPrefixed(t *testing.T) {
 	}
 }
 
-// TestURL_SkipsUnderShort flips the test.short flag at runtime (there
-// is no other way to drive testing.Short() from inside a test) and
-// checks URL honors it, the same "go test -short" escape hatch both
-// fixtures this package replaces already gave callers.
+// TestURL_SkipsUnderShort flips the test.short flag at runtime, the only way to drive
+// testing.Short() from inside a test, and checks URL honors it.
 func TestURL_SkipsUnderShort(t *testing.T) {
 	orig := flag.Lookup("test.short").Value.String()
 	if err := flag.Set("test.short", "true"); err != nil {

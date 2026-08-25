@@ -12,13 +12,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
-// TestMain disables the testcontainers reaper when the shared server
-// is adopted: the only container this binary then boots is the boot
-// test's throwaway, which terminates itself, so the reaper is pure
-// risk - its startup wait is hardcoded to the 60s default inside
-// testcontainers, the one window the kit's 180s deadlines cannot
-// cover when the Docker daemon stalls. Bare runs keep the reaper: the
-// shared singleton container relies on it for cleanup.
+// TestMain: under the shared server every boot self-terminates; the reaper's
+// hardcoded 60s startup wait would be the only unprotected window.
 func TestMain(m *testing.M) {
 	if os.Getenv(envURL) != "" {
 		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -26,9 +21,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// TestServerURL_PrefersEnv pins the adoption seam: with VALKEYTEST_URL
-// set, serverURL must hand it back verbatim without touching Docker
-// (the value is a sentinel no daemon could produce).
+// TestServerURL_PrefersEnv pins that VALKEYTEST_URL, when set, is returned verbatim without touching Docker.
 func TestServerURL_PrefersEnv(t *testing.T) {
 	t.Setenv(envURL, "redis://example.invalid:1")
 	got, err := serverURL(context.Background())
@@ -40,9 +33,7 @@ func TestServerURL_PrefersEnv(t *testing.T) {
 	}
 }
 
-// TestBootValkey_CanceledContext pins bootValkey's error return
-// without paying for a container: a pre-canceled context must fail
-// the boot instead of hanging on the daemon.
+// TestBootValkey_CanceledContext pins that a pre-canceled context fails the boot instead of hanging on the daemon.
 func TestBootValkey_CanceledContext(t *testing.T) {
 	if testing.Short() {
 		t.Skip("docker client interaction")
@@ -54,12 +45,8 @@ func TestBootValkey_CanceledContext(t *testing.T) {
 	}
 }
 
-// TestBootValkey_BootsAndAnswers exercises the real fallback path -
-// env cleared, serverURL falling through to bootValkey. Under the
-// Taskfile the suite adopts the shared server and this path never
-// runs, so without this test the fallback everyone relies on for bare
-// `go test` would only ever be proven outside the gates. One small
-// throwaway container per run is the price; the test terminates it.
+// TestBootValkey_BootsAndAnswers exercises the fallback path (env cleared) that the
+// adopted-server gates skip, so bare `go test` stays proven; terminates its throwaway container.
 func TestBootValkey_BootsAndAnswers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires docker")
@@ -70,8 +57,7 @@ func TestBootValkey_BootsAndAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Terminate what this test booted: under the adopted-server gates
-	// the reaper is off (see TestMain), so nothing else would.
+	// Terminate what this test booted: the reaper is off under the adopted-server gates (TestMain).
 	if bootedContainer != nil {
 		t.Cleanup(func() { _ = bootedContainer.Terminate(context.Background()) })
 	}
@@ -85,9 +71,7 @@ func TestBootValkey_BootsAndAnswers(t *testing.T) {
 	}
 }
 
-// TestAllocateDB_UnreachableServer pins the connect-failure return:
-// nothing listens on the target, so the error must come back instead
-// of dying inside a helper.
+// TestAllocateDB_UnreachableServer pins that a connect failure returns an error, not a panic.
 func TestAllocateDB_UnreachableServer(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -111,16 +95,11 @@ func pathIndex(t *testing.T, rawURL string) int {
 	return idx
 }
 
-// TestAllocateDB_DistinctFlushedIndexes drives the reservation
-// contract against a real server: consecutive allocations must hand
-// out different indexes (that is the whole isolation story for
-// concurrent binaries), never index 0 (the allocator's home), and a
-// freshly reserved database must come back flushed even when a
-// previous run left keys in it.
+// TestAllocateDB_DistinctFlushedIndexes pins that consecutive allocations return distinct,
+// non-zero indexes, and a reserved database comes back flushed even with prior residue.
 func TestAllocateDB_DistinctFlushedIndexes(t *testing.T) {
 	ctx := context.Background()
-	// Strip this binary's own index off URL(t) to recover the server
-	// base; this works identically in adopted and booted modes.
+	// Strip this binary's index off URL(t) to recover the server base; works in both modes.
 	u, err := url.Parse(URL(t))
 	if err != nil {
 		t.Fatal(err)
@@ -137,8 +116,7 @@ func TestAllocateDB_DistinctFlushedIndexes(t *testing.T) {
 		t.Fatalf("allocated index %d, want >= 1 (index 0 is the allocator's)", idxFirst)
 	}
 
-	// Predict the next index in the cycle and plant a stale key there,
-	// standing in for residue from a run whose sweep never happened.
+	// Predict the next index in the cycle and plant a stale key there, standing in for sweep residue.
 	admin, err := valkeykit.Connect(ctx, base)
 	if err != nil {
 		t.Fatal(err)
@@ -188,9 +166,7 @@ func TestAllocateDB_DistinctFlushedIndexes(t *testing.T) {
 	}
 }
 
-// TestAllocateDB_TracksRunScope pins the seam the Taskfile's scoped
-// clean depends on: with TESTDS_RUN set, the allocated index must be
-// recorded in the run's set in database 0.
+// TestAllocateDB_TracksRunScope pins that with TESTDS_RUN set, the allocated index is recorded in the run's set in database 0.
 func TestAllocateDB_TracksRunScope(t *testing.T) {
 	ctx := context.Background()
 	u, err := url.Parse(URL(t))

@@ -9,9 +9,8 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 )
 
-// House problem+json codes for request-validation failures. Route
-// mismatches are not encoded here at all: the caller passes those
-// straight through to the generated mux, which owns 404/405.
+// House problem+json codes for request-validation failures. Route mismatches are not encoded
+// here: the caller passes those through to the generated mux, which owns 404/405.
 const (
 	codeInvalidBody  = "invalid_body"
 	codeInvalidParam = "invalid_param"
@@ -19,11 +18,9 @@ const (
 	malformedJSONBody = "malformed JSON body"
 )
 
-// encode maps a validation error from the request-validation middleware to
-// a (code, detail) pair in the house problem+json voice. AuthenticationFunc
-// is always the no-op (see specval.go) and MultiError stays off, so in
-// practice every error reaching here is a *openapi3filter.RequestError;
-// anything else takes the defensive fallback below.
+// encode maps a validation error to a (code, detail) pair in the house problem+json voice.
+// AuthenticationFunc is always a no-op and MultiError stays off, so in practice every error
+// here is a *openapi3filter.RequestError; anything else takes the defensive fallback below.
 func encode(err error) (code, detail string) {
 	var reqErr *openapi3filter.RequestError
 	if !errors.As(err, &reqErr) {
@@ -44,31 +41,19 @@ func encode(err error) (code, detail string) {
 		return codeInvalidParam, schemaPhrase(schemaErr, field)
 	}
 
-	// Body failure with no nested schema error: either a literal JSON
-	// parse failure (decodeBody) or a body read cut short by
-	// http.MaxBytesReader (surfaced as a RequestError wrapping
-	// *http.MaxBytesError). Neither carries a field name, and both are
-	// truthfully described as a malformed body, so both map to the same
-	// house string. A required requestBody that is entirely absent
-	// (RequestError wrapping ErrInvalidRequired, no SchemaError either)
-	// lands here too, intentionally: there is no field to name, and "no
-	// body" is just the degenerate case of "no parseable body".
+	// Body failure with no nested schema error: a JSON parse failure, a body cut short by
+	// http.MaxBytesReader, or an absent required body - none carry a field name, and all are
+	// truthfully "malformed body".
 	if !hasSchemaErr {
 		return codeInvalidBody, malformedJSONBody
 	}
 	return codeInvalidBody, schemaPhrase(schemaErr, leafField(schemaErr.JSONPointer()))
 }
 
-// surfaceWrappedEnum digs the real cause out of an allOf mismatch when
-// that cause is an enum violation. The allOf-wrapped single-$ref form is
-// how a property keeps a per-site description or default beside a shared
-// schema reference, and kin-openapi reports any failure inside it as a
-// generic "doesn't match all schemas" wrapper; surfacing a wrapped enum
-// error keeps the enum voice identical to an inline enum site's. Every
-// other wrapped cause keeps the wrapper (and so the generic phrase):
-// that is what allOf-wrapped string constraints have always answered,
-// and the JSON pointer bookkeeping on the wrapper already names the
-// right field either way.
+// surfaceWrappedEnum digs the real cause out of an allOf mismatch when that cause is an enum
+// violation: the allOf-wrapped single-$ref form lets a property keep a per-site description or
+// default beside a shared schema, and kin-openapi reports any failure inside it as a generic
+// "doesn't match all schemas" wrapper. Every other wrapped cause keeps that generic phrase.
 func surfaceWrappedEnum(schemaErr *openapi3.SchemaError) *openapi3.SchemaError {
 	if schemaErr.SchemaField != "allOf" {
 		return schemaErr
@@ -80,10 +65,8 @@ func surfaceWrappedEnum(schemaErr *openapi3.SchemaError) *openapi3.SchemaError {
 	return schemaErr
 }
 
-// bindingPhrase covers parameter failures that never reach schema
-// validation: a required parameter that is absent, or any other binding
-// failure (empty-when-not-allowed, unparsable value, ...). It shares the
-// same phrasing family as schemaPhrase, keyed by the parameter's own name.
+// bindingPhrase covers parameter failures that never reach schema validation: an absent
+// required parameter, or any other binding failure. Same phrasing family as schemaPhrase, keyed by field.
 func bindingPhrase(reqErr *openapi3filter.RequestError, field string) string {
 	if errors.Is(reqErr.Err, openapi3filter.ErrInvalidRequired) {
 		return field + " is required"
@@ -91,9 +74,8 @@ func bindingPhrase(reqErr *openapi3filter.RequestError, field string) string {
 	return field + " is invalid"
 }
 
-// schemaPhrase renders a SchemaError as a house-voice sentence naming
-// field as the subject. The pattern/format/other bucket is the fallback
-// for every SchemaField not called out above.
+// schemaPhrase renders a SchemaError as a house-voice sentence naming field; unmapped
+// SchemaField values fall back to "field is invalid".
 func schemaPhrase(schemaErr *openapi3.SchemaError, field string) string {
 	switch schemaErr.SchemaField {
 	case "required":
@@ -113,8 +95,7 @@ func schemaPhrase(schemaErr *openapi3.SchemaError, field string) string {
 	}
 }
 
-// characterCount renders a length bound with its noun, singular at one
-// ("1 character") and plural otherwise ("2048 characters").
+// characterCount renders a length bound with its noun, singular at one ("1 character"), plural otherwise.
 func characterCount(n uint64) string {
 	if n == 1 {
 		return "1 character"
@@ -130,11 +111,8 @@ func joinEnum(values []any) string {
 	return strings.Join(parts, ", ")
 }
 
-// leafField picks the field name to blame from a SchemaError's JSON
-// pointer path, walking from the end and skipping array indices (e.g.
-// "developers", "0" names the "developers" property, not its 0th item).
-// A path of only indices, or no path at all, falls back to "value" (a
-// body whose root schema is itself a scalar has no property to name).
+// leafField picks the field name to blame from a SchemaError's JSON pointer path, walking
+// from the end and skipping array indices. Falls back to "value" when no property is named.
 func leafField(path []string) string {
 	for i := len(path) - 1; i >= 0; i-- {
 		if !isArrayIndex(path[i]) {

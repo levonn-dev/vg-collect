@@ -8,9 +8,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// errRelayUpstream stands in for a client package's own ErrUpstream
-// sentinel - Relay takes it as a parameter so each caller keeps its
-// own distinct error identity for errors.Is.
+// errRelayUpstream stands in for a client package's own ErrUpstream sentinel; Relay takes it
+// as a parameter so each caller keeps its own distinct error identity for errors.Is.
 var errRelayUpstream = errors.New("relay_test: upstream failure")
 
 func TestRelay_AllowedStatusPassesThrough(t *testing.T) {

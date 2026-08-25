@@ -24,9 +24,8 @@ func TestRegionClass_AllSevenRegions(t *testing.T) {
 	}
 }
 
-// TestRegionClass_UnknownRegionDefaultsToBase confirms a region
-// api/domain.yaml does not declare falls through to "base" rather
-// than an empty string or a panic.
+// TestRegionClass_UnknownRegionDefaultsToBase confirms an undeclared region falls through to
+// "base", not empty or a panic.
 func TestRegionClass_UnknownRegionDefaultsToBase(t *testing.T) {
 	for _, region := range []string{"someday_region", "", "NTSC_U"} {
 		if got := regionkit.RegionClass(region); got != "base" {
@@ -35,10 +34,8 @@ func TestRegionClass_UnknownRegionDefaultsToBase(t *testing.T) {
 	}
 }
 
-// TestConsoleRegion covers the "pal " prefix, the "jp " prefix, each
-// distinct-name JP console, the base fallback, and the trim+lowercase
-// normalization - the same table collection's regionCorrectMember and
-// the frontend's consoleRegionFor exercise against this exact rule.
+// TestConsoleRegion covers the "pal "/"jp " prefixes, each distinct-name JP console, the base
+// fallback, and trim+lowercase normalization.
 func TestConsoleRegion(t *testing.T) {
 	for consoleName, want := range map[string]string{
 		"Super Nintendo":       "base",

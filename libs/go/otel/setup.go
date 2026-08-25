@@ -23,15 +23,16 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+// Config carries the resource attributes Setup stamps onto every trace,
+// metric, and log record.
 type Config struct {
 	ServiceName string
 	Version     string
 }
 
 // Setup installs slog defaults (JSON to stdout with trace IDs) and, when
-// OTEL_EXPORTER_OTLP_ENDPOINT is set, OTLP trace/metric/log providers.
-// With the endpoint unset (unit tests, clusters without a collector) it is a
-// clean no-op beyond stdout logging.
+// OTEL_EXPORTER_OTLP_ENDPOINT is set, OTLP trace/metric/log providers. Unset, it's a clean
+// no-op beyond stdout logging.
 func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error) {
 	stdout := NewTraceContextHandler(slog.NewJSONHandler(os.Stdout, nil))
 	noop := func(context.Context) error { return nil }
@@ -86,10 +87,8 @@ func Setup(ctx context.Context, cfg Config) (func(context.Context) error, error)
 	}, nil
 }
 
-// buildResource identifies this process on every exported signal.
-// service.instance.id comes from HOSTNAME, which Kubernetes sets to
-// the pod name; outside a pod (unit tests, bare go run) it is omitted
-// rather than invented.
+// buildResource identifies this process on every exported signal. service.instance.id comes
+// from HOSTNAME (Kubernetes sets it to the pod name); omitted outside a pod.
 func buildResource(ctx context.Context, cfg Config) (*resource.Resource, error) {
 	attrs := []attribute.KeyValue{
 		semconv.ServiceName(cfg.ServiceName),

@@ -39,8 +39,7 @@ func TestConnect_InstrumentErrorsCloseClient(t *testing.T) {
 	}
 }
 
-// newOfflineClient builds a client that only ever fails to dial
-// (port 1 refuses; retries off), so PoolStats() moves without a server.
+// newOfflineClient builds a client that only ever fails to dial (port 1 refuses; retries off).
 func newOfflineClient(t *testing.T) *redis.Client {
 	t.Helper()
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
@@ -48,9 +47,8 @@ func newOfflineClient(t *testing.T) *redis.Client {
 	return client
 }
 
-// installManualReader swaps the global meter provider for one draining
-// into the returned reader and restores the previous provider when the
-// test ends.
+// installManualReader swaps the global meter provider for one draining into the returned
+// reader, restored on cleanup.
 func installManualReader(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 	reader := sdkmetric.NewManualReader()
@@ -120,8 +118,7 @@ func TestRegisterPoolMetrics_ReportsPoolStats(t *testing.T) {
 		t.Fatalf("registerPoolMetrics: %v", err)
 	}
 
-	// One refused command: the pool records a miss (no free
-	// connection existed) and no hit.
+	// One refused command: the pool records a miss (no free connection existed), no hit.
 	_ = client.Ping(context.Background()).Err()
 
 	got := collectPoolMetrics(t, reader)
@@ -147,9 +144,7 @@ func TestRegisterPoolMetrics_SecondClientSharesInstruments(t *testing.T) {
 	if err := registerPoolMetrics(newOfflineClient(t)); err != nil {
 		t.Fatalf("first registration: %v", err)
 	}
-	// A second connect in the same process re-creates instruments with
-	// identical identity; that must not error and must not fork a
-	// second series.
+	// A second connect re-creates instruments with identical identity; must not error or fork a series.
 	if err := registerPoolMetrics(newOfflineClient(t)); err != nil {
 		t.Fatalf("second registration: %v", err)
 	}
@@ -178,8 +173,7 @@ func TestRegisterPoolMetrics_InstrumentError(t *testing.T) {
 	}
 }
 
-// stubMeterProvider forces instrument-creation failure: the SDK never
-// fails on our fixed names, but the metric API contract allows it.
+// stubMeterProvider forces instrument-creation failure for the InstrumentError test.
 type stubMeterProvider struct {
 	noop.MeterProvider
 	err error

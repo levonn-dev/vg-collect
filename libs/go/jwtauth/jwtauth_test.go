@@ -104,10 +104,8 @@ func TestValidate_UnknownKidTriggersRefetch(t *testing.T) {
 	}
 }
 
-// TestValidate_ParsesTokenUse pins the service-token signal: a JWT
-// carrying token_use=service round-trips into Claims.IsService(), and
-// an ordinary token (no such claim, like every login/refresh access
-// token minted today) is not mistaken for one.
+// TestValidate_ParsesTokenUse pins that token_use=service round-trips into Claims.IsService(),
+// and an ordinary token (no such claim) is not mistaken for one.
 func TestValidate_ParsesTokenUse(t *testing.T) {
 	pub, priv := genKey(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

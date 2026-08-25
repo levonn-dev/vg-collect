@@ -27,11 +27,9 @@ func (sw *statusWriter) Write(b []byte) (int, error) {
 // on the underlying writer through this wrapper.
 func (sw *statusWriter) Unwrap() http.ResponseWriter { return sw.ResponseWriter }
 
-// Recover converts panics into 500 problem+json responses. It wraps the
-// writer itself so it knows whether headers were already committed;
-// recovery after a partial response must not append a second body.
-// http.ErrAbortHandler re-panics per stdlib convention (the server
-// aborts the connection silently; ReverseProxy uses it on client gone).
+// Recover converts panics into 500 problem+json responses. It wraps the writer to know
+// whether headers were already committed, so a partial response gets no second body.
+// http.ErrAbortHandler re-panics per stdlib convention (ReverseProxy uses it on client gone).
 func Recover(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

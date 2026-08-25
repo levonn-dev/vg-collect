@@ -1,9 +1,7 @@
 package otel_test
 
-// Tests for Counter and Histogram. Each test proves the registered
-// instrument's name/description/unit land in the SDK's own fields
-// (observed through a ManualReader, never through the helper's return
-// value alone), and that DurationBuckets is the exact shared tuple.
+// Tests for Counter and Histogram: each proves the registered instrument's name/description/
+// unit land in the SDK's own fields, and that DurationBuckets is the exact shared tuple.
 
 import (
 	"bytes"
@@ -25,11 +23,9 @@ import (
 
 const testScope = "github.com/levonn-dev/vgkeep/libs/go/otel_test"
 
-// newTestMeter returns a real SDK meter draining into a fresh
-// ManualReader. Counter and Histogram take an explicit metric.Meter
-// rather than reading the OTel global, so tests build their own
-// provider instead of swapping the ambient one (the idiom every
-// service's own telemetry test uses, scoped locally here).
+// newTestMeter returns a real SDK meter draining into a fresh ManualReader. Counter and
+// Histogram take an explicit metric.Meter, so tests build their own provider instead of
+// swapping the global.
 func newTestMeter(t *testing.T) (metric.Meter, *sdkmetric.ManualReader) {
 	t.Helper()
 	reader := sdkmetric.NewManualReader()
@@ -58,10 +54,8 @@ func metricByName(rm metricdata.ResourceMetrics, name string) (metricdata.Metric
 	return metricdata.Metrics{}, false
 }
 
-// stubErrMeter refuses every instrument registration; the same idiom
-// each service's own telemetry test uses to pin the best-effort
-// (log-and-continue) registration contract Counter/Histogram must
-// preserve for their callers.
+// stubErrMeter refuses every instrument registration, to pin the best-effort (log-and-continue)
+// registration contract Counter/Histogram preserve.
 type stubErrMeter struct{ noop.Meter }
 
 func (stubErrMeter) Int64Counter(string, ...metric.Int64CounterOption) (metric.Int64Counter, error) {
@@ -99,10 +93,8 @@ func TestCounter_RegistersNameDescriptionUnit(t *testing.T) {
 	}
 }
 
-// TestCounter_ArgumentOrderIsNameDescriptionUnit pins the fixed order
-// itself: with both strings non-empty and neither an obvious unit or
-// sentence, a future edit that swaps the call's 2nd and 3rd arguments
-// must fail this test rather than ship a swapped dashboard field.
+// TestCounter_ArgumentOrderIsNameDescriptionUnit pins the fixed order itself: a future edit
+// swapping the call's 2nd and 3rd arguments must fail this test, not ship a swapped field.
 func TestCounter_ArgumentOrderIsNameDescriptionUnit(t *testing.T) {
 	m, reader := newTestMeter(t)
 	c, err := vgotel.Counter(m, "vg.test.order", "description-value", "unit-value")
@@ -156,11 +148,8 @@ func TestCounterLogged_Success(t *testing.T) {
 	}
 }
 
-// TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil pins the
-// one uniform failure shape every service's registration block now
-// shares: message "counter unavailable", the instrument's own name
-// under the "name" key, and a nil instrument rather than a
-// propagated error.
+// TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil pins the uniform failure shape:
+// message "counter unavailable", the name under "name", and a nil instrument.
 func TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
@@ -207,10 +196,8 @@ func TestHistogram_RegistersNameDescriptionUnitAndBuckets(t *testing.T) {
 	}
 }
 
-// TestHistogram_NoExplicitBucketsUsesSDKDefault proves the buckets
-// parameter is genuinely optional: omitting it must not register a
-// zero-width or empty boundary set, it must fall through to the
-// SDK's own default view.
+// TestHistogram_NoExplicitBucketsUsesSDKDefault proves buckets is genuinely optional: omitting
+// it falls through to the SDK's own default view, not a zero-width or empty boundary set.
 func TestHistogram_NoExplicitBucketsUsesSDKDefault(t *testing.T) {
 	m, reader := newTestMeter(t)
 	h, err := vgotel.Histogram(m, "vg.test.default_buckets", "d", "u")
@@ -226,9 +213,8 @@ func TestHistogram_NoExplicitBucketsUsesSDKDefault(t *testing.T) {
 	if !ok {
 		t.Fatalf("data = %T, want Histogram[float64]", got.Data)
 	}
-	// Asserting shape (non-empty, not our explicit tuple) rather than
-	// the SDK's literal default bounds: that literal is the SDK's
-	// contract to freeze, not this package's.
+	// Asserting shape (non-empty, not our tuple), not the SDK's literal bounds: that's the
+	// SDK's contract to freeze, not this package's.
 	if len(hist.DataPoints) != 1 || len(hist.DataPoints[0].Bounds) == 0 {
 		t.Fatalf("want default (non-empty) boundaries, got %+v", hist.DataPoints)
 	}
@@ -263,10 +249,8 @@ func TestHistogramLogged_Success(t *testing.T) {
 	}
 }
 
-// TestHistogramLogged_RegistrationFailureLogsNameAndReturnsNil is
-// TestCounterLogged_RegistrationFailureLogsNameAndReturnsNil's twin:
-// same shape, "histogram unavailable" in place of "counter
-// unavailable".
+// TestHistogramLogged_RegistrationFailureLogsNameAndReturnsNil is CounterLogged's twin: same
+// shape, "histogram unavailable" in place of "counter unavailable".
 func TestHistogramLogged_RegistrationFailureLogsNameAndReturnsNil(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))

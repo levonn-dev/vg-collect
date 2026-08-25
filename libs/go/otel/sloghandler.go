@@ -10,16 +10,15 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// traceContextHandler stamps trace_id/span_id onto records logged
-// inside an active span, linking Loki lines to Jaeger traces.
-//
-// Limitation: stamping happens at Handle time, so if the logger has an
-// open WithGroup group the IDs land inside that group instead of top
-// level. vgkeep services therefore do not call WithGroup on the
-// root logger. The OTLP log leg is unaffected: the SDK stamps trace
-// context onto the record itself from ctx, independent of groups.
+// traceContextHandler stamps trace_id/span_id onto records logged inside an active span,
+// linking Loki lines to Jaeger traces. Limitation: stamping happens at Handle time, so an open
+// WithGroup group would nest the IDs inside it instead of top level; vgkeep services therefore
+// avoid WithGroup on the root logger. The OTLP log leg is unaffected: the SDK stamps trace
+// context from ctx independently of groups.
 type traceContextHandler struct{ inner slog.Handler }
 
+// NewTraceContextHandler wraps inner so records logged inside an active
+// span get trace_id/span_id attributes stamped on before delegating.
 func NewTraceContextHandler(inner slog.Handler) slog.Handler {
 	return &traceContextHandler{inner: inner}
 }

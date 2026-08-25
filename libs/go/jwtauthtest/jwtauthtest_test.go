@@ -7,10 +7,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauthtest"
 )
 
-// TestEnv_TokenValidatesEndToEnd drives the whole point of the
-// package: a token Token mints must validate against Env's own
-// Validator - the real signature check, the real JWKS fetch, the real
-// issuer/audience match - and come back with the claims Token put in.
+// TestEnv_TokenValidatesEndToEnd pins that a Token-minted token validates end to end (real
+// signature, JWKS fetch, issuer/audience match) and carries the claims Token set.
 func TestEnv_TokenValidatesEndToEnd(t *testing.T) {
 	env := jwtauthtest.NewEnv(t)
 	tok := env.Token(t, "11111111-1111-1111-1111-111111111111", "user", "admin")
@@ -30,9 +28,7 @@ func TestEnv_TokenValidatesEndToEnd(t *testing.T) {
 	}
 }
 
-// TestEnv_TokenNoRolesIsValidAndRoleless covers the roleless call
-// shape (zero variadic args): the token must still validate and carry
-// no roles - the shape user's "viewer"/self-only tests rely on.
+// TestEnv_TokenNoRolesIsValidAndRoleless covers the roleless call shape: still validates, carries no roles.
 func TestEnv_TokenNoRolesIsValidAndRoleless(t *testing.T) {
 	env := jwtauthtest.NewEnv(t)
 	tok := env.Token(t, "viewer")
@@ -46,10 +42,8 @@ func TestEnv_TokenNoRolesIsValidAndRoleless(t *testing.T) {
 	}
 }
 
-// TestEnv_ServiceTokenValidatesAndCarriesNoRoles pins ServiceToken's
-// contract: token_use=service, no roles claim, still a real signature
-// the Validator accepts - the machine-credential shape collection and
-// enrichment mint for their internal endpoints.
+// TestEnv_ServiceTokenValidatesAndCarriesNoRoles pins that ServiceToken's output validates
+// with token_use=service and no roles claim.
 func TestEnv_ServiceTokenValidatesAndCarriesNoRoles(t *testing.T) {
 	env := jwtauthtest.NewEnv(t)
 	tok := env.ServiceToken(t, "svc:catalog-refresh")
@@ -69,11 +63,8 @@ func TestEnv_ServiceTokenValidatesAndCarriesNoRoles(t *testing.T) {
 	}
 }
 
-// TestEnv_IndependentAcrossCalls: unlike valkeytest's container, Env
-// has no reason to be a singleton; each NewEnv boots its own
-// in-process key and JWKS server, cheaply. A token from one Env must
-// not validate against another Env's Validator (different key pairs),
-// which is what this pins.
+// TestEnv_IndependentAcrossCalls pins that each NewEnv boots its own key, so a token from one
+// Env does not validate against another's Validator.
 func TestEnv_IndependentAcrossCalls(t *testing.T) {
 	a := jwtauthtest.NewEnv(t)
 	b := jwtauthtest.NewEnv(t)
@@ -84,10 +75,7 @@ func TestEnv_IndependentAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestEnv_GarbageTokenFailsValidation is the negative control for the
-// happy-path tests above: Validate must actually reject something that
-// is not a validly-signed JWT, not rubber-stamp everything it is
-// handed.
+// TestEnv_GarbageTokenFailsValidation is the negative control: Validate rejects a non-JWT string.
 func TestEnv_GarbageTokenFailsValidation(t *testing.T) {
 	env := jwtauthtest.NewEnv(t)
 	if _, err := env.Validator.Validate(context.Background(), "not-a-jwt"); err == nil {

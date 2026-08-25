@@ -9,12 +9,9 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 )
 
-// schemaErrFor runs value through schema's own JSON validation and returns
-// the resulting *openapi3.SchemaError. Using the real kin-openapi
-// validator (rather than hand-built SchemaError literals) is required:
-// SchemaError's path bookkeeping is a private field only the validator
-// itself populates, so this is the only way to construct a SchemaError
-// whose JSONPointer() reflects real nesting.
+// schemaErrFor runs value through schema's own JSON validation and returns the resulting
+// *openapi3.SchemaError. Uses the real kin-openapi validator, since SchemaError's path
+// bookkeeping is a private field only the validator populates.
 func schemaErrFor(t *testing.T, schema *openapi3.Schema, value any) *openapi3.SchemaError {
 	t.Helper()
 	err := schema.VisitJSON(value)
@@ -137,12 +134,9 @@ func TestEncode_BodySchemaRows(t *testing.T) {
 			wantDetail: "value must be at most 3 characters",
 		},
 		{
-			// The allOf-wrapped single-$ref form is how a property keeps a
-			// per-site description or default beside a shared schema
-			// reference. kin-openapi reports such a failure as a generic
-			// allOf mismatch wrapping the real cause; an enum violation
-			// inside the wrapper must still speak the enum voice, exactly
-			// as it would at an inline enum site.
+			// The allOf-wrapped single-$ref form lets a property keep a per-site description
+			// or default beside a shared schema; kin-openapi reports such a failure as a
+			// generic allOf mismatch. An enum violation inside it must still speak the enum voice.
 			name: "allOf-wrapped enum violation speaks the enum voice",
 			schema: objectSchema(map[string]*openapi3.SchemaRef{
 				"status": {Value: &openapi3.Schema{
@@ -156,11 +150,8 @@ func TestEncode_BodySchemaRows(t *testing.T) {
 			wantDetail: "status must be one of active, inactive",
 		},
 		{
-			// A non-enum failure inside an allOf wrapper keeps the generic
-			// phrase: that is what allOf-wrapped string constraints (e.g.
-			// the shared handle schema) have always answered, and changing
-			// it here would change wire text at sites this encoder already
-			// serves.
+			// A non-enum failure inside an allOf wrapper keeps the generic phrase: changing it
+			// here would change wire text at sites this encoder already serves.
 			name: "allOf-wrapped non-enum violation keeps the generic phrase",
 			schema: objectSchema(map[string]*openapi3.SchemaRef{
 				"name": {Value: &openapi3.Schema{
@@ -299,10 +290,8 @@ func TestIsArrayIndex(t *testing.T) {
 		{segment: "0", want: true},
 		{segment: "12", want: true},
 		{segment: "developers", want: false},
-		// A JSONPointer segment is never empty in practice (object keys
-		// are non-empty, array indices are always digit strings), but an
-		// empty segment must not vacuously count as an index - an empty
-		// range loop would otherwise report true with nothing checked.
+		// A JSONPointer segment is never empty in practice, but an empty segment must not
+		// vacuously count as an index (an empty range loop would otherwise report true).
 		{segment: "", want: false},
 	}
 	for _, tt := range tests {
@@ -313,10 +302,8 @@ func TestIsArrayIndex(t *testing.T) {
 }
 
 func TestEncode_UnrecognizedErrorTypeFallsBackSafely(t *testing.T) {
-	// AuthenticationFunc is always the no-op and MultiError stays off (see
-	// specval.go), so in real use encode only ever sees *RequestError.
-	// This proves the defensive fallback still returns a well-formed pair
-	// rather than panicking if that invariant is ever broken upstream.
+	// AuthenticationFunc is always a no-op and MultiError stays off, so in real use encode
+	// only sees *RequestError; this proves the fallback still returns a well-formed pair, not a panic.
 	code, detail := encode(errors.New("boom"))
 	if code != "invalid_param" {
 		t.Errorf("code = %q, want invalid_param", code)

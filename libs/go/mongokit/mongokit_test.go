@@ -3,9 +3,11 @@ package mongokit_test
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -13,18 +15,18 @@ import (
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
 	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 )
 
-// TestMain disables the testcontainers reaper when the shared server
-// is adopted: the only container this binary then boots is the
-// reserved-char-password test's throwaway, which terminates itself,
-// so the reaper is pure risk - its startup wait is hardcoded to the
-// 60s default inside testcontainers, the one window mongoWait's 180s
-// deadlines cannot cover when the Docker daemon stalls. Bare runs
-// keep the reaper as the safety net behind the explicit Terminates.
+// TestMain: under the shared server every boot self-terminates; the reaper's
+// hardcoded 60s startup wait would be the only unprotected window.
 func TestMain(m *testing.M) {
 	if os.Getenv("MONGOTEST_URL") != "" {
 		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -93,10 +95,7 @@ func TestUnitComposeURL_ExistingUserinfoErrors(t *testing.T) {
 	}
 }
 
-// TestUnitComposeURL_UnparsableBaseErrors drives ComposeURL's other
-// error leg: once username/password are set, a baseURL that
-// url.Parse itself rejects (invalid percent-encoding) must error
-// instead of proceeding on a zero-value URL.
+// TestUnitComposeURL_UnparsableBaseErrors pins that an unparsable base URL errors instead of proceeding on a zero-value URL.
 func TestUnitComposeURL_UnparsableBaseErrors(t *testing.T) {
 	_, err := mongokit.ComposeURL("mongodb://%zz", "mongokit", "s3cret")
 	if err == nil {
@@ -104,11 +103,8 @@ func TestUnitComposeURL_UnparsableBaseErrors(t *testing.T) {
 	}
 }
 
-// newTestMongo hands back a server URL plus a fresh per-test database
-// name: the shared test server when MONGOTEST_URL is set (no Docker
-// involved), a throwaway per-test container otherwise. The drop makes
-// the database virgin either way. Integration helper: skipped under
-// -short.
+// newTestMongo returns a server URL and a fresh per-test database name: the shared server
+// when MONGOTEST_URL is set, else a throwaway per-test container. Skipped under -short.
 func newTestMongo(t *testing.T) (string, string) {
 	t.Helper()
 	if testing.Short() {
@@ -147,8 +143,7 @@ func TestMigrate_CreatesCollectionAndIsIdempotent(t *testing.T) {
 	if err := mongokit.Migrate(ctx, uri, db, testMigrations, "testdata/migrations"); err != nil {
 		t.Fatalf("first migrate: %v", err)
 	}
-	// Second run must be a clean no-op (init containers re-run on every
-	// pod start).
+	// Second run must be a clean no-op (init containers re-run on every pod start).
 	if err := mongokit.Migrate(ctx, uri, db, testMigrations, "testdata/migrations"); err != nil {
 		t.Fatalf("second migrate: %v", err)
 	}
@@ -173,9 +168,7 @@ func TestMigrate_CreatesCollectionAndIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestMigrate_BadSourceDir drives Migrate's migration-source error
-// leg: a directory the embedded FS does not have must surface as an
-// error once Connect has already succeeded.
+// TestMigrate_BadSourceDir pins that a missing migration source dir errors after Connect succeeds.
 func TestMigrate_BadSourceDir(t *testing.T) {
 	uri, db := newTestMongo(t)
 	ctx := context.Background()
@@ -184,10 +177,7 @@ func TestMigrate_BadSourceDir(t *testing.T) {
 	}
 }
 
-// TestMigrate_UpError drives Migrate's real-migration-failure leg
-// (distinct from the ErrNoChange success case): a migration file
-// naming a MongoDB command that does not exist must fail m.Up() and
-// surface through Migrate rather than silently succeeding.
+// TestMigrate_UpError pins that an invalid migration command fails m.Up() and surfaces through Migrate.
 func TestMigrate_UpError(t *testing.T) {
 	uri, db := newTestMongo(t)
 	ctx := context.Background()
@@ -209,9 +199,7 @@ func TestHealth(t *testing.T) {
 	}
 }
 
-// TestConnect_BadURL drives Connect's client-construction error leg:
-// options.Client().ApplyURI parses eagerly, so mongo.Connect surfaces
-// a malformed URI without any network dial.
+// TestConnect_BadURL pins that a malformed URI fails at ApplyURI's eager parse, before any network dial.
 func TestConnect_BadURL(t *testing.T) {
 	_, err := mongokit.Connect(context.Background(), "not-a-mongo-url")
 	if err == nil {
@@ -219,9 +207,7 @@ func TestConnect_BadURL(t *testing.T) {
 	}
 }
 
-// TestConnect_PingFail drives Connect's ping error leg. Port 1 is
-// administratively prohibited, so the refusal is immediate; needs no
-// docker.
+// TestConnect_PingFail pins Connect's ping error leg. Port 1 is administratively prohibited, so refusal is immediate.
 func TestConnect_PingFail(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -231,13 +217,76 @@ func TestConnect_PingFail(t *testing.T) {
 	}
 }
 
-// TestConnect_ReservedCharPasswordViaComposedURL starts a throwaway
-// Mongo with a reserved-char root password (the testcontainers module
-// sets it directly as MONGO_INITDB_ROOT_PASSWORD, unescaped), composes
-// a creds-less URL plus that pair through ComposeURL exactly as a
-// service's main does, and connects with the result - proving the
-// escaping round-trips against a real server rather than only
-// net/url's own parser.
+// TestConnect_PoolMetrics pins that Connect's Ping records at least one acquire, and that a
+// metric registration failure fails Connect rather than limping on half-instrumented.
+func TestConnect_PoolMetrics(t *testing.T) {
+	uri, _ := newTestMongo(t)
+	ctx := context.Background()
+
+	// Pool metrics ride the global meter the services install; drain into a manual reader.
+	reader := sdkmetric.NewManualReader()
+	prev := otel.GetMeterProvider()
+	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
+	t.Cleanup(func() { otel.SetMeterProvider(prev) })
+
+	client, err := mongokit.Connect(ctx, uri)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
+
+	var rm metricdata.ResourceMetrics
+	if err := reader.Collect(ctx, &rm); err != nil {
+		t.Fatal(err)
+	}
+	if got := poolAcquires(t, rm); got < 1 {
+		t.Fatalf("want at least one recorded pool acquire, got %d", got)
+	}
+
+	// A metric registration failure must fail Connect, not limp on half-instrumented.
+	otel.SetMeterProvider(stubErrMeterProvider{})
+	if _, err := mongokit.Connect(ctx, uri); err == nil || !strings.Contains(err.Error(), "mongokit: pool metrics") {
+		t.Fatalf("want pool metrics error, got %v", err)
+	}
+}
+
+func poolAcquires(t *testing.T, rm metricdata.ResourceMetrics) int64 {
+	t.Helper()
+	for _, sm := range rm.ScopeMetrics {
+		if sm.Scope.Name != "github.com/levonn-dev/vgkeep/libs/go/mongokit" {
+			continue
+		}
+		for _, m := range sm.Metrics {
+			if m.Name != "vg.mongokit.pool.acquires" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok || len(sum.DataPoints) != 1 {
+				t.Fatalf("vg.mongokit.pool.acquires: unexpected shape %+v", m.Data)
+			}
+			return sum.DataPoints[0].Value
+		}
+	}
+	t.Fatal("vg.mongokit.pool.acquires not exported")
+	return 0
+}
+
+// stubErrMeterProvider fails the first instrument registration to reach Connect's error leg.
+type stubErrMeterProvider struct{ noop.MeterProvider }
+
+func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
+	return stubErrMeter{}
+}
+
+type stubErrMeter struct{ noop.Meter }
+
+func (stubErrMeter) Int64ObservableGauge(string, ...metric.Int64ObservableGaugeOption) (metric.Int64ObservableGauge, error) {
+	return nil, errors.New("stubbed instrument failure")
+}
+
+// TestConnect_ReservedCharPasswordViaComposedURL starts Mongo with a reserved-char root
+// password (set unescaped via MONGO_INITDB_ROOT_PASSWORD) and connects through ComposeURL,
+// proving the escaping round-trips against a real server, not just net/url's parser.
 func TestConnect_ReservedCharPasswordViaComposedURL(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires docker")

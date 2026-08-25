@@ -7,12 +7,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// RequireAdminOrService reports whether the Claims already stored in
-// context by Middleware carry the admin role or identify a service
-// token (token_use=service): the guard on operator levers a CronJob
-// can drive as a machine credential just as well as an operator can
-// drive by hand. On failure it writes a 403 via ew and returns false;
-// callers must stop handling the request when this returns false.
+// RequireAdminOrService reports whether Claims in context carry the admin role or identify a
+// service token: the guard on operator levers a CronJob can drive as a machine credential just
+// as well as an operator by hand. On failure it writes a 403 via ew and returns false.
 func RequireAdminOrService(w http.ResponseWriter, r *http.Request, ew ErrorWriter) bool {
 	claims, _ := FromContext(r.Context())
 	if claims.HasRole("admin") || claims.IsService() {
@@ -22,15 +19,21 @@ func RequireAdminOrService(w http.ResponseWriter, r *http.Request, ew ErrorWrite
 	return false
 }
 
-// CallerID resolves the authenticated caller from context: the JWT
-// subject parsed as the owning user id, plus the raw bearer token for
-// callers that need to forward it on an outgoing hop. Must run after
-// Middleware; calling it beforehand (no Claims in context) writes 401.
-//
-// A subject that fails to parse as a uuid writes 500: every subject
-// this library validates was minted by auth as a uuid, so a bad
-// subject here is a minting bug, not a caller error, and there is
-// nothing the caller could have done differently.
+// RequireAdmin reports whether Claims in context carry the admin role. On failure it writes a
+// 403 via ew and returns false.
+func RequireAdmin(w http.ResponseWriter, r *http.Request, ew ErrorWriter) bool {
+	claims, _ := FromContext(r.Context())
+	if claims.HasRole("admin") {
+		return true
+	}
+	ew(w, r, http.StatusForbidden, "forbidden", "role admin required")
+	return false
+}
+
+// CallerID resolves the authenticated caller from context: the JWT subject parsed as the
+// owning user id, plus the raw bearer token for forwarding on an outgoing hop. Must run after
+// Middleware; calling it beforehand writes 401. A subject that fails to parse as a uuid writes
+// 500: every subject this library validates was minted by auth as a uuid, so a bad one is a minting bug.
 func CallerID(w http.ResponseWriter, r *http.Request, ew ErrorWriter) (uuid.UUID, string, bool) {
 	claims, ok := FromContext(r.Context())
 	if !ok {

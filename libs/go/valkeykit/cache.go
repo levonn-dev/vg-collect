@@ -14,13 +14,9 @@ import (
 	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
 )
 
-// GetBytes reads key and returns its stored bytes, or (nil, nil) on a
-// cache miss (redis.Nil): every service's cache treats a miss as data
-// to recompute rather than an error, so mapping it here keeps that
-// decision out of every call site. op labels a returned error (for
-// example "cache: get me"); callers own the exact wording because it
-// lands verbatim in logs and alerts, so this function never rewrites
-// or prefixes it.
+// GetBytes reads key and returns its stored bytes, or (nil, nil) on a cache miss (redis.Nil):
+// every caller treats a miss as data to recompute, not an error. op labels a returned error
+// verbatim (it lands in logs and alerts), so callers own its exact wording.
 func GetBytes(ctx context.Context, rdb *redis.Client, key, op string) ([]byte, error) {
 	v, err := rdb.Get(ctx, key).Result()
 	if errors.Is(err, redis.Nil) {
@@ -42,12 +38,9 @@ func PutBytes(ctx context.Context, rdb *redis.Client, key string, body []byte, t
 	return nil
 }
 
-// FailOpen logs and counts a Valkey failure the caller is about to
-// treat as a cache miss rather than fail the request on: op names the
-// operation (the dashboard's per-op breakdown key) and err is the
-// underlying failure. counter is nil-safe (vgotel.Count's contract),
-// so a service whose counter registration failed at startup still
-// logs every fail-open event, it just cannot also count it.
+// FailOpen logs and counts a Valkey failure the caller treats as a cache miss. op names the
+// operation (the dashboard's per-op key). counter is nil-safe, so a failed counter
+// registration at startup still logs the event, just without the count.
 func FailOpen(ctx context.Context, logger *slog.Logger, counter metric.Int64Counter, op string, err error) {
 	logger.WarnContext(ctx, "valkey unavailable; failing open", "op", op, "err", err)
 	vgotel.Count(ctx, counter, attribute.String("op", op))

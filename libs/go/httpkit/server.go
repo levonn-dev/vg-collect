@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// NewServer builds an *http.Server with the fleet's standard read/write/
+// idle timeouts, ready to pass to Run.
 func NewServer(addr string, h http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
@@ -33,14 +35,12 @@ func Run(ctx context.Context, srv *http.Server) error {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
-		// If cancellation races server start, Shutdown flags the server
-		// closed and the pending ListenAndServe returns ErrServerClosed;
-		// the drain below still completes.
+		// If cancellation races server start, Shutdown flags the server closed and the
+		// pending ListenAndServe returns ErrServerClosed; the drain below still completes.
 		shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutCtx); err != nil {
-			// Grace period exceeded: force-close lingering connections
-			// so the server is fully closed on every path Run returns.
+			// Grace period exceeded: force-close lingering connections so the server is fully closed.
 			_ = srv.Close()
 			return err
 		}

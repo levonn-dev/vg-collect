@@ -18,11 +18,7 @@ import (
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewJSONHandler(io.Discard, nil)) }
 
-// waitForGuardRelease polls until guard reads false (the detached run
-// ended and released it). The two adoption sites poll the same way
-// from outside the package (collection's admin test retriggers until
-// 202; enrichment's reads h.refreshing.Load() directly) since a
-// release has no other external signal.
+// waitForGuardRelease polls until guard reads false (the detached run ended and released it).
 func waitForGuardRelease(t *testing.T, guard *atomic.Bool) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
@@ -47,11 +43,8 @@ func baseOptions(guard *atomic.Bool, logger *slog.Logger, run func(context.Conte
 	}
 }
 
-// TestTriggerDetached_ConcurrentTriggerConflicts pins the shape both
-// adoption sites need: a second trigger while the first still holds
-// the guard gets the 409 problem body (collection's
-// rematch_in_progress, enrichment's refresh_in_progress are instances
-// of ConflictCode/ConflictDetail) and never reaches Run at all.
+// TestTriggerDetached_ConcurrentTriggerConflicts pins that a second trigger while the first
+// holds the guard gets the 409 body and never reaches Run.
 func TestTriggerDetached_ConcurrentTriggerConflicts(t *testing.T) {
 	var guard atomic.Bool
 	started := make(chan struct{})
@@ -69,9 +62,7 @@ func TestTriggerDetached_ConcurrentTriggerConflicts(t *testing.T) {
 	<-started
 
 	w2 := httptest.NewRecorder()
-	// A canary, not a real sweep: if the CAS-fail branch ever reaches
-	// Run, this panics loudly instead of passing silently (same style
-	// as the two services' own nil-stub canaries).
+	// A canary, not a real sweep: if the CAS-fail branch ever reaches Run, this panics loudly.
 	ok = httpkit.TriggerDetached(w2, httptest.NewRequest(http.MethodPost, "/x", nil),
 		baseOptions(&guard, discardLogger(), func(context.Context) {
 			panic("Run must not be called while the guard is held")
@@ -96,11 +87,8 @@ func TestTriggerDetached_ConcurrentTriggerConflicts(t *testing.T) {
 	waitForGuardRelease(t, &guard)
 }
 
-// TestTriggerDetached_PanicInRunIsRecoveredAndLogged pins panic
-// containment: a panicking Run must not crash the process (a
-// CronJob-driven lever would otherwise crash-loop on a persistently
-// bad input), must log PanicMsg with the recovered value, and must
-// still release the guard.
+// TestTriggerDetached_PanicInRunIsRecoveredAndLogged pins that a panicking Run does not crash
+// the process, logs PanicMsg with the recovered value, and still releases the guard.
 func TestTriggerDetached_PanicInRunIsRecoveredAndLogged(t *testing.T) {
 	var guard atomic.Bool
 	var buf bytes.Buffer
@@ -120,10 +108,7 @@ func TestTriggerDetached_PanicInRunIsRecoveredAndLogged(t *testing.T) {
 	}
 }
 
-// TestTriggerDetached_GuardReleasesOnNormalCompletion pins the
-// non-panic release path separately from the panic one above: a Run
-// that returns normally must still flip the guard back to false so
-// the next trigger is admitted.
+// TestTriggerDetached_GuardReleasesOnNormalCompletion pins that a normally-returning Run still releases the guard.
 func TestTriggerDetached_GuardReleasesOnNormalCompletion(t *testing.T) {
 	var guard atomic.Bool
 	done := make(chan struct{})
@@ -142,11 +127,8 @@ func TestTriggerDetached_GuardReleasesOnNormalCompletion(t *testing.T) {
 	waitForGuardRelease(t, &guard)
 }
 
-// TestTriggerDetached_ReturnsImmediatelyAndHoldsGuard pins the
-// immediate-202 half of the contract: TriggerDetached must not block
-// on Run, and the guard must already be held by the time it returns
-// (so a second, near-simultaneous trigger reliably conflicts instead
-// of racing the CAS).
+// TestTriggerDetached_ReturnsImmediatelyAndHoldsGuard pins that TriggerDetached does not block
+// on Run, and the guard is already held by the time it returns.
 func TestTriggerDetached_ReturnsImmediatelyAndHoldsGuard(t *testing.T) {
 	var guard atomic.Bool
 	release := make(chan struct{})
@@ -169,11 +151,8 @@ func TestTriggerDetached_ReturnsImmediatelyAndHoldsGuard(t *testing.T) {
 	waitForGuardRelease(t, &guard)
 }
 
-// TestTriggerDetached_RunContextIsDetachedWithBudgetDeadline pins the
-// budget context: Run gets a deadline Budget out from now, not the
-// trigger request's own context, which the caller may cancel (a
-// client disconnect, the server finishing the response) the instant
-// TriggerDetached returns.
+// TestTriggerDetached_RunContextIsDetachedWithBudgetDeadline pins that Run gets a deadline
+// Budget out from now, not the trigger request's own context, which the caller may cancel.
 func TestTriggerDetached_RunContextIsDetachedWithBudgetDeadline(t *testing.T) {
 	var guard atomic.Bool
 	reqCtx, cancelReq := context.WithCancel(context.Background())
@@ -194,9 +173,8 @@ func TestTriggerDetached_RunContextIsDetachedWithBudgetDeadline(t *testing.T) {
 		t.Fatal("trigger must be accepted")
 	}
 	<-inRun
-	// The trigger request ends while Run is still executing (checked
-	// before releasing Run below, which lets Run's own deferred cancel
-	// fire): Run's own context must be unaffected.
+	// The trigger request ends while Run still executes (before releasing Run, so its
+	// deferred cancel can fire): Run's own context must be unaffected.
 	cancelReq()
 
 	dl, hasDeadline := gotCtx.Deadline()
@@ -213,15 +191,10 @@ func TestTriggerDetached_RunContextIsDetachedWithBudgetDeadline(t *testing.T) {
 	waitForGuardRelease(t, &guard)
 }
 
-// TestTriggerDetached_StartedRunsBeforeRunOnTheDetachedGoroutine pins
-// the original two call sites' log order: "op started" must be fully
-// done before the detached run has done anything at all, not merely
-// before TriggerDetached returns to its caller (those are different
-// guarantees - the run goroutine is eligible to execute in parallel
-// the instant it's spawned). Run blocks on release until told
-// otherwise, so the first read of order below is race-free: Run
-// cannot have touched order yet regardless of scheduling, which is
-// exactly what proves Started already ran to completion first.
+// TestTriggerDetached_StartedRunsBeforeRunOnTheDetachedGoroutine pins that Started fully
+// completes before the detached run does anything, not merely before TriggerDetached returns
+// (the goroutine is eligible to run in parallel the instant it's spawned). Run blocks on
+// release, so the first read of order is race-free proof Started already ran.
 func TestTriggerDetached_StartedRunsBeforeRunOnTheDetachedGoroutine(t *testing.T) {
 	var guard atomic.Bool
 	var order []string

@@ -6,9 +6,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/regionkit"
 )
 
-// TestKnownRegions_ExactlySevenRegions locks the known set to the
-// reviewed seven; a graduation or a typo both show up as a length or
-// membership mismatch here.
+// TestKnownRegions_ExactlySevenRegions locks the known set to the reviewed seven.
 func TestKnownRegions_ExactlySevenRegions(t *testing.T) {
 	want := []string{"ntsc_u", "ntsc_j", "pal", "region_free", "korea", "brazil", "china"}
 	if len(regionkit.KnownRegions) != len(want) {
@@ -21,11 +19,8 @@ func TestKnownRegions_ExactlySevenRegions(t *testing.T) {
 	}
 }
 
-// TestKnownRegions_MatchesGeneratedRegionNames proves KnownRegions
-// never drifts from the generated RegionNames table: same size, same
-// members each way. KnownRegions is derived from RegionNames (see
-// regions.go), so this pins that derivation rather than two
-// independently hand-maintained lists.
+// TestKnownRegions_MatchesGeneratedRegionNames pins that KnownRegions never drifts from the
+// generated RegionNames table: same size, same members each way.
 func TestKnownRegions_MatchesGeneratedRegionNames(t *testing.T) {
 	fromNames := make(map[string]bool, len(regionkit.RegionNames))
 	for _, r := range regionkit.RegionNames {
@@ -46,9 +41,7 @@ func TestKnownRegions_MatchesGeneratedRegionNames(t *testing.T) {
 	}
 }
 
-// TestRegionFoldMap_EverySynonymFoldsToAKnownRegion confirms every
-// RegionSynonyms row folds to a canonical key that is itself known,
-// and that RegionFoldMap actually wires the row up.
+// TestRegionFoldMap_EverySynonymFoldsToAKnownRegion confirms every synonym folds to a known canonical region.
 func TestRegionFoldMap_EverySynonymFoldsToAKnownRegion(t *testing.T) {
 	folds := regionkit.RegionFoldMap()
 	for canon, syns := range regionkit.RegionSynonyms {
@@ -63,9 +56,7 @@ func TestRegionFoldMap_EverySynonymFoldsToAKnownRegion(t *testing.T) {
 	}
 }
 
-// TestRegionFoldMap_IdentityRowForEveryKnownRegion confirms a known
-// region folds to itself, so an already-canonical value never misses
-// the fold map.
+// TestRegionFoldMap_IdentityRowForEveryKnownRegion confirms a known region folds to itself.
 func TestRegionFoldMap_IdentityRowForEveryKnownRegion(t *testing.T) {
 	folds := regionkit.RegionFoldMap()
 	for r := range regionkit.KnownRegions {
@@ -75,10 +66,8 @@ func TestRegionFoldMap_IdentityRowForEveryKnownRegion(t *testing.T) {
 	}
 }
 
-// TestRegionFoldMap_NoSynonymCollidesWithADifferentRegionsIdentityFold
-// guards against a synonym string that is also a known region name
-// belonging to some other region: that would make the fold map
-// ambiguous between the identity row and the synonym row.
+// TestRegionFoldMap_NoSynonymCollidesWithADifferentRegionsIdentityFold guards against a
+// synonym that is also another region's name, which would make the fold map ambiguous.
 func TestRegionFoldMap_NoSynonymCollidesWithADifferentRegionsIdentityFold(t *testing.T) {
 	for canon, syns := range regionkit.RegionSynonyms {
 		for _, s := range syns {

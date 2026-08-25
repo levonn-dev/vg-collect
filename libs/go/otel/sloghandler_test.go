@@ -38,8 +38,7 @@ func TestTraceHandler_NoSpanNoIDs(t *testing.T) {
 	}
 }
 
-// TestTraceHandler_WithAttrs verifies that attributes added via WithAttrs
-// appear in subsequent log lines.
+// TestTraceHandler_WithAttrs verifies attributes added via WithAttrs appear in log lines.
 func TestTraceHandler_WithAttrs(t *testing.T) {
 	var buf bytes.Buffer
 	h := vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))
@@ -50,8 +49,7 @@ func TestTraceHandler_WithAttrs(t *testing.T) {
 	}
 }
 
-// TestTraceHandler_WithGroup verifies that WithGroup nests subsequent
-// attributes under the named group key.
+// TestTraceHandler_WithGroup verifies WithGroup nests subsequent attributes under the named group key.
 func TestTraceHandler_WithGroup(t *testing.T) {
 	var buf bytes.Buffer
 	h := vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))
@@ -76,8 +74,7 @@ func TestTraceHandler_Enabled(t *testing.T) {
 	}
 }
 
-// TestTraceHandler_WithAttrs_TracePropagates ensures trace IDs still appear
-// after WithAttrs produces a derived handler.
+// TestTraceHandler_WithAttrs_TracePropagates ensures trace IDs still appear after WithAttrs.
 func TestTraceHandler_WithAttrs_TracePropagates(t *testing.T) {
 	var buf bytes.Buffer
 	h := vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))
@@ -95,8 +92,7 @@ func TestTraceHandler_WithAttrs_TracePropagates(t *testing.T) {
 	}
 }
 
-// TestTraceHandler_WithGroup_TracePropagates ensures trace IDs still appear
-// after WithGroup produces a derived handler.
+// TestTraceHandler_WithGroup_TracePropagates ensures trace IDs still appear after WithGroup.
 func TestTraceHandler_WithGroup_TracePropagates(t *testing.T) {
 	var buf bytes.Buffer
 	h := vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))
@@ -111,8 +107,8 @@ func TestTraceHandler_WithGroup_TracePropagates(t *testing.T) {
 	}
 }
 
-// Pins the documented limitation on traceContextHandler: an open
-// WithGroup group lands the stamped IDs nested, not top-level.
+// TestTraceHandler_WithGroup_IDsLandInsideGroup pins the documented WithGroup limitation:
+// stamped IDs land nested, not top-level.
 func TestTraceHandler_WithGroup_IDsLandInsideGroup(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(vgotel.NewTraceContextHandler(slog.NewJSONHandler(&buf, nil))).WithGroup("ns")

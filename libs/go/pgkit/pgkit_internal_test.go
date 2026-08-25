@@ -3,7 +3,9 @@ package pgkit
 import (
 	"context"
 	"errors"
+	"net"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
@@ -13,9 +15,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// newOfflinePool builds a pool that never dials: MinConns stays zero so
-// no background connections start, and Stat() serves the configured
-// MaxConns plus all-zero counters.
+// newOfflinePool builds a pool that never dials (MinConns 0), so Stat() serves MaxConns plus all-zero counters.
 func newOfflinePool(t *testing.T, maxConns int32) *pgxpool.Pool {
 	t.Helper()
 	cfg, err := pgxpool.ParseConfig("postgres://u:p@127.0.0.1:1/db")
@@ -31,9 +31,39 @@ func newOfflinePool(t *testing.T, maxConns int32) *pgxpool.Pool {
 	return pool
 }
 
-// installManualReader swaps the global meter provider for one draining
-// into the returned reader and restores the previous provider when the
-// test ends.
+// TestConnect_BoundsPingWithUnboundedCaller pins that Connect's own ping deadline
+// ends a stalled startup even when the caller passes a context with no deadline.
+func TestConnect_BoundsPingWithUnboundedCaller(t *testing.T) {
+	// A listener we never Accept: the kernel completes the TCP handshake from the
+	// backlog, but nothing answers pg's startup packet, so Ping blocks until a
+	// deadline. The caller's context has none, so only connectPingTimeout can end it.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	prev := connectPingTimeout
+	connectPingTimeout = 150 * time.Millisecond
+	defer func() { connectPingTimeout = prev }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Connect(context.Background(), "postgres://u:p@"+ln.Addr().String()+"/db")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Connect must fail when the startup ping times out")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Connect hung past its ping deadline")
+	}
+}
+
+// installManualReader swaps the global meter provider for one draining into the returned
+// reader, restored on cleanup.
 func installManualReader(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 	reader := sdkmetric.NewManualReader()
@@ -120,8 +150,7 @@ func TestRegisterPoolMetrics_ReportsPoolStat(t *testing.T) {
 		t.Fatalf("empty_acquires: want 0, got %d", v)
 	}
 
-	// The wait counter's unit drives its Prometheus name
-	// (vg_pgkit_pool_acquire_wait_seconds_total), so pin it.
+	// The wait counter's unit drives its Prometheus name (vg_pgkit_pool_acquire_wait_seconds_total).
 	wait, ok := got["vg.pgkit.pool.acquire_wait"]
 	if !ok {
 		t.Fatal("vg.pgkit.pool.acquire_wait not exported")
@@ -143,9 +172,7 @@ func TestRegisterPoolMetrics_SecondPoolSharesInstruments(t *testing.T) {
 	if err := registerPoolMetrics(newOfflinePool(t, 4)); err != nil {
 		t.Fatalf("first registration: %v", err)
 	}
-	// A second Connect in the same process re-creates instruments with
-	// identical identity; that must not error and must not fork a
-	// second series.
+	// A second Connect re-creates instruments with identical identity; must not error or fork a series.
 	if err := registerPoolMetrics(newOfflinePool(t, 2)); err != nil {
 		t.Fatalf("second registration: %v", err)
 	}
@@ -174,8 +201,7 @@ func TestRegisterPoolMetrics_InstrumentError(t *testing.T) {
 	}
 }
 
-// stubMeterProvider forces instrument-creation failure: the SDK never
-// fails on our fixed names, but the metric API contract allows it.
+// stubMeterProvider forces instrument-creation failure for the InstrumentError test.
 type stubMeterProvider struct {
 	noop.MeterProvider
 	err error

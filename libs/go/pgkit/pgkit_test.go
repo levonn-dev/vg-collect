@@ -28,10 +28,8 @@ import (
 //go:embed testdata/migrations/*.sql
 var testMigrations embed.FS
 
-// newTestPostgresURL hands back the URL of a fresh database: a
-// drop-and-recreated per-test database on the shared test server when
-// PGTEST_URL is set (no Docker involved), a throwaway per-test
-// container otherwise.
+// newTestPostgresURL hands back a fresh database URL: a drop-and-recreated per-test
+// database on the shared server when PGTEST_URL is set, else a throwaway per-test container.
 func newTestPostgresURL(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
@@ -61,8 +59,7 @@ func newTestPostgresURL(t *testing.T) string {
 		u.Path = "/" + name
 		return u.String()
 	}
-	// 180s deadlines outlast dev-host Docker daemon freezes; the outer
-	// deadline matters too - WithWaitStrategy alone caps the wait at 60s.
+	// 180s deadlines outlast dev-host Docker freezes; WithWaitStrategy alone caps the wait at 60s.
 	pg, err := tcpostgres.Run(ctx, "postgres:17-alpine",
 		tcpostgres.WithDatabase("t"), tcpostgres.WithUsername("t"), tcpostgres.WithPassword("t"),
 		testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
@@ -90,8 +87,7 @@ func TestConnectMigrateHealth(t *testing.T) {
 		t.Fatalf("Migrate (idempotent rerun): %v", err)
 	}
 
-	// Pool metrics ride the same global meter the services install;
-	// drain it into a manual reader to see what Connect registered.
+	// Pool metrics ride the global meter the services install; drain into a manual reader.
 	reader := sdkmetric.NewManualReader()
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)))
@@ -118,8 +114,7 @@ func TestConnectMigrateHealth(t *testing.T) {
 		t.Fatalf("want at least one recorded pool acquire, got %d", got)
 	}
 
-	// A metric registration failure must fail Connect, not limp on
-	// half-instrumented.
+	// A metric registration failure must fail Connect, not limp on half-instrumented.
 	otel.SetMeterProvider(stubErrMeterProvider{})
 	if _, err := pgkit.Connect(ctx, url); err == nil || !strings.Contains(err.Error(), "pgkit: pool metrics") {
 		t.Fatalf("want pool metrics error, got %v", err)
@@ -147,8 +142,7 @@ func poolAcquires(t *testing.T, rm metricdata.ResourceMetrics) int64 {
 	return 0
 }
 
-// stubErrMeterProvider fails the first instrument registration so the
-// error leg of Connect is reachable against a live database.
+// stubErrMeterProvider fails the first instrument registration to reach Connect's error leg.
 type stubErrMeterProvider struct{ noop.MeterProvider }
 
 func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {

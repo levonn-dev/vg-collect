@@ -1,16 +1,12 @@
-// Package catalogval holds catalog input-normalization rules shared
-// by collection and enrichment. Neither service can import the
-// other's internals, and this rule is domain logic rather than HTTP
-// plumbing (httpkit's domain), so a small shared lib is the home both
-// sides need identically.
+// Package catalogval holds catalog input-normalization rules shared by collection and
+// enrichment: domain logic, not HTTP plumbing, so services that can't import each other's
+// internals share it here.
 package catalogval
 
 import "strings"
 
-// NormalizeCredits trims a curated credit list and drops empty
-// elements; nil in, nil out. Cap enforcement (maxItems, per-name
-// maxLength) happens in the request validator, so this function only
-// ever sees an already-conforming list.
+// NormalizeCredits trims a curated credit list and drops empty elements; nil in, nil out. Cap
+// enforcement (maxItems, per-name maxLength) happens upstream in the request validator.
 func NormalizeCredits(names *[]string) []string {
 	if names == nil {
 		return nil

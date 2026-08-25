@@ -29,9 +29,7 @@ func TestCursor_StringShape(t *testing.T) {
 	}
 }
 
-// TestCursor_ParseRejectsMalformed covers malformed shapes: no dot,
-// an empty half on either side, and a uuid-shaped tail that still
-// fails once a spurious extra dot shifts the split.
+// TestCursor_ParseRejectsMalformed covers malformed shapes: no dot, an empty half, and a spurious extra dot.
 func TestCursor_ParseRejectsMalformed(t *testing.T) {
 	cases := []string{"", "abc", "123.", ".uuid", "1.2.not-a-uuid", "notanumber." + uuid.New().String()}
 	for _, s := range cases {
@@ -41,9 +39,7 @@ func TestCursor_ParseRejectsMalformed(t *testing.T) {
 	}
 }
 
-// TestCursor_ParseSplitsOnFirstDotOnly guards the uuid-never-contains-
-// a-dot assumption ParseCursor relies on: a well-formed cursor parses
-// even though its uuid tail has hyphens.
+// TestCursor_ParseSplitsOnFirstDotOnly guards the uuid-never-contains-a-dot assumption ParseCursor relies on.
 func TestCursor_ParseSplitsOnFirstDotOnly(t *testing.T) {
 	id := uuid.New()
 	s := "1000." + id.String()

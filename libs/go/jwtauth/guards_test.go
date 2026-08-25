@@ -12,11 +12,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
-// recordEW is an ErrorWriter that records its arguments instead of
-// writing a real problem+json body: these guard tests only need to
-// prove jwtauth called ew with the right status/code/detail, the body
-// shape being each adopting service's own concern (see ErrorWriter's
-// doc comment).
+// recordEW is an ErrorWriter that records its arguments instead of writing a real problem+json
+// body: these tests only need to prove jwtauth called ew with the right status/code/detail.
 type recordEW struct {
 	called bool
 	status int
@@ -30,10 +27,8 @@ func (r *recordEW) ew(w http.ResponseWriter, _ *http.Request, status int, code, 
 	w.WriteHeader(status)
 }
 
-// guardEnv mints tokens against an in-process JWKS, reusing the
-// genKey/jwksJSON/mint helpers from jwtauth_test.go so guard tests
-// exercise the same Middleware-then-FromContext path every adopting
-// service's guard call sits behind.
+// guardEnv mints tokens against an in-process JWKS, reusing jwtauth_test.go's helpers so
+// guard tests exercise the same Middleware-then-FromContext path a real guard call sits behind.
 type guardEnv struct {
 	v    *jwtauth.Validator
 	priv ed25519.PrivateKey
@@ -51,10 +46,8 @@ func newGuardEnv(t *testing.T) guardEnv {
 	return guardEnv{v: jwtauth.NewValidator(srv.URL, testIssuer, testAudience), priv: priv, kid: kid}
 }
 
-// runGuarded sends a bearer-token request through the real Middleware
-// (so FromContext sees Claims exactly as a live handler would), then
-// invokes guard inside the next handler - the same position every
-// adopting service's guard call occupies.
+// runGuarded sends a bearer-token request through the real Middleware (so FromContext sees
+// Claims as a live handler would), then invokes guard inside the next handler.
 func runGuarded(env guardEnv, token string, rec *recordEW, guard func(w http.ResponseWriter, r *http.Request) bool) bool {
 	var ok bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,6 +106,53 @@ func TestRequireAdminOrService_UserTokenForbidden(t *testing.T) {
 	}
 }
 
+func TestRequireAdmin_AdminPasses(t *testing.T) {
+	env := newGuardEnv(t)
+	rec := &recordEW{}
+	token := mint(t, env.kid, env.priv, func(c jwt.MapClaims) { c["roles"] = []string{"admin"} })
+	ok := runGuarded(env, token, rec, func(w http.ResponseWriter, r *http.Request) bool {
+		return jwtauth.RequireAdmin(w, r, rec.ew)
+	})
+	if !ok || rec.called {
+		t.Fatalf("admin: ok=%v ewCalled=%v, want ok=true and ew untouched", ok, rec.called)
+	}
+}
+
+func TestRequireAdmin_ServiceTokenForbidden(t *testing.T) {
+	env := newGuardEnv(t)
+	rec := &recordEW{}
+	token := mint(t, env.kid, env.priv, func(c jwt.MapClaims) {
+		delete(c, "roles")
+		c["token_use"] = "service"
+	})
+	ok := runGuarded(env, token, rec, func(w http.ResponseWriter, r *http.Request) bool {
+		return jwtauth.RequireAdmin(w, r, rec.ew)
+	})
+	if ok {
+		t.Fatal("a service token must not pass RequireAdmin (unlike RequireAdminOrService)")
+	}
+	if !rec.called || rec.status != http.StatusForbidden || rec.code != "forbidden" ||
+		rec.detail != "role admin required" {
+		t.Fatalf("ew = %+v, want 403 forbidden with the admin-only detail", rec)
+	}
+}
+
+func TestRequireAdmin_UserTokenForbidden(t *testing.T) {
+	env := newGuardEnv(t)
+	rec := &recordEW{}
+	token := mint(t, env.kid, env.priv, nil) // default roles: [user]
+	ok := runGuarded(env, token, rec, func(w http.ResponseWriter, r *http.Request) bool {
+		return jwtauth.RequireAdmin(w, r, rec.ew)
+	})
+	if ok {
+		t.Fatal("plain user token must not pass RequireAdmin")
+	}
+	if !rec.called || rec.status != http.StatusForbidden || rec.code != "forbidden" ||
+		rec.detail != "role admin required" {
+		t.Fatalf("ew = %+v, want 403 forbidden with the admin-only detail", rec)
+	}
+}
+
 func TestCallerID_HappyPath(t *testing.T) {
 	env := newGuardEnv(t)
 	rec := &recordEW{}
@@ -151,10 +191,8 @@ func TestCallerID_NoClaimsInContext(t *testing.T) {
 	}
 }
 
-// TestCallerID_BadSubject pins the reconciled detail string every
-// caller now shares. auth mints every subject as a uuid, so this
-// branch is not known to be reachable in production, but the wording
-// still had to converge on one string.
+// TestCallerID_BadSubject pins the reconciled detail string every caller shares; auth mints
+// every subject as a uuid, so this branch is not known reachable in production.
 func TestCallerID_BadSubject(t *testing.T) {
 	env := newGuardEnv(t)
 	rec := &recordEW{}

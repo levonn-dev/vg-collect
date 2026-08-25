@@ -75,23 +75,11 @@ func TestNewRouter_MountsAPIHandlerAtRoot(t *testing.T) {
 	}
 }
 
-// TestNewRouter_OtelSpanPresentWithRouteFromRawMux is the regression
-// test for RouteLabel resolving the matched pattern from apiMux, the
-// caller's raw BaseRouter, not from apiHandler, which every real
-// caller wraps in jwtauth.Middleware (or, here, a stand-in wrapper with
-// no route-lookup method of its own) before handing it to NewRouter.
-// This is what fails if a future change drops or misorders that
-// argument.
-//
-// It also pins otelhttp's own span-naming behavior for this operation
-// string: otelhttp v0.69's default formatter ignores the operation
-// argument entirely and derives the name from the request's matched
-// pattern instead (net/http's r.Pattern, populated by the same mux
-// dispatch RouteLabel observes). serviceName still has to reach
-// otelhttp.NewHandler correctly, since it is the value any future
-// WithSpanNameFormatter override would receive, but under the default
-// formatter every service's span is named "METHOD /pattern", never
-// the literal service name.
+// TestNewRouter_OtelSpanPresentWithRouteFromRawMux is the regression test for RouteLabel
+// resolving the matched pattern from apiMux, not apiHandler, which every real caller wraps
+// (losing its own route-lookup) before handing it to NewRouter. It also pins otelhttp v0.69's
+// span-naming: its default formatter ignores the operation argument and names spans
+// "METHOD /pattern" instead, so serviceName only matters to a future WithSpanNameFormatter override.
 func TestNewRouter_OtelSpanPresentWithRouteFromRawMux(t *testing.T) {
 	exp := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
@@ -106,9 +94,8 @@ func TestNewRouter_OtelSpanPresentWithRouteFromRawMux(t *testing.T) {
 	apiMux.HandleFunc("GET /widgets/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	// Opaque wrapper: a plain http.HandlerFunc has no Handler(r) method,
-	// exactly like the jwtauth.Middleware-wrapped handler every real
-	// caller passes as apiHandler.
+	// Opaque wrapper: a plain http.HandlerFunc has no Handler(r) method, like the
+	// jwtauth.Middleware-wrapped handler every real caller passes as apiHandler.
 	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { apiMux.ServeHTTP(w, r) })
 
 	router := httpkit.NewRouter("widget-service", wrapped, apiMux, discardLogger(), alwaysReady)

@@ -1,9 +1,6 @@
-// Package metrictest installs an OpenTelemetry ManualReader over the
-// global MeterProvider for a test and hands back typed helpers for
-// reading what it collects. It replaces five call sites across auth,
-// collection, enrichment, and user that each hand-rolled this same
-// install; see Install for why cleanup restores the prior provider
-// rather than resetting to blank.
+// Package metrictest installs an OpenTelemetry ManualReader over the global MeterProvider for
+// a test and hands back typed helpers for reading what it collects. Cleanup restores the prior
+// provider rather than resetting to blank; see Install for why.
 package metrictest
 
 import (
@@ -16,22 +13,10 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// Install swaps the global meter provider for a fresh SDK provider
-// draining into the returned ManualReader. Cleanup restores the exact
-// prior provider and shuts down the one this call installed.
-//
-// Resetting to a fresh blank provider or a noop provider (the two
-// other semantics this package replaces) both discard whatever the
-// global pointed at before the test ran. That is safe only when
-// nothing else in the same test binary depends on it still being
-// there - which does not hold for a package whose constructor
-// registers an Observable-gauge callback on every build (auth's
-// signing-keys gauge, collection's pending-submissions gauge: every
-// other test in those packages calls the constructor too, each
-// registering its own callback against whatever provider is current).
-// Restoring the actual prior provider is the one choice that never
-// strands another test's registration mid-suite, so it is the one
-// every adopter now gets.
+// Install swaps the global meter provider for a fresh SDK provider draining into the returned
+// ManualReader; cleanup restores the exact prior provider (not blank or noop) and shuts it down.
+// Restoring matters because some constructors register an Observable-gauge callback against
+// whatever provider is current, and resetting to blank would strand other tests' registrations.
 func Install(t *testing.T) *sdkmetric.ManualReader {
 	t.Helper()
 	reader := sdkmetric.NewManualReader()
@@ -45,13 +30,10 @@ func Install(t *testing.T) *sdkmetric.ManualReader {
 	return reader
 }
 
-// Collect drains reader into a snapshot, failing the test on error.
-// A callback-backed instrument (an Observable gauge) can make Collect
-// return an error while still partially populating rm; a caller that
-// must tolerate that - proving a failed callback recorded nothing
-// rather than a false zero - collects through reader directly and
-// hands the possibly error-degraded result to ByName instead of
-// calling Collect.
+// Collect drains reader into a snapshot, failing the test on error. A callback-backed
+// instrument can make Collect return an error while partially populating rm; a caller that
+// must tolerate that (proving a failed callback recorded nothing) should collect through
+// reader directly.
 func Collect(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMetrics {
 	t.Helper()
 	var rm metricdata.ResourceMetrics
@@ -61,8 +43,7 @@ func Collect(t *testing.T, reader *sdkmetric.ManualReader) metricdata.ResourceMe
 	return rm
 }
 
-// ByName returns the named instrument from rm - the first match
-// across every scope - and whether it was found.
+// ByName returns the named instrument from rm, the first match across every scope, and whether it was found.
 func ByName(rm metricdata.ResourceMetrics, name string) (metricdata.Metrics, bool) {
 	for _, sm := range rm.ScopeMetrics {
 		for _, m := range sm.Metrics {
@@ -74,10 +55,8 @@ func ByName(rm metricdata.ResourceMetrics, name string) (metricdata.Metrics, boo
 	return metricdata.Metrics{}, false
 }
 
-// ScopeMetrics collects reader and returns every instrument
-// registered under the meter scope named scope, keyed by name - a
-// bulk fetch for suites that assert several named metrics out of one
-// collection instead of re-collecting per name.
+// ScopeMetrics collects reader and returns every instrument under the named meter scope,
+// keyed by name, for suites asserting several metrics from one collection.
 func ScopeMetrics(t *testing.T, reader *sdkmetric.ManualReader, scope string) map[string]metricdata.Metrics {
 	t.Helper()
 	rm := Collect(t, reader)
@@ -93,10 +72,8 @@ func ScopeMetrics(t *testing.T, reader *sdkmetric.ManualReader, scope string) ma
 	return out
 }
 
-// Int64Points collects reader and returns the named Sum[int64]
-// instrument's data points, nil when the instrument was never
-// registered or never recorded. Several adopted suites assert on that
-// absence, so it is not treated as a failure.
+// Int64Points collects reader and returns the named Sum[int64] instrument's data points, nil
+// when never registered or recorded (not treated as a failure).
 func Int64Points(t *testing.T, reader *sdkmetric.ManualReader, name string) []metricdata.DataPoint[int64] {
 	t.Helper()
 	m, ok := ByName(Collect(t, reader), name)
@@ -110,9 +87,7 @@ func Int64Points(t *testing.T, reader *sdkmetric.ManualReader, name string) []me
 	return sum.DataPoints
 }
 
-// HasAttrs reports whether set carries every key/value in want -
-// containment, not equality, so a caller can match a series without
-// naming every attribute it carries.
+// HasAttrs reports whether set carries every key/value in want (containment, not equality).
 func HasAttrs(set attribute.Set, want []attribute.KeyValue) bool {
 	for _, kv := range want {
 		v, ok := set.Value(kv.Key)
@@ -123,10 +98,8 @@ func HasAttrs(set attribute.Set, want []attribute.KeyValue) bool {
 	return true
 }
 
-// Int64Sum collects reader and totals the named Sum[int64]
-// instrument's points whose attributes carry every one of want (every
-// point when want is empty). 0 when the instrument was never
-// registered, never recorded, or no point matches.
+// Int64Sum collects reader and totals the named Sum[int64] instrument's points matching every
+// attribute in want (all points if empty); 0 when unregistered, unrecorded, or unmatched.
 func Int64Sum(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) int64 {
 	t.Helper()
 	m, ok := ByName(Collect(t, reader), name)
@@ -146,10 +119,8 @@ func Int64Sum(t *testing.T, reader *sdkmetric.ManualReader, name string, want ..
 	return total
 }
 
-// Float64HistogramPoint collects reader and returns the first point
-// of the named Histogram[float64] instrument whose attributes carry
-// every one of want (the zero value, Count 0, when none match or the
-// instrument was never registered).
+// Float64HistogramPoint collects reader and returns the first point of the named
+// Histogram[float64] instrument matching every attribute in want (zero value if none match).
 func Float64HistogramPoint(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) metricdata.HistogramDataPoint[float64] {
 	t.Helper()
 	m, ok := ByName(Collect(t, reader), name)
@@ -168,17 +139,10 @@ func Float64HistogramPoint(t *testing.T, reader *sdkmetric.ManualReader, name st
 	return metricdata.HistogramDataPoint[float64]{}
 }
 
-// Float64GaugePoint collects reader and returns the first point of the
-// named Gauge[float64] instrument (a callback-backed Observable gauge)
-// whose attributes carry every one of want (the zero value, Value 0,
-// when none match or the instrument was never registered) - the same
-// first-match/zero-value-on-absence contract Float64HistogramPoint
-// already gives a recorded histogram, extended to a gauge whose points
-// come from a registered callback instead of a Record call. A caller
-// asserting a callback observed nothing for a given attribute set (an
-// enrichment refresh step that has never completed in this process,
-// for instance) reads that absence through the same zero value, with
-// no separate "not observed" API.
+// Float64GaugePoint collects reader and returns the first point of the named Gauge[float64]
+// instrument (a callback-backed Observable gauge) matching every attribute in want, the zero
+// value if none match - the same absence-as-zero contract as Float64HistogramPoint, since
+// there is no separate "not observed" API.
 func Float64GaugePoint(t *testing.T, reader *sdkmetric.ManualReader, name string, want ...attribute.KeyValue) metricdata.DataPoint[float64] {
 	t.Helper()
 	m, ok := ByName(Collect(t, reader), name)

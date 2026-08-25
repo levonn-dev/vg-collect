@@ -51,8 +51,7 @@ func TestRouteLabel_FirstLookupWins(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/tags", nil)
 	req = req.WithContext(otelhttp.ContextWithLabeler(req.Context(), labeler))
 
-	// The inner (generated-API) mux is consulted first; the outer
-	// catch-all "/api/" must not shadow the real pattern.
+	// The inner (generated-API) mux is consulted first; the outer catch-all must not shadow it.
 	httpkit.RouteLabel(outer, inner, outer).ServeHTTP(httptest.NewRecorder(), req)
 
 	route, _ := routeFromLabeler(t, labeler)

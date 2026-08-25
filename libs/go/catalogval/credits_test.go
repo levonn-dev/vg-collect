@@ -1,11 +1,8 @@
 package catalogval_test
 
-// These cases pin the trim/drop-empty/nil-in-nil-out rules collection
-// and enrichment both rely on. Cap enforcement (10-name maxItems,
-// 120-char per-name maxLength) happens in the request validator
-// (libs/go/specval, against each service's own contract), so
-// NormalizeCredits never sees an over-cap list; no test case covers
-// that here.
+// These cases pin the trim/drop-empty/nil-in-nil-out rules. Cap enforcement (10-name maxItems,
+// 120-char maxLength) happens in the request validator, so NormalizeCredits never sees an
+// over-cap list; no test case covers that here.
 
 import (
 	"testing"
@@ -36,11 +33,8 @@ func TestNormalizeCredits_AllBlankYieldsNil(t *testing.T) {
 	}
 }
 
-// TestNormalizeCredits_TrimsAndDropsBlankInterior pins the two rules
-// together: each surviving name is trimmed to just its own content
-// (no internal whitespace touched, only the leading/trailing kind),
-// and a blank element anywhere in the list - not just at the ends -
-// drops rather than surviving as "".
+// TestNormalizeCredits_TrimsAndDropsBlankInterior pins that trimming only touches leading and
+// trailing whitespace, and a blank element anywhere in the list drops.
 func TestNormalizeCredits_TrimsAndDropsBlankInterior(t *testing.T) {
 	names := []string{"  Nintendo ", "", "  ", "Square Enix"}
 	out := catalogval.NormalizeCredits(&names)

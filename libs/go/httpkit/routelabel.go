@@ -14,12 +14,9 @@ type routeLookup interface {
 	Handler(r *http.Request) (http.Handler, string)
 }
 
-// RouteLabel stamps the matched mux pattern onto the otelhttp labeler
-// and the active span as http.route, giving metrics and traces a
-// bounded route dimension instead of raw URLs. Lookups are consulted
-// in order and the first non-empty pattern wins, so callers pass the
-// most specific mux (the generated API router) before any outer mux
-// whose catch-all would shadow it.
+// RouteLabel stamps the matched mux pattern onto the otelhttp labeler and active span as
+// http.route, bounding the route dimension instead of raw URLs. Lookups are tried in order;
+// the first non-empty pattern wins, so pass the most specific mux before any catch-all outer one.
 func RouteLabel(next http.Handler, lookups ...routeLookup) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for _, m := range lookups {

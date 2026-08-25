@@ -40,8 +40,7 @@ func TestDecodeBody_OverCap(t *testing.T) {
 	if ok := httpkit.DecodeBody(w, r, 4, &v); ok {
 		t.Fatalf("DecodeBody = true, want false")
 	}
-	// An over-cap body surfaces as a decode error, same as malformed
-	// JSON - this is auth's decodeBody behavior, copied exactly.
+	// An over-cap body surfaces as a decode error, same as malformed JSON.
 	assertMalformedBodyProblem(t, w)
 }
 
@@ -96,9 +95,7 @@ func TestReadCapped_OverCap(t *testing.T) {
 	}
 }
 
-// TestReadCapped_OverCap_CustomDetail covers callers that need their
-// own wording (bff's OTLP proxy mentions the byte cap by name) instead
-// of the "unreadable body" default.
+// TestReadCapped_OverCap_CustomDetail covers callers needing their own wording instead of the "unreadable body" default.
 func TestReadCapped_OverCap_CustomDetail(t *testing.T) {
 	r := httptest.NewRequest("POST", "/raw", strings.NewReader(`way too long for the cap`))
 	w := httptest.NewRecorder()

@@ -1,11 +1,7 @@
 package valkeykit_test
 
-// Tests for the shared cache-access idioms in cache.go. Hit/miss/TTL
-// behaviors round-trip through a live container, the same convention
-// TestConnectAndRoundtrip already uses in this package; the
-// error-wrap tests dial a client at a port that refuses connections
-// (TestConnect_PingFail's trick), a real network error without
-// needing docker.
+// Tests for cache.go's cache idioms: hit/miss/TTL round-trip through a live container;
+// error-wrap tests dial a refused port (TestConnect_PingFail's trick) for a real error without docker.
 
 import (
 	"bytes"
@@ -24,8 +20,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 )
 
-// newDeadClient dials a port that refuses connections immediately (no
-// docker needed), for tests that need a real, fast redis.Client error.
+// newDeadClient dials a port that refuses connections immediately, for tests needing a fast real redis.Client error.
 func newDeadClient(t *testing.T) *redis.Client {
 	t.Helper()
 	client := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1})
@@ -141,9 +136,8 @@ func TestFailOpen_LogsWarningAndCountsMetric(t *testing.T) {
 	}
 }
 
-// A counter registration failure at startup is best-effort in every
-// service (logged once, then the nil counter is kept): FailOpen must
-// keep logging even when it has nothing to count with.
+// A counter registration failure at startup is best-effort (logged once, nil counter kept):
+// FailOpen must keep logging even with nothing to count.
 func TestFailOpen_NilCounterDoesNotPanic(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))

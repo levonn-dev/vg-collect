@@ -1,11 +1,6 @@
-// Package valkeykit constructs OTel-instrumented go-redis clients for
-// per-service Valkey caches, verifies their health, and carries the
-// small cache-access idioms every caller otherwise duplicated by
-// hand: GetBytes/PutBytes, byte-blob get/put with a redis.Nil miss
-// mapped to (nil, nil), and FailOpen, the log-plus-metric a caller
-// emits when it degrades a request instead of failing it on a cache
-// error. Key shapes, TTLs, and per-service metric names stay with
-// each caller; only the copy/wrap/log/count mechanics live here.
+// Package valkeykit constructs OTel-instrumented go-redis clients for per-service Valkey
+// caches, verifies health, and carries shared cache idioms: GetBytes/PutBytes map a redis.Nil
+// miss to (nil, nil), and FailOpen logs plus counts a caller degrading a request on cache error.
 // Connect builds plain or rediss clients; ConnectTLS pins a private CA.
 package valkeykit
 
@@ -42,9 +37,8 @@ func Connect(ctx context.Context, url string) (*redis.Client, error) {
 	return connect(ctx, opt)
 }
 
-// ConnectTLS is Connect for servers whose certificate chains to a
-// private CA: the rediss URL carries host/port/db, caFile pins the
-// roots. ParseURL already sets ServerName from the URL host.
+// ConnectTLS is Connect for a server whose certificate chains to a private CA: caFile pins
+// the roots. ParseURL already sets ServerName from the URL host.
 func ConnectTLS(ctx context.Context, url, caFile string) (*redis.Client, error) {
 	opt, err := redis.ParseURL(url)
 	if err != nil {
@@ -65,10 +59,8 @@ func ConnectTLS(ctx context.Context, url, caFile string) (*redis.Client, error) 
 	return connect(ctx, opt)
 }
 
-// ConnectFromConfig picks ConnectTLS when caFile is non-empty and
-// Connect otherwise: the (url, caFile) pair every valkey-backed
-// service's config already carries as one unit (see
-// libs/go/config.RequireCAForRediss, which validates the same pair).
+// ConnectFromConfig picks ConnectTLS when caFile is non-empty, else Connect: the (url, caFile)
+// pair every valkey-backed service's config carries as one unit.
 func ConnectFromConfig(ctx context.Context, url, caFile string) (*redis.Client, error) {
 	if caFile != "" {
 		return ConnectTLS(ctx, url, caFile)
@@ -97,19 +89,12 @@ func connect(ctx context.Context, opt *redis.Options) (*redis.Client, error) {
 	return client, nil
 }
 
-// registerPoolMetrics reports client.PoolStats() through the global
-// OTel meter, a no-op until an SDK is installed (libs/go/otel Setup
-// with an OTLP endpoint). redisotel above emits semconv connection
-// usage and timings but not pool hits/misses, the signal for whether
-// the pool size fits the load; timeouts and conn gauges join them
-// under the vg prefix so pool panels read one namespace. Instruments
-// are identified by name and therefore shared process-wide while each
-// connect registers its own callback: if one process holds several
-// clients (integration tests; services hold exactly one), counter
-// observations sum across clients and each gauge keeps a single
-// client's value per collection. Callbacks outlive Close, which is
-// safe: PoolStats() reads atomic counters that freeze at their final
-// values.
+// registerPoolMetrics reports client.PoolStats() through the global OTel meter, a no-op until
+// an SDK is installed. redisotel covers connection usage and timings but not hits/misses (the
+// pool-fit signal), so this adds those plus timeouts and conn gauges under the vg namespace.
+// Instruments are shared by name process-wide: counters sum but each gauge reflects only one
+// client per collection. Callbacks stay safe after Close: PoolStats() reads atomic counters
+// frozen at their final values.
 func registerPoolMetrics(client *redis.Client) error {
 	m := otel.Meter(meterName)
 	hits, err := m.Int64ObservableCounter("vg.valkeykit.pool.hits",

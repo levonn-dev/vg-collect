@@ -15,9 +15,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/metrictest"
 )
 
-// TestInstall_RecordsAndCollects drives the whole point of Install: a
-// counter created after it must be readable back out through the
-// returned reader.
+// TestInstall_RecordsAndCollects pins that a counter created after Install is readable through the returned reader.
 func TestInstall_RecordsAndCollects(t *testing.T) {
 	reader := metrictest.Install(t)
 	counter, err := otel.Meter("metrictest-test").Int64Counter("test.install.counter")
@@ -32,9 +30,7 @@ func TestInstall_RecordsAndCollects(t *testing.T) {
 	}
 }
 
-// TestInstall_RestoresPriorProvider pins the sanctioned restore-previous
-// semantics: cleanup must put back the exact provider that was global
-// before Install ran, not a fresh blank or noop one.
+// TestInstall_RestoresPriorProvider pins that cleanup restores the exact prior global provider, not a fresh blank or noop one.
 func TestInstall_RestoresPriorProvider(t *testing.T) {
 	sentinel := sdkmetric.NewMeterProvider()
 	outerPrev := otel.GetMeterProvider()
@@ -52,11 +48,8 @@ func TestInstall_RestoresPriorProvider(t *testing.T) {
 	}
 }
 
-// TestInstall_ShutsDownInstalledProvider pins the other half of the
-// careful restore: the provider Install installed must be shut down on
-// cleanup, not merely abandoned. A shut-down ManualReader refuses
-// further Collect calls, which is the only externally observable
-// signal Shutdown ran.
+// TestInstall_ShutsDownInstalledProvider pins that cleanup shuts down the installed provider,
+// observable only via a shut-down ManualReader refusing further Collect calls.
 func TestInstall_ShutsDownInstalledProvider(t *testing.T) {
 	var reader *sdkmetric.ManualReader
 	t.Run("inner", func(st *testing.T) {
@@ -70,11 +63,8 @@ func TestInstall_ShutsDownInstalledProvider(t *testing.T) {
 	}
 }
 
-// runFatal runs f against a standalone *testing.T with no parent, so
-// f's own t.Fatal cannot fail the caller's test - (*testing.T).Fail
-// walks up the parent chain unconditionally, so a t.Run subtest is not
-// enough to contain it. f runs in its own goroutine because Fatal's
-// runtime.Goexit only unwinds the goroutine that called it.
+// runFatal runs f against a standalone *testing.T in its own goroutine.
+// A t.Run subtest would still propagate Fail to the caller; this doesn't.
 func runFatal(f func(t *testing.T)) bool {
 	sub := &testing.T{}
 	done := make(chan struct{})
@@ -86,11 +76,7 @@ func runFatal(f func(t *testing.T)) bool {
 	return sub.Failed()
 }
 
-// TestCollect_FatalsOnError pins Collect's fatal-on-error contract: a
-// registered callback that errors must fail the test immediately,
-// since every adopted suite except one (which collects through reader
-// directly for this exact reason - see Collect's doc comment) treats
-// a Collect error as its own bug to catch right away.
+// TestCollect_FatalsOnError pins that a registered callback erroring fails the test immediately.
 func TestCollect_FatalsOnError(t *testing.T) {
 	reader := metrictest.Install(t)
 	meter := otel.Meter("metrictest-test")
@@ -109,10 +95,8 @@ func TestCollect_FatalsOnError(t *testing.T) {
 	}
 }
 
-// TestByName_FindsAcrossScopesAndReportsMissing pins the no-scope-filter
-// lookup family (auth/server and user's shared shape): the first match
-// wins regardless of which scope carries it, and a missing name reports
-// false rather than a zero value silently mistaken for "found".
+// TestByName_FindsAcrossScopesAndReportsMissing pins that the first match wins regardless of
+// scope, and a missing name reports false, not a zero value.
 func TestByName_FindsAcrossScopesAndReportsMissing(t *testing.T) {
 	rm := metricdata.ResourceMetrics{ScopeMetrics: []metricdata.ScopeMetrics{
 		{Scope: instrumentation.Scope{Name: "scope.a"}, Metrics: []metricdata.Metrics{{Name: "a.counter"}}},
@@ -127,11 +111,8 @@ func TestByName_FindsAcrossScopesAndReportsMissing(t *testing.T) {
 	}
 }
 
-// TestScopeMetrics_FiltersByScope pins the bulk-fetch family
-// (collection's shape): two meters registering the SAME instrument
-// name under different scopes must not merge in ScopeMetrics's result
-// for either scope - the whole reason a caller reaches for scope
-// filtering instead of the simpler ByName.
+// TestScopeMetrics_FiltersByScope pins that two meters sharing an instrument name under
+// different scopes never merge in either scope's result.
 func TestScopeMetrics_FiltersByScope(t *testing.T) {
 	reader := metrictest.Install(t)
 	ctx := context.Background()
@@ -160,10 +141,7 @@ func TestScopeMetrics_FiltersByScope(t *testing.T) {
 	}
 }
 
-// TestInt64Points_AbsentInstrumentReturnsNil pins the nil-not-fatal
-// absence contract: several adopted suites assert a counter never
-// recorded by checking for a nil/empty slice, not by treating absence
-// as a test failure.
+// TestInt64Points_AbsentInstrumentReturnsNil pins that an unrecorded counter returns nil, not a fatal.
 func TestInt64Points_AbsentInstrumentReturnsNil(t *testing.T) {
 	reader := metrictest.Install(t)
 	if pts := metrictest.Int64Points(t, reader, "never.recorded"); pts != nil {
@@ -171,9 +149,7 @@ func TestInt64Points_AbsentInstrumentReturnsNil(t *testing.T) {
 	}
 }
 
-// TestInt64Points_FatalsOnWrongType pins the type-safety net: asking
-// for Sum[int64] points from a histogram must fail the test loudly
-// instead of silently returning nothing or panicking.
+// TestInt64Points_FatalsOnWrongType pins that requesting Sum[int64] from a histogram fails the test, not panics.
 func TestInt64Points_FatalsOnWrongType(t *testing.T) {
 	reader := metrictest.Install(t)
 	hist, err := otel.Meter("metrictest-test").Float64Histogram("test.wrongtype.hist")
@@ -187,9 +163,7 @@ func TestInt64Points_FatalsOnWrongType(t *testing.T) {
 	}
 }
 
-// TestHasAttrs pins containment semantics (enrichment's shape): a
-// match requires every wanted key/value to be present, but tolerates
-// extra attributes the series carries beyond what was asked for.
+// TestHasAttrs pins containment semantics: every wanted key/value must match, extra attributes are tolerated.
 func TestHasAttrs(t *testing.T) {
 	set := attribute.NewSet(attribute.String("a", "1"), attribute.String("b", "2"))
 	cases := []struct {
@@ -212,10 +186,8 @@ func TestHasAttrs(t *testing.T) {
 	}
 }
 
-// TestInt64Sum_SumsMatchingPointsAndZeroWhenAbsent pins the
-// partial-match summing family (enrichment's shape): the total folds
-// every series carrying the wanted attributes, an empty want sums
-// everything, and a never-recorded name is 0, not a fatal.
+// TestInt64Sum_SumsMatchingPointsAndZeroWhenAbsent pins that the total folds matching series,
+// an empty want sums everything, and an unrecorded name is 0, not a fatal.
 func TestInt64Sum_SumsMatchingPointsAndZeroWhenAbsent(t *testing.T) {
 	reader := metrictest.Install(t)
 	ctx := context.Background()
@@ -238,11 +210,8 @@ func TestInt64Sum_SumsMatchingPointsAndZeroWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent pins the
-// first-match extraction family (enrichment's shape): the point
-// carrying the wanted attributes comes back, and both "no point
-// matches" and "the instrument was never registered" come back as the
-// same zero value (Count 0), not a fatal.
+// TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent pins that the matching point comes
+// back, and both "no match" and "never registered" return the same zero value, not a fatal.
 func TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent(t *testing.T) {
 	reader := metrictest.Install(t)
 	ctx := context.Background()
@@ -265,15 +234,8 @@ func TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestFloat64GaugePoint_FirstMatchAndZeroValueWhenAbsent pins the
-// callback-backed-gauge sibling of
-// TestFloat64HistogramPoint_FirstMatchAndZeroValueWhenAbsent: the
-// point carrying the wanted attributes comes back, and both "no point
-// matches" and "the instrument was never registered" come back as the
-// same zero value (Value 0), not a fatal. Enrichment's restart-proof
-// refresh-last-completed gauge is the first real caller, where "no
-// point matches" is not an edge case but the expected shape for a
-// step that has not completed in this process yet.
+// TestFloat64GaugePoint_FirstMatchAndZeroValueWhenAbsent is Float64HistogramPoint's
+// callback-backed-gauge sibling: same first-match/zero-value-on-absence contract.
 func TestFloat64GaugePoint_FirstMatchAndZeroValueWhenAbsent(t *testing.T) {
 	reader := metrictest.Install(t)
 	meter := otel.Meter("metrictest-test")

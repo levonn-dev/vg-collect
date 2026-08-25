@@ -9,9 +9,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
 )
 
-// TestURL_BootsConnectsAndRoundTrips drives the whole point of the
-// package: URL must hand back a live Valkey connection string that the
-// same valkeykit.Connect every adopted call site uses can reach.
+// TestURL_BootsConnectsAndRoundTrips pins that URL returns a live connection string valkeykit.Connect can reach.
 func TestURL_BootsConnectsAndRoundTrips(t *testing.T) {
 	url := valkeytest.URL(t)
 	ctx := context.Background()
@@ -30,9 +28,7 @@ func TestURL_BootsConnectsAndRoundTrips(t *testing.T) {
 	}
 }
 
-// TestURL_SharedAcrossCalls pins the fixture's entire reason to exist:
-// a second call in the same test binary must reuse the first call's
-// container instead of booting another one.
+// TestURL_SharedAcrossCalls pins that a second call in the same binary reuses the first call's container.
 func TestURL_SharedAcrossCalls(t *testing.T) {
 	first := valkeytest.URL(t)
 	second := valkeytest.URL(t)
@@ -41,10 +37,8 @@ func TestURL_SharedAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestURL_SkipsUnderShort flips the test.short flag at runtime (there
-// is no other way to drive testing.Short() from inside a test) and
-// checks URL honors it, the same "go test -short" escape hatch every
-// fixture this package replaces already gave callers.
+// TestURL_SkipsUnderShort flips the test.short flag at runtime, the only way to drive
+// testing.Short() from inside a test, and checks URL honors it.
 func TestURL_SkipsUnderShort(t *testing.T) {
 	orig := flag.Lookup("test.short").Value.String()
 	if err := flag.Set("test.short", "true"); err != nil {

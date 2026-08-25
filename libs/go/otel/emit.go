@@ -7,12 +7,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-// Count adds 1 to c, tagged with attrs. c is nil-safe: every
-// service's New logs a registration failure once and keeps the nil
-// counter afterward, so every emission site needs the same
-// "if c == nil { return }" guard; Count centralizes it (generalized
-// from social's own count method) so the per-counter wrapper methods
-// across every service can delegate instead of restating it.
+// Count adds 1 to c, tagged with attrs. c is nil-safe: a registration failure leaves a nil
+// counter, so Count centralizes the "if c == nil { return }" guard every emission site needs.
 func Count(ctx context.Context, c metric.Int64Counter, attrs ...attribute.KeyValue) {
 	if c == nil {
 		return
@@ -20,9 +16,7 @@ func Count(ctx context.Context, c metric.Int64Counter, attrs ...attribute.KeyVal
 	c.Add(ctx, 1, metric.WithAttributes(attrs...))
 }
 
-// Record observes value on h, tagged with attrs. h is nil-safe, same
-// contract as Count, for the histogram-owning services (collection's
-// entry-rematch duration, enrichment's refresh-step duration).
+// Record observes value on h, tagged with attrs. h is nil-safe, same contract as Count.
 func Record(ctx context.Context, h metric.Float64Histogram, value float64, attrs ...attribute.KeyValue) {
 	if h == nil {
 		return

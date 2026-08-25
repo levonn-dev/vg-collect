@@ -1,9 +1,6 @@
-// Package jwtauthtest mints real, validator-accepted vgkeep access
-// tokens for tests: an in-process Ed25519 key and JWKS server stand in
-// for the auth service, so a suite can drive its real jwtauth
-// middleware without one running. It replaces four services'
-// independently hand-rolled key/JWKS/mint boilerplate with one
-// implementation.
+// Package jwtauthtest mints real, validator-accepted vgkeep access tokens for tests: an
+// in-process Ed25519 key and JWKS server stand in for the auth service, so a suite can drive
+// its real jwtauth middleware without one running.
 package jwtauthtest
 
 import (
@@ -22,37 +19,29 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
 )
 
-// Issuer and Audience are the iss/aud pair every minted token and
-// Validator in this package agree on. Fixed, not a NewEnv parameter:
-// every real adopter already hardcodes this same pair (the auth
-// service is the only real issuer, and it mints for one audience).
+// Issuer and Audience are the iss/aud pair every minted token and Validator agree on. Fixed,
+// not a NewEnv parameter, since the auth service is the only real issuer and audience.
 const (
 	Issuer   = "vgkeep-auth"
 	Audience = "vgkeep"
 )
 
-// kid identifies Env's one signing key in the JWKS document it serves.
-// Its value is only ever compared against itself, never asserted on by
-// a caller, so any fixed string works.
+// kid identifies Env's one signing key in the JWKS document; any fixed string works.
 const kid = "test-key"
 
-// Env is an in-process JWKS server plus the Ed25519 key it serves:
-// real signatures, verified through the real jwtauth.Validator, no
-// auth service required. Cheap to build (an in-process httptest
-// server, not a container), so unlike valkeytest's per-suite
-// singleton, a fresh Env per test is the norm.
+// Env is an in-process JWKS server plus the Ed25519 key it serves: real signatures, verified
+// through the real jwtauth.Validator, no auth service required. Cheap to build, so a fresh Env
+// per test is the norm.
 type Env struct {
-	// Validator is wired to this Env's JWKS server and the
-	// Issuer/Audience pair above: hand it to jwtauth's middleware, or
-	// call Validate directly.
+	// Validator is wired to this Env's JWKS server and Issuer/Audience: hand it to jwtauth's
+	// middleware, or call Validate directly.
 	Validator *jwtauth.Validator
 
 	priv ed25519.PrivateKey
 }
 
-// NewEnv generates an Ed25519 key, serves its public half as a JWKS
-// document from an httptest server for the life of t, and returns an
-// Env whose Validator accepts tokens Token and ServiceToken mint.
+// NewEnv generates an Ed25519 key, serves its public half as a JWKS document from an httptest
+// server for the life of t, and returns an Env whose Validator accepts Token/ServiceToken output.
 func NewEnv(t *testing.T) *Env {
 	t.Helper()
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -79,11 +68,8 @@ func NewEnv(t *testing.T) *Env {
 	}
 }
 
-// Token mints a valid access token for sub carrying roles. Called with
-// no roles it mints a roleless token (zero variadic args is a nil
-// slice, not []string{"user"}): callers that want a default role pick
-// one themselves, since which role - if any - a bare call should
-// assume differs by adopter.
+// Token mints a valid access token for sub carrying roles. Called with no roles it mints a
+// roleless token (zero variadic args is nil, not []string{"user"}); callers pick their own default.
 func (e *Env) Token(t *testing.T, sub string, roles ...string) string {
 	t.Helper()
 	now := time.Now()
@@ -94,11 +80,8 @@ func (e *Env) Token(t *testing.T, sub string, roles ...string) string {
 	})
 }
 
-// ServiceToken mints a valid access token carrying token_use=service
-// (no roles claim at all) for sub, mirroring how auth's internal
-// service-token endpoint mints a machine credential - e.g. for the
-// catalog-refresh CronJob - that requireAdminOrService-style guards
-// admit alongside an admin bearer.
+// ServiceToken mints a valid access token carrying token_use=service (no roles) for sub,
+// mirroring auth's internal service-token endpoint for machine credentials.
 func (e *Env) ServiceToken(t *testing.T, sub string) string {
 	t.Helper()
 	now := time.Now()

@@ -42,12 +42,9 @@ func newKeyCache(url string, minRefetch time.Duration) *keyCache {
 	}
 }
 
-// get returns the key for kid, refetching the JWKS at most once per
-// minRefetch window when the kid is unknown (covers key rotation
-// without letting a flood of bad kids hammer the auth service).
-// The fetch deliberately happens under the mutex: concurrent
-// validations serialize behind one upstream call (anti-stampede);
-// at our scale that head-of-line blocking is an accepted trade.
+// get returns the key for kid, refetching the JWKS at most once per minRefetch window when kid
+// is unknown (covers rotation without flooding auth with bad kids). The fetch happens under
+// the mutex deliberately: concurrent validations serialize behind one upstream call (anti-stampede).
 func (c *keyCache) get(ctx context.Context, kid string) (ed25519.PublicKey, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

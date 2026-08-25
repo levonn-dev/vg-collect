@@ -17,11 +17,9 @@ import (
 
 // Options configures the request-validation middleware for one service.
 type Options struct {
-	// Spec is the service's embedded OpenAPI document, e.g. the output of
-	// the generated api package's GetSpec(). Middleware disables Host
-	// validation (otherwise a valid request can 404 on a Host mismatch) by
-	// building the validator from a shallow copy with Servers cleared, so
-	// this value itself is never mutated.
+	// Spec is the service's embedded OpenAPI document (e.g. the generated api package's
+	// GetSpec()). Middleware validates from a shallow copy with Servers cleared; Spec itself
+	// is never mutated.
 	Spec *openapi3.T
 
 	// MaxBodyBytes caps the request body size read during validation, via
@@ -29,15 +27,11 @@ type Options struct {
 	MaxBodyBytes int64
 }
 
-// Middleware validates requests against opts.Spec and writes a house
-// problem+json response (code invalid_param or invalid_body) on schema
-// failures. Requests to routes absent from the spec pass through
-// untouched, so the wrapped handler's own 404/405 handling still applies.
-//
-// Security requirements in the spec are accepted unconditionally at this
-// layer (kin-openapi requires an AuthenticationFunc to be set at all, or
-// every secured operation 401s regardless of credentials): authentication
-// itself is jwtauth's job, running earlier in the chain, not specval's.
+// Middleware validates requests against opts.Spec and writes a house problem+json response
+// (invalid_param or invalid_body) on schema failures. Routes absent from the spec pass through,
+// so the wrapped handler's own 404/405 handling still applies. Security requirements are
+// accepted unconditionally here (kin-openapi requires an AuthenticationFunc or every secured
+// operation 401s); authentication is jwtauth's job, earlier in the chain.
 func Middleware(opts Options) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		nhOpts := &nethttpmiddleware.Options{
@@ -45,26 +39,16 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			Options: openapi3filter.Options{
 				AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
 				MultiError:         false,
-				// kin-openapi's default (false) rewrites the request body
-				// in place, filling every absent property with its
-				// schema default before the handler ever decodes it. That
-				// erases the "absent" case a caller's own default/
-				// cross-field logic (e.g. a create body's pricing_mode
-				// defaulting differently by branch, or an update
-				// distinguishing "field omitted" from "field explicitly
-				// set to its zero value") depends on being able to see -
-				// silently, since the handler has no way to tell a
-				// validator-injected default from one the caller actually
-				// sent. specval validates; it must never rewrite what the
-				// handler goes on to read.
+				// kin-openapi's default (false) rewrites the request body in place, filling absent
+				// properties with schema defaults before the handler decodes it - silently erasing
+				// the "absent" case a caller's own default/cross-field logic may depend on.
+				// specval validates; it must never rewrite what the handler reads.
 				SkipSettingDefaults: true,
 			},
 			ErrorHandlerWithOpts: func(_ context.Context, err error, w http.ResponseWriter, r *http.Request, errOpts nethttpmiddleware.ErrorHandlerOpts) {
-				// MatchedRoute is nil exactly when the spec has nothing to
-				// say about this request (unknown path, or a known path
-				// with a method the spec doesn't define for it) - both
-				// the 404 and 405 cases the generated mux is responsible
-				// for, not specval.
+				// MatchedRoute is nil exactly when the spec has nothing to say about this request
+				// (unknown path, or a known path/method the spec doesn't define) - the 404/405
+				// cases the generated mux owns, not specval.
 				if errOpts.MatchedRoute == nil {
 					next.ServeHTTP(w, r)
 					return
@@ -74,36 +58,24 @@ func Middleware(opts Options) func(http.Handler) http.Handler {
 			},
 		}
 
-		// A shallow copy so DoNotValidateServers (which nils Servers on
-		// whatever *openapi3.T it is given) never mutates the caller's
-		// spec - opts.Spec may be shared with, e.g., a self-hosted docs
-		// endpoint that still wants its Servers field intact.
+		// A shallow copy, since DoNotValidateServers nils Servers on whatever *openapi3.T it's
+		// given; opts.Spec may be shared with e.g. a docs endpoint that wants Servers intact.
 		specCopy := *opts.Spec
 		specCopy.Servers = nil
 
-		// Building the validator (in particular, the spec's gorillamux
-		// router) is done once here, when the middleware is installed,
-		// not per-request.
+		// Building the validator (the spec's gorillamux router) happens once here, not per-request.
 		validated := nethttpmiddleware.OapiRequestValidatorWithOptions(&specCopy, nhOpts)(next)
 
 		if opts.MaxBodyBytes <= 0 {
 			return validated
 		}
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Applied before the validator ever reads the body, so an
-			// over-cap request fails during the validator's own read
-			// (surfacing as a RequestError the encoder maps to
-			// invalid_body) rather than reaching the handler. Only when
-			// there is a body to cap: r.Body is nil for a bodyless
-			// request built by hand (e.g. http.NewRequest with a nil
-			// io.Reader, as every direct-ServeHTTP test harness in this
-			// repo does for a GET/DELETE) - a real net/http server
-			// guarantees a non-nil Body instead, but MaxBytesReader
-			// itself does not check: it always returns a non-nil
-			// wrapper, and reading (or closing) that wrapper panics on a
-			// nil underlying reader the first time anything - kin-
-			// openapi's own security-requirement check reads the body
-			// unconditionally - tries to read it.
+			// Applied before the validator reads the body, so an over-cap request fails during
+			// the validator's own read (invalid_body) rather than reaching the handler. Guarded
+			// on r.Body != nil: MaxBytesReader always wraps regardless, and reading a nil
+			// underlying reader through it panics - the case for a bodyless request built by
+			// hand (test harnesses' http.NewRequest with a nil io.Reader); real net/http always
+			// guarantees a non-nil Body.
 			if r.Body != nil {
 				r.Body = http.MaxBytesReader(w, r.Body, opts.MaxBodyBytes)
 			}

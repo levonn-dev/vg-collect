@@ -18,6 +18,8 @@ type Problem struct {
 	Code     string `json:"code,omitempty"`
 }
 
+// WriteProblem writes p as an RFC 9457 problem+json response, defaulting
+// Type to "about:blank" and Instance to r.URL.Path when either is unset.
 func WriteProblem(w http.ResponseWriter, r *http.Request, p Problem) {
 	if p.Type == "" {
 		p.Type = "about:blank"
@@ -30,10 +32,8 @@ func WriteProblem(w http.ResponseWriter, r *http.Request, p Problem) {
 	_ = json.NewEncoder(w).Encode(p)
 }
 
-// WriteProblemFields builds a Problem from status, code, and detail,
-// deriving Title from status via http.StatusText, and writes it via
-// WriteProblem. Type and Instance are left at their WriteProblem
-// defaults (about:blank, the request path).
+// WriteProblemFields builds a Problem from status, code, and detail, deriving Title from
+// status via http.StatusText, and writes it via WriteProblem.
 func WriteProblemFields(w http.ResponseWriter, r *http.Request, status int, code, detail string) {
 	WriteProblem(w, r, Problem{Status: status, Title: http.StatusText(status), Code: code, Detail: detail})
 }

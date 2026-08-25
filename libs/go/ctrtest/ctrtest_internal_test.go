@@ -8,13 +8,7 @@ import (
 	"testing"
 )
 
-// TestContainer_resolve_CachesBootError drives resolve's failure leg
-// directly with a stub boot: a real Docker failure isn't something a
-// test can reliably trigger, and once.Do would make the real thing
-// untestable a second time anyway (a failed Do never re-runs). Both
-// calls must return the same error, and boot itself must run exactly
-// once: the cached error has to reach the second caller without a
-// second boot attempt.
+// TestContainer_resolve_CachesBootError pins that a failed boot caches its error and runs exactly once.
 func TestContainer_resolve_CachesBootError(t *testing.T) {
 	c := &Container{}
 	bootErr := errors.New("boom")
@@ -35,11 +29,7 @@ func TestContainer_resolve_CachesBootError(t *testing.T) {
 	}
 }
 
-// TestContainer_resolve_CachesSuccess pins the other half of the
-// singleton contract: a successful boot also runs exactly once, and
-// every subsequent resolve reuses its URL instead of booting again.
-// This is the property every kit's URL(t) depends on (one container
-// per test binary, not one per test).
+// TestContainer_resolve_CachesSuccess pins that a successful boot runs exactly once and its URL is reused.
 func TestContainer_resolve_CachesSuccess(t *testing.T) {
 	c := &Container{}
 	calls := 0
@@ -62,10 +52,7 @@ func TestContainer_resolve_CachesSuccess(t *testing.T) {
 	}
 }
 
-// TestContainer_URL_BootsAndReturnsURL covers URL's happy path
-// directly (the per-kit packages only exercise it against a real
-// container): it must delegate to resolve and hand back exactly what
-// boot returned.
+// TestContainer_URL_BootsAndReturnsURL pins that URL delegates to resolve and returns boot's result.
 func TestContainer_URL_BootsAndReturnsURL(t *testing.T) {
 	c := &Container{}
 	got := c.URL(t, func(context.Context) (string, error) {
@@ -76,11 +63,8 @@ func TestContainer_URL_BootsAndReturnsURL(t *testing.T) {
 	}
 }
 
-// TestDBName_Properties pins the contract the kits and the Taskfile
-// sweep both depend on: the sweep prefix, postgres's 63-byte
-// identifier ceiling, a charset every datastore accepts, stability
-// for the same package dir, and distinct names for distinct dirs even
-// when their basenames collide (every service has an internal/store).
+// TestDBName_Properties pins the t_ prefix, the 63-byte cap, the [a-z0-9_] charset, stability
+// per dir, and distinct names for dirs with colliding basenames.
 func TestDBName_Properties(t *testing.T) {
 	a := DBName("/repo/services/auth/internal/store")
 	b := DBName("/repo/services/user/internal/store")
@@ -106,9 +90,7 @@ func TestDBName_Properties(t *testing.T) {
 	}
 }
 
-// TestDBName_TruncatesLongBasenames pins the ceiling: a basename long
-// enough to push past 63 bytes must be cut, and the uniqueness-
-// carrying hash prefix must survive the cut.
+// TestDBName_TruncatesLongBasenames pins that a long basename is cut to 63 bytes with the hash prefix intact.
 func TestDBName_TruncatesLongBasenames(t *testing.T) {
 	long := DBName("/repo/" + strings.Repeat("verylongdirectoryname", 5))
 	if len(long) != 63 {
@@ -119,11 +101,8 @@ func TestDBName_TruncatesLongBasenames(t *testing.T) {
 	}
 }
 
-// TestDBName_RunScope pins the concurrent-run isolation contract: with
-// TESTDS_RUN set, names carry the sanitized, length-capped scope right
-// after the t_ prefix (the shape the Taskfile's scoped clean matches),
-// two scopes yield two databases for the same package, and hostile
-// scope values cannot break the identifier charset or the 63-byte cap.
+// TestDBName_RunScope pins that TESTDS_RUN inserts a sanitized, capped scope after "t_", two
+// scopes yield distinct names, and hostile scope values stay within the charset and 63-byte cap.
 func TestDBName_RunScope(t *testing.T) {
 	const dir = "/repo/services/auth/internal/store"
 	unscoped := DBName(dir)
@@ -155,11 +134,8 @@ func TestDBName_RunScope(t *testing.T) {
 	}
 }
 
-// TestContainer_URL_SkipsUnderShort flips the test.short flag at
-// runtime (there is no other way to drive testing.Short() from inside
-// a test) and checks URL honors it before ever calling boot - the
-// same "go test -short" escape hatch every kit's own URL(t) gives
-// callers.
+// TestContainer_URL_SkipsUnderShort flips the test.short flag at runtime, the only way to
+// drive testing.Short() from inside a test, and checks URL skips before calling boot.
 func TestContainer_URL_SkipsUnderShort(t *testing.T) {
 	orig := flag.Lookup("test.short").Value.String()
 	if err := flag.Set("test.short", "true"); err != nil {

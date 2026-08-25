@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"strings"
+	"time"
 
 	"github.com/exaring/otelpgx"
 	"github.com/golang-migrate/migrate/v4"
@@ -22,6 +23,10 @@ import (
 // meterName follows the repo convention: meter name = module path.
 const meterName = "github.com/levonn-dev/vgkeep/libs/go/pgkit"
 
+// connectPingTimeout bounds the eager startup ping; pgx has no connect
+// timeout of its own, so an unreachable Postgres would hang readiness.
+var connectPingTimeout = 10 * time.Second
+
 // Connect builds an OTel-instrumented pool from a postgres:// URL.
 // TLS (verify-full + CA) rides in URL params: sslmode, sslrootcert.
 func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
@@ -34,7 +39,9 @@ func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("pgkit: connect: %w", err)
 	}
-	if err := pool.Ping(ctx); err != nil {
+	pingCtx, cancel := context.WithTimeout(ctx, connectPingTimeout)
+	defer cancel()
+	if err := pool.Ping(pingCtx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("pgkit: ping: %w", err)
 	}
@@ -45,17 +52,10 @@ func Connect(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// registerPoolMetrics reports pgxpool.Stat() through the global OTel
-// meter, a no-op until an SDK is installed (libs/go/otel Setup with an
-// OTLP endpoint), so processes without a collector observe nothing.
-// Instruments are identified by name and therefore shared process-wide
-// while each Connect registers its own callback: if one process holds
-// several pools (integration tests; services hold exactly one), counter
-// observations sum across pools and each gauge keeps a single pool's
-// value per collection. That trade is accepted so Connect can keep
-// returning a bare *pgxpool.Pool instead of an unregister handle no
-// service needs. Callbacks outlive Close, which is safe: Stat() on a
-// closed pool is a mutex-guarded read of frozen counters.
+// registerPoolMetrics reports pgxpool.Stat() through the global OTel meter, a no-op until an SDK
+// is installed. Instruments are shared by name process-wide: with several pools in one process,
+// counters sum across pools but each gauge reflects only one pool per collection.
+// Callbacks stay safe after Close: Stat() on a closed pool is a mutex-guarded read of frozen counters.
 func registerPoolMetrics(pool *pgxpool.Pool) error {
 	m := otel.Meter(meterName)
 	conns, err := m.Int64ObservableGauge("vg.pgkit.pool.connections",
@@ -107,20 +107,15 @@ func registerPoolMetrics(pool *pgxpool.Pool) error {
 	return err
 }
 
-// Migrate applies all up migrations from an embedded FS directory.
-// A no-change run is success (idempotent at startup/init-container).
-// Concurrent runs (e.g. two replicas' init containers during a
-// rollout) serialize on golang-migrate's pg_advisory_lock; if a
-// migrating pod dies, the session lock releases with its connection.
+// Migrate applies all up migrations from an embedded FS directory. A no-change run is success.
+// Concurrent runs serialize on golang-migrate's pg_advisory_lock, which releases if a migrating pod dies.
 func Migrate(databaseURL string, fsys fs.FS, dir string) error {
 	src, err := iofs.New(fsys, dir)
 	if err != nil {
 		return fmt.Errorf("pgkit: migration source: %w", err)
 	}
-	// Scheme swap: golang-migrate picks its driver by URL scheme and we
-	// want the pgx/v5 driver. "postgresql://" does NOT contain
-	// "postgres://" as a substring (the 'q' breaks it), so this pair of
-	// single replacements handles both canonical forms safely.
+	// golang-migrate picks its driver by URL scheme; swap to pgx5://. "postgresql://" does not
+	// contain "postgres://" as a substring, so both forms need their own replace.
 	url := strings.Replace(databaseURL, "postgres://", "pgx5://", 1)
 	url = strings.Replace(url, "postgresql://", "pgx5://", 1)
 	m, err := migrate.NewWithSourceInstance("iofs", src, url)

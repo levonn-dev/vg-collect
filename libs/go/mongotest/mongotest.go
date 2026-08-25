@@ -1,16 +1,11 @@
-// Package mongotest hands each test binary a live MongoDB connection
-// URL plus DBName, the binary's own database name on that server.
-// The server is either the long-lived shared container the Taskfile
-// manages (MONGOTEST_URL set: zero Docker traffic from the tests
-// themselves) or, for bare `go test` runs outside the Taskfile, a
-// one-shot testcontainer booted per binary. Each suite still owns its
-// own connect, database-drop reset, and migration run; this package
-// stops at handing back a reachable server and a name no concurrently
-// running binary shares.
+// Package mongotest hands each test binary a live MongoDB connection URL plus DBName, and
+// FreshDB for a reset, migrated, connected database on top. The server is the shared container
+// from MONGOTEST_URL when set, else a per-binary testcontainer.
 package mongotest
 
 import (
 	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -20,22 +15,19 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	tcmongo "github.com/testcontainers/testcontainers-go/modules/mongodb"
 	"github.com/testcontainers/testcontainers-go/wait"
+	"go.mongodb.org/mongo-driver/mongo"
 
 	"github.com/levonn-dev/vgkeep/libs/go/ctrtest"
+	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 )
 
 var shared ctrtest.Container
 
-// envURL names the shared MongoDB server the Taskfile starts once and
-// keeps running across runs (task test / test:cover set it). When it
-// is set the kit adopts that server instead of booting a container.
-// Unset (bare `go test`), the kit boots its own container exactly as
-// before.
+// envURL names the shared MongoDB server the Taskfile sets via MONGOTEST_URL; when set,
+// the kit adopts it instead of booting a container.
 const envURL = "MONGOTEST_URL"
 
-// serverURL resolves the server this binary's tests run against: the
-// env-named shared server when present, a freshly booted per-binary
-// container otherwise.
+// serverURL resolves the server for this binary's tests: the shared server when present, else a booted container.
 func serverURL(ctx context.Context) (string, error) {
 	if v := os.Getenv(envURL); v != "" {
 		return v, nil
@@ -43,20 +35,16 @@ func serverURL(ctx context.Context) (string, error) {
 	return bootMongo(ctx)
 }
 
-// waitOption is the module's own readiness strategy (log line plus
-// listening port) with every deadline raised from the 60s defaults to
-// 180s: long enough to outlast the multi-minute freezes a loaded
-// dev-host Docker daemon can hit, so a frozen daemon costs a slow
-// container start instead of a failed suite.
+// waitOption raises the module's default 60s readiness deadlines (log line plus listening
+// port) to 180s, to outlast multi-minute freezes a loaded dev-host Docker daemon can hit.
 func waitOption() testcontainers.CustomizeRequestOption {
 	return testcontainers.WithWaitStrategyAndDeadline(180*time.Second,
 		wait.ForLog("Waiting for connections").WithStartupTimeout(180*time.Second),
 		wait.ForListeningPort("27017/tcp").WithStartupTimeout(180*time.Second))
 }
 
-// bootMongo starts a mongo:8 container and returns its connection
-// URL. No Terminate: the testcontainers reaper collects the container
-// when the test process exits.
+// bootMongo starts a mongo:8 container and returns its connection URL. No Terminate: the
+// testcontainers reaper collects it when the process exits.
 func bootMongo(ctx context.Context) (string, error) {
 	mc, err := tcmongo.Run(ctx, "mongo:8", waitOption())
 	if err != nil {
@@ -65,26 +53,50 @@ func bootMongo(ctx context.Context) (string, error) {
 	return mc.ConnectionString(ctx)
 }
 
-// URL resolves the shared server the first time it is called in a
-// test binary and returns its connection URL on every call after
-// that, including from other test files sharing the process. Callers
-// run their own connect against the URL and scope every database
-// access to DBName, so two binaries running concurrently under
-// `go test -p 2` never touch each other's data.
+// URL resolves the shared server once per test binary and returns its URL on every later
+// call, including from other test files sharing the process.
 func URL(t *testing.T) string {
 	t.Helper()
 	return shared.URL(t, serverURL)
 }
 
-// DBName returns this test binary's own database name on the shared
-// server, derived from the calling file's directory - call it
-// directly from the package under test. Mongo creates databases
-// lazily, so there is nothing to provision: suites drop this database
-// at fixture start (their existing reset), which is also what makes
-// every run start fresh, and the t_ prefix is what the Taskfile's
-// post-run sweep matches when it clears the shared server.
+// DBName returns this binary's database name on the shared server, derived from the caller's
+// directory - call it directly from the package under test. Mongo creates databases lazily,
+// so callers drop it themselves at fixture start; the t_ prefix is the Taskfile sweep's match.
 func DBName(t *testing.T) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(1)
 	return ctrtest.DBName(filepath.Dir(file))
+}
+
+// FreshDB returns this binary's database on the shared server, reset (dropped) and migrated
+// from fsys/dir. Each service supplies its own embedded migrations.
+func FreshDB(t *testing.T, fsys fs.FS, dir string) *mongo.Database {
+	t.Helper()
+	_, file, _, _ := runtime.Caller(1)
+	name := ctrtest.DBName(filepath.Dir(file))
+	db, err := freshDB(context.Background(), URL(t), name, fsys, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Client().Disconnect(context.Background()) })
+	return db
+}
+
+// freshDB is FreshDB's error-returning core, split out so failure paths are testable with
+// crafted inputs; t.Fatal cannot be observed from inside the same test process.
+func freshDB(ctx context.Context, url, name string, fsys fs.FS, dir string) (*mongo.Database, error) {
+	client, err := mongokit.Connect(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.Database(name).Drop(ctx); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, err
+	}
+	if err := mongokit.Migrate(ctx, url, name, fsys, dir); err != nil {
+		_ = client.Disconnect(ctx)
+		return nil, err
+	}
+	return client.Database(name), nil
 }

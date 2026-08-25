@@ -12,8 +12,8 @@ import (
 	"time"
 )
 
-// bufHandler is a minimal slog.Handler that writes each record's message and
-// attrs into a bytes.Buffer. Always Enabled unless level is below levelFilter.
+// bufHandler is a minimal slog.Handler writing each record's message and attrs into a buffer;
+// Enabled unless level is below levelFilter.
 type bufHandler struct {
 	buf         *bytes.Buffer
 	levelFilter slog.Level
@@ -69,8 +69,7 @@ func newRecord(msg string) slog.Record {
 	return slog.NewRecord(time.Now(), slog.LevelInfo, msg, 0)
 }
 
-// TestFanout_Enabled_AnyEnabled verifies Enabled=true when at least one child
-// handler is enabled.
+// TestFanout_Enabled_AnyEnabled verifies Enabled=true when at least one child handler is enabled.
 func TestFanout_Enabled_AnyEnabled(t *testing.T) {
 	f := makeFanout(&testDisabledHandler{}, &bufHandler{buf: &bytes.Buffer{}})
 	if !f.Enabled(context.Background(), slog.LevelInfo) {
@@ -78,8 +77,7 @@ func TestFanout_Enabled_AnyEnabled(t *testing.T) {
 	}
 }
 
-// TestFanout_Enabled_NoneEnabled verifies Enabled=false when all children are
-// disabled.
+// TestFanout_Enabled_NoneEnabled verifies Enabled=false when all children are disabled.
 func TestFanout_Enabled_NoneEnabled(t *testing.T) {
 	f := makeFanout(&testDisabledHandler{}, &testDisabledHandler{})
 	if f.Enabled(context.Background(), slog.LevelInfo) {
@@ -87,8 +85,7 @@ func TestFanout_Enabled_NoneEnabled(t *testing.T) {
 	}
 }
 
-// TestFanout_Handle_DispatchesToAll verifies Handle routes to every enabled
-// child.
+// TestFanout_Handle_DispatchesToAll verifies Handle routes to every enabled child.
 func TestFanout_Handle_DispatchesToAll(t *testing.T) {
 	var buf1, buf2 bytes.Buffer
 	f := makeFanout(&bufHandler{buf: &buf1}, &bufHandler{buf: &buf2})
@@ -112,8 +109,7 @@ func TestFanout_Handle_SkipsDisabled(t *testing.T) {
 	}
 }
 
-// TestFanout_Handle_ReturnsFirstError verifies the first error is returned
-// and subsequent handlers still run.
+// TestFanout_Handle_ReturnsFirstError verifies the first error is returned and later handlers still run.
 func TestFanout_Handle_ReturnsFirstError(t *testing.T) {
 	want := errors.New("first-fail")
 	var buf bytes.Buffer

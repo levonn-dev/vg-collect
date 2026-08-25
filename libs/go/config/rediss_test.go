@@ -31,10 +31,8 @@ func TestRequireCAForRediss(t *testing.T) {
 	}
 }
 
-// TestRequireCAForRediss_ErrorMessage pins the exact string bff,
-// collection, and enrichment all depend on; the three call sites are
-// byte-identical, so there is exactly one message to preserve, not
-// one per caller.
+// TestRequireCAForRediss_ErrorMessage pins the exact string every call site depends on: all
+// are byte-identical, so there is one message to preserve, not one per caller.
 func TestRequireCAForRediss_ErrorMessage(t *testing.T) {
 	err := config.RequireCAForRediss("rediss://valkey:6379/0", "")
 	const want = "config: VALKEY_CA_FILE is required for a rediss:// VALKEY_URL"

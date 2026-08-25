@@ -20,9 +20,8 @@ func TestSetup_NoEndpointIsNoop(t *testing.T) {
 }
 
 func TestSetup_WithEndpointWiresProvidersAndShutdown(t *testing.T) {
-	// Lazy gRPC dial: constructors succeed without a collector, so the
-	// whole OTLP wiring branch executes; shutdown must return promptly
-	// (flush against a dead endpoint may error; that's acceptable).
+	// Lazy gRPC dial: constructors succeed without a collector, so the whole OTLP wiring branch
+	// executes; shutdown must return promptly (a flush error against a dead endpoint is acceptable).
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://127.0.0.1:1")
 	shutdown, err := vgotel.Setup(context.Background(), vgotel.Config{ServiceName: "test", Version: "dev"})
 	if err != nil {

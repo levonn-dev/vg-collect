@@ -14,10 +14,7 @@ import (
 //go:embed testdata/migrations/*.sql
 var testMigrations embed.FS
 
-// TestURL_BootsConnectsAndQueries drives the whole point of the
-// package: URL must hand back a live postgres connection string a
-// plain pgx.Connect can use, with no migration or schema of its own
-// required.
+// TestURL_BootsConnectsAndQueries pins that URL returns a live connection string pgx.Connect can use directly.
 func TestURL_BootsConnectsAndQueries(t *testing.T) {
 	url := pgtest.URL(t)
 	ctx := context.Background()
@@ -36,11 +33,7 @@ func TestURL_BootsConnectsAndQueries(t *testing.T) {
 	}
 }
 
-// TestFreshPool_MigratesAndResetsBetweenCalls drives the whole point
-// of FreshPool: the returned pool must already have the caller's
-// migrations applied, and a second call must reset the previous
-// call's data away instead of layering on top of it - the exact
-// behavior every adopted fixture relied on the hand-rolled block for.
+// TestFreshPool_MigratesAndResetsBetweenCalls pins that FreshPool applies migrations and resets data between calls.
 func TestFreshPool_MigratesAndResetsBetweenCalls(t *testing.T) {
 	ctx := context.Background()
 
@@ -56,9 +49,7 @@ func TestFreshPool_MigratesAndResetsBetweenCalls(t *testing.T) {
 		t.Fatalf("count after insert = %d, want 1", count)
 	}
 
-	// A second FreshPool call reuses the shared container (same
-	// TestURL_SharedAcrossCalls contract below) but must hand back a
-	// reset, re-migrated database: the row above must be gone.
+	// A second call reuses the shared container but must hand back a reset, re-migrated database.
 	pool2 := pgtest.FreshPool(t, testMigrations, "testdata/migrations")
 	if err := pool2.QueryRow(ctx, "SELECT count(*) FROM t").Scan(&count); err != nil {
 		t.Fatalf("count after reset: %v", err)
@@ -68,9 +59,7 @@ func TestFreshPool_MigratesAndResetsBetweenCalls(t *testing.T) {
 	}
 }
 
-// TestURL_SharedAcrossCalls pins the fixture's entire reason to exist:
-// a second call in the same test binary must reuse the first call's
-// container instead of booting another one.
+// TestURL_SharedAcrossCalls pins that a second call in the same binary reuses the first call's container.
 func TestURL_SharedAcrossCalls(t *testing.T) {
 	first := pgtest.URL(t)
 	second := pgtest.URL(t)
@@ -79,10 +68,8 @@ func TestURL_SharedAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestURL_SkipsUnderShort flips the test.short flag at runtime (there
-// is no other way to drive testing.Short() from inside a test) and
-// checks URL honors it, the same "go test -short" escape hatch every
-// fixture this package replaces already gave callers.
+// TestURL_SkipsUnderShort flips the test.short flag at runtime, the only way to drive
+// testing.Short() from inside a test, and checks URL honors it.
 func TestURL_SkipsUnderShort(t *testing.T) {
 	orig := flag.Lookup("test.short").Value.String()
 	if err := flag.Set("test.short", "true"); err != nil {

@@ -1,14 +1,14 @@
 package config_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/levonn-dev/vgkeep/libs/go/config"
 )
 
-// Synthetic variable names keep these tests hermetic; real names like
-// DATABASE_URL leak in from CI/shell environments and turn the
-// missing-required test falsely green.
+// Synthetic variable names keep these tests hermetic; real names like DATABASE_URL leak in
+// from CI/shell environments and turn the missing-required test falsely green.
 type testCfg struct {
 	Addr  string `env:"TEST_VG_HTTP_ADDR" envDefault:":8080"`
 	DBURL string `env:"TEST_VG_DB_URL,required"`
@@ -38,7 +38,12 @@ func TestLoad_EnvOverridesDefault(t *testing.T) {
 }
 
 func TestLoad_MissingRequired(t *testing.T) {
-	if _, err := config.Load[testCfg](); err == nil {
+	_, err := config.Load[testCfg]()
+	if err == nil {
 		t.Fatal("want error for missing TEST_VG_DB_URL")
+	}
+	const wantPrefix = "config: "
+	if !strings.HasPrefix(err.Error(), wantPrefix) {
+		t.Fatalf("error %q missing %q prefix", err.Error(), wantPrefix)
 	}
 }

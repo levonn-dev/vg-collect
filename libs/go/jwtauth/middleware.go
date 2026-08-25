@@ -19,8 +19,7 @@ func FromContext(ctx context.Context) (Claims, bool) {
 // problem+json) without jwtauth importing other vgkeep libs.
 type ErrorWriter func(w http.ResponseWriter, r *http.Request, status int, code, detail string)
 
-// Middleware returns an HTTP middleware that validates the Bearer token in
-// the Authorization header. On success the Claims are stored in the request
+// Middleware validates the Bearer token in the Authorization header and stores Claims in
 // context for downstream handlers to retrieve via FromContext.
 func Middleware(v *Validator, ew ErrorWriter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {

@@ -12,11 +12,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
-// runFatal runs f against a standalone *testing.T with no parent, so
-// f's own t.Fatal cannot fail the caller's test - (*testing.T).Fail
-// walks up the parent chain unconditionally, so a t.Run subtest is not
-// enough to contain it. f runs in its own goroutine because Fatal's
-// runtime.Goexit only unwinds the goroutine that called it.
+// runFatal runs f against a standalone *testing.T in its own goroutine.
+// A t.Run subtest would still propagate Fail to the caller; this doesn't.
 func runFatal(f func(t *testing.T)) bool {
 	sub := &testing.T{}
 	done := make(chan struct{})
@@ -28,9 +25,7 @@ func runFatal(f func(t *testing.T)) bool {
 	return sub.Failed()
 }
 
-// TestWaitFor_ReturnsAsSoonAsCheckPasses pins the poll-until-true
-// contract: WaitFor must not block past the first passing check, and
-// must not treat earlier failing checks as fatal.
+// TestWaitFor_ReturnsAsSoonAsCheckPasses pins that WaitFor stops polling on the first passing check.
 func TestWaitFor_ReturnsAsSoonAsCheckPasses(t *testing.T) {
 	calls := 0
 	reqtest.WaitFor(t, time.Second, func() bool {
@@ -42,9 +37,7 @@ func TestWaitFor_ReturnsAsSoonAsCheckPasses(t *testing.T) {
 	}
 }
 
-// TestWaitFor_FailsTestWhenTimeoutElapses is the negative control: a
-// check that never passes must fail the test once timeout elapses,
-// not hang or silently return.
+// TestWaitFor_FailsTestWhenTimeoutElapses is the negative control: a check that never passes fails the test.
 func TestWaitFor_FailsTestWhenTimeoutElapses(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		reqtest.WaitFor(st, 60*time.Millisecond, func() bool { return false })
@@ -53,9 +46,7 @@ func TestWaitFor_FailsTestWhenTimeoutElapses(t *testing.T) {
 	}
 }
 
-// spyBody wraps a Reader and records whether Close was called, so a
-// test can pin the body-closing contract: DecodeJSON closes the body,
-// unlike auth's original non-closing decode.
+// spyBody wraps a Reader and records whether Close was called.
 type spyBody struct {
 	io.Reader
 	closed bool
@@ -70,8 +61,7 @@ type namedThing struct {
 	Name string `json:"name"`
 }
 
-// TestDecodeJSON_DecodesIntoTheGivenType drives the whole point of
-// the generic: an arbitrary caller-chosen type decodes correctly.
+// TestDecodeJSON_DecodesIntoTheGivenType decodes into an arbitrary caller-chosen type.
 func TestDecodeJSON_DecodesIntoTheGivenType(t *testing.T) {
 	resp := &http.Response{Body: io.NopCloser(strings.NewReader(`{"name":"chrono trigger"}`))}
 	got := reqtest.DecodeJSON[namedThing](t, resp)
@@ -80,8 +70,7 @@ func TestDecodeJSON_DecodesIntoTheGivenType(t *testing.T) {
 	}
 }
 
-// TestDecodeJSON_ClosesBody pins the chosen trait: the body-closing
-// variant, not auth's original leaky one.
+// TestDecodeJSON_ClosesBody pins that DecodeJSON closes the response body.
 func TestDecodeJSON_ClosesBody(t *testing.T) {
 	body := &spyBody{Reader: strings.NewReader(`{}`)}
 	resp := &http.Response{Body: body}
@@ -91,8 +80,7 @@ func TestDecodeJSON_ClosesBody(t *testing.T) {
 	}
 }
 
-// TestDecodeJSON_FailsTestOnMalformedBody is the negative control:
-// undecodable JSON must fail the test, not panic or zero-value silently.
+// TestDecodeJSON_FailsTestOnMalformedBody is the negative control: malformed JSON fails the test.
 func TestDecodeJSON_FailsTestOnMalformedBody(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		resp := &http.Response{Body: io.NopCloser(strings.NewReader(`{not json`))}
@@ -102,9 +90,7 @@ func TestDecodeJSON_FailsTestOnMalformedBody(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_NilBodyOmitsBodyAndContentType covers the
-// bodyless GET/DELETE shape (auth's authReq, social/user's do(...,
-// nil)): no body to read and no Content-Type announcing one.
+// TestNewJSONRequest_NilBodyOmitsBodyAndContentType covers a nil body: no body and no Content-Type.
 func TestNewJSONRequest_NilBodyOmitsBodyAndContentType(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodGet, "/entries", "", nil)
 	if req.Method != http.MethodGet || req.URL.Path != "/entries" {
@@ -124,10 +110,7 @@ func TestNewJSONRequest_NilBodyOmitsBodyAndContentType(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_EmptyBearerOmitsAuthorizationHeader pins the
-// "optional" half of the bearer contract: an empty string must not
-// produce a header at all (the shape every do/serveUnit helper relies
-// on for its unauthenticated-request tests).
+// TestNewJSONRequest_EmptyBearerOmitsAuthorizationHeader pins that an empty bearer omits the header entirely.
 func TestNewJSONRequest_EmptyBearerOmitsAuthorizationHeader(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodGet, "/entries", "", nil)
 	if _, ok := req.Header["Authorization"]; ok {
@@ -135,8 +118,7 @@ func TestNewJSONRequest_EmptyBearerOmitsAuthorizationHeader(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_NonEmptyBearerSetsAuthorizationHeader covers the
-// other half: a non-empty bearer becomes a standard Bearer header.
+// TestNewJSONRequest_NonEmptyBearerSetsAuthorizationHeader pins a standard Bearer header for a non-empty bearer.
 func TestNewJSONRequest_NonEmptyBearerSetsAuthorizationHeader(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodGet, "/entries", "tok-123", nil)
 	if got := req.Header.Get("Authorization"); got != "Bearer tok-123" {
@@ -144,9 +126,7 @@ func TestNewJSONRequest_NonEmptyBearerSetsAuthorizationHeader(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_StructBodyIsJSONMarshaledWithContentType covers
-// the common case every service's builder shares: a Go value becomes
-// a JSON body, and the request announces it.
+// TestNewJSONRequest_StructBodyIsJSONMarshaledWithContentType pins a struct body JSON-marshaled with Content-Type set.
 func TestNewJSONRequest_StructBodyIsJSONMarshaledWithContentType(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodPost, "/entries", "", map[string]any{"title": "Chrono Trigger"})
 	if ct := req.Header.Get("Content-Type"); ct != "application/json" {
@@ -161,11 +141,8 @@ func TestNewJSONRequest_StructBodyIsJSONMarshaledWithContentType(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_StringBodyIsWrittenRaw pins the deliberate
-// malformed-JSON escape hatch auth's jsonReq and user's do both rely
-// on: a string body is written verbatim, not JSON-marshaled (which
-// would wrap it in quotes), so a caller can hand deliberately invalid
-// JSON to drive a decode-error test.
+// TestNewJSONRequest_StringBodyIsWrittenRaw pins that a string body is written verbatim, not JSON-marshaled,
+// so a caller can pass deliberately malformed JSON to drive a decode-error test.
 func TestNewJSONRequest_StringBodyIsWrittenRaw(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodPost, "/entries", "", "{not json")
 	b, err := io.ReadAll(req.Body)
@@ -177,10 +154,7 @@ func TestNewJSONRequest_StringBodyIsWrittenRaw(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_ReaderBodyPassesThroughUnencoded pins collection's
-// do(...) shape: a caller that already has an io.Reader (jsonBody's
-// *bytes.Reader, a strings.Reader for a raw payload) must have it used
-// verbatim, not re-JSON-encoded as if it were an opaque struct.
+// TestNewJSONRequest_ReaderBodyPassesThroughUnencoded pins that an io.Reader body passes through unencoded.
 func TestNewJSONRequest_ReaderBodyPassesThroughUnencoded(t *testing.T) {
 	req := reqtest.NewJSONRequest(t, http.MethodPost, "/entries", "", strings.NewReader(`{"raw":true}`))
 	b, err := io.ReadAll(req.Body)
@@ -192,13 +166,8 @@ func TestNewJSONRequest_ReaderBodyPassesThroughUnencoded(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_UsableAgainstARealListener pins the requirement
-// that made auth's integration-style helpers (post, postAuth, authReq)
-// adopt this over httptest.NewRequest: the result must be sendable
-// through a real http.Client, not just through a Handler's ServeHTTP.
-// httptest.NewRequest sets RequestURI, which http.Client.Do rejects
-// outright ("RequestURI can't be set in client requests") - a real
-// integration-test regression this pins against recurring.
+// TestNewJSONRequest_UsableAgainstARealListener pins that the result works through a real http.Client,
+// unlike httptest.NewRequest, whose RequestURI field http.Client.Do rejects outright.
 func TestNewJSONRequest_UsableAgainstARealListener(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -216,9 +185,7 @@ func TestNewJSONRequest_UsableAgainstARealListener(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_FailsTestWhenRequestIsMalformed covers
-// http.NewRequest's own error return (an invalid method token), the
-// other way NewJSONRequest can fail besides a bad body.
+// TestNewJSONRequest_FailsTestWhenRequestIsMalformed covers http.NewRequest's own error path.
 func TestNewJSONRequest_FailsTestWhenRequestIsMalformed(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		reqtest.NewJSONRequest(st, "BAD METHOD", "/entries", "", nil)
@@ -227,8 +194,7 @@ func TestNewJSONRequest_FailsTestWhenRequestIsMalformed(t *testing.T) {
 	}
 }
 
-// TestNewJSONRequest_FailsTestWhenBodyCannotMarshal is the negative
-// control on the default JSON-marshal branch.
+// TestNewJSONRequest_FailsTestWhenBodyCannotMarshal is the negative control on the JSON-marshal branch.
 func TestNewJSONRequest_FailsTestWhenBodyCannotMarshal(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		reqtest.NewJSONRequest(st, http.MethodPost, "/entries", "", make(chan int))
@@ -237,8 +203,7 @@ func TestNewJSONRequest_FailsTestWhenBodyCannotMarshal(t *testing.T) {
 	}
 }
 
-// problemResponse builds an *http.Response carrying status, the given
-// content type, and a problem+json-shaped body.
+// problemResponse builds an *http.Response with the given status, content type, and a problem+json body.
 func problemResponse(status int, contentType, code string) *http.Response {
 	body := `{"status":` + strconv.Itoa(status) + `,"code":"` + code + `","detail":"d","revoke_jtis":["j1","j2"]}`
 	return &http.Response{
@@ -248,11 +213,7 @@ func problemResponse(status int, contentType, code string) *http.Response {
 	}
 }
 
-// TestAssertProblem_HappyPathReturnsDecodedBody drives the whole
-// point: status, content type and code all match, and every field of
-// the problem body comes back decoded - including revoke_jtis, the
-// auth-specific extension a caller like the refresh-reuse tests reads
-// off the return value.
+// TestAssertProblem_HappyPathReturnsDecodedBody pins that all body fields, including revoke_jtis, decode correctly.
 func TestAssertProblem_HappyPathReturnsDecodedBody(t *testing.T) {
 	resp := problemResponse(http.StatusConflict, "application/problem+json", "refresh_reused")
 	p := reqtest.AssertProblem(t, resp, http.StatusConflict, "refresh_reused")
@@ -264,8 +225,7 @@ func TestAssertProblem_HappyPathReturnsDecodedBody(t *testing.T) {
 	}
 }
 
-// TestAssertProblem_FailsOnStatusMismatch is the negative control on
-// the first of the three checks.
+// TestAssertProblem_FailsOnStatusMismatch is the negative control on the status check.
 func TestAssertProblem_FailsOnStatusMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		resp := problemResponse(http.StatusBadRequest, "application/problem+json", "invalid_body")
@@ -275,9 +235,7 @@ func TestAssertProblem_FailsOnStatusMismatch(t *testing.T) {
 	}
 }
 
-// TestAssertProblem_FailsOnContentTypeMismatch is the negative control
-// on the second check: a 200 OK with a matching status but a plain
-// application/json body is not a problem response.
+// TestAssertProblem_FailsOnContentTypeMismatch is the negative control on the content-type check.
 func TestAssertProblem_FailsOnContentTypeMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		resp := problemResponse(http.StatusBadRequest, "application/json", "invalid_body")
@@ -287,8 +245,7 @@ func TestAssertProblem_FailsOnContentTypeMismatch(t *testing.T) {
 	}
 }
 
-// TestAssertProblem_FailsOnCodeMismatch is the negative control on the
-// third check.
+// TestAssertProblem_FailsOnCodeMismatch is the negative control on the code check.
 func TestAssertProblem_FailsOnCodeMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		resp := problemResponse(http.StatusBadRequest, "application/problem+json", "invalid_body")
@@ -298,8 +255,7 @@ func TestAssertProblem_FailsOnCodeMismatch(t *testing.T) {
 	}
 }
 
-// problemRecorder builds an httptest.ResponseRecorder carrying status,
-// the given content type, and a problem+json-shaped body.
+// problemRecorder builds an httptest.ResponseRecorder with the given status, content type, and problem+json body.
 func problemRecorder(status int, contentType, code string) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	rec.Header().Set("Content-Type", contentType)
@@ -308,9 +264,7 @@ func problemRecorder(status int, contentType, code string) *httptest.ResponseRec
 	return rec
 }
 
-// TestAssertProblemRec_HappyPathReturnsDecodedBody is AssertProblem's
-// recorder twin, same contract against a *httptest.ResponseRecorder
-// instead of a real *http.Response.
+// TestAssertProblemRec_HappyPathReturnsDecodedBody is AssertProblem's recorder twin.
 func TestAssertProblemRec_HappyPathReturnsDecodedBody(t *testing.T) {
 	rec := problemRecorder(http.StatusForbidden, "application/problem+json", "forbidden")
 	p := reqtest.AssertProblemRec(t, rec, http.StatusForbidden, "forbidden")
@@ -319,8 +273,7 @@ func TestAssertProblemRec_HappyPathReturnsDecodedBody(t *testing.T) {
 	}
 }
 
-// TestAssertProblemRec_FailsOnStatusMismatch is the negative control
-// on the first check.
+// TestAssertProblemRec_FailsOnStatusMismatch is the negative control on the status check.
 func TestAssertProblemRec_FailsOnStatusMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		rec := problemRecorder(http.StatusInternalServerError, "application/problem+json", "internal")
@@ -330,8 +283,7 @@ func TestAssertProblemRec_FailsOnStatusMismatch(t *testing.T) {
 	}
 }
 
-// TestAssertProblemRec_FailsOnContentTypeMismatch is the negative
-// control on the second check.
+// TestAssertProblemRec_FailsOnContentTypeMismatch is the negative control on the content-type check.
 func TestAssertProblemRec_FailsOnContentTypeMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		rec := problemRecorder(http.StatusInternalServerError, "application/json", "internal")
@@ -341,8 +293,7 @@ func TestAssertProblemRec_FailsOnContentTypeMismatch(t *testing.T) {
 	}
 }
 
-// TestAssertProblemRec_FailsOnCodeMismatch is the negative control on
-// the third check.
+// TestAssertProblemRec_FailsOnCodeMismatch is the negative control on the code check.
 func TestAssertProblemRec_FailsOnCodeMismatch(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		rec := problemRecorder(http.StatusInternalServerError, "application/problem+json", "internal")
@@ -352,11 +303,7 @@ func TestAssertProblemRec_FailsOnCodeMismatch(t *testing.T) {
 	}
 }
 
-// TestAssertProblemRec_FailsOnMalformedBody covers the recorder
-// variant's own decode step (a *bytes.Buffer already in memory, so it
-// unmarshals directly instead of going through DecodeJSON): a body
-// that is not valid JSON at all - a proxied error page landing on a
-// problem+json-labeled response - must fail the test, not panic.
+// TestAssertProblemRec_FailsOnMalformedBody pins that a non-JSON body fails the test, not panics.
 func TestAssertProblemRec_FailsOnMalformedBody(t *testing.T) {
 	if !runFatal(func(st *testing.T) {
 		rec := httptest.NewRecorder()
@@ -369,14 +316,10 @@ func TestAssertProblemRec_FailsOnMalformedBody(t *testing.T) {
 	}
 }
 
-// stubClient is a minimal stand-in for a generated xxxclient.Client:
-// just the base URL a real constructor like userclient.New(baseURL)
-// would capture.
+// stubClient is a minimal stand-in for a generated client, capturing just the base URL.
 type stubClient struct{ baseURL string }
 
-// TestNewTestClient_ConstructsAgainstTheBootedServer drives the whole
-// point: T's constructor gets handed the URL of a live server serving
-// h, matching every xxxclient.New(srv.URL) call site this replaces.
+// TestNewTestClient_ConstructsAgainstTheBootedServer pins that construct receives the booted server's URL.
 func TestNewTestClient_ConstructsAgainstTheBootedServer(t *testing.T) {
 	var gotPath string
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -399,9 +342,7 @@ func TestNewTestClient_ConstructsAgainstTheBootedServer(t *testing.T) {
 	}
 }
 
-// TestNewTestClient_ClosesServerOnCleanup pins the other half of the
-// "-construct-cleanup" contract every converted site relied on: the
-// server must not outlive the test.
+// TestNewTestClient_ClosesServerOnCleanup pins that the server does not outlive the test that booted it.
 func TestNewTestClient_ClosesServerOnCleanup(t *testing.T) {
 	var url string
 	t.Run("inner", func(st *testing.T) {
