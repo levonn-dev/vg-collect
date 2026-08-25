@@ -1,13 +1,7 @@
--- Follow/like actions need a history that survives retraction: the
--- rolling-24h cap counts entries here, not rows in follows/likes,
--- because Unfollow/Unlike hard-delete the edge (feeds must never show
--- a retracted action) and there is no tombstone left behind for the
--- cap to count instead - unlike comments, whose own live table
--- already keeps that history. No FK to users, matching every other
--- table in this schema (identities are validated over HTTP, never
--- joined in Postgres). Self-retaining: the store opportunistically
--- deletes rows older than 48h on every insert, so no background job
--- is needed to keep this bounded.
+-- Rolling-24h cap counts entries here, not follows/likes rows: Unfollow/
+-- Unlike hard-delete the edge, leaving no tombstone to count (unlike
+-- comments). No FK to users (identities validate over HTTP, never joined
+-- in Postgres). Self-retaining: the store sweeps rows older than 48h on insert.
 CREATE TABLE cap_events (
     user_id    uuid NOT NULL,
     kind       text NOT NULL CHECK (kind IN ('follow', 'like')),

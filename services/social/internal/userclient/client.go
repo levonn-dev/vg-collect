@@ -32,9 +32,8 @@ func New(baseURL string) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
-// CardsByIDs batch-loads cards (all visibilities - the attribution
-// surface); callers apply their own gates, e.g. follow validation
-// requires non-private.
+// CardsByIDs batch-loads cards at all visibilities (the attribution
+// surface); callers apply their own gates, e.g. non-private for follows.
 func (c *Client) CardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]Card, error) {
 	resp, err := c.api.GetSharedProfilesByIdsWithResponse(ctx,
 		&userapi.GetSharedProfilesByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))

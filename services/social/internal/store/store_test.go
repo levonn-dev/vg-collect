@@ -35,8 +35,7 @@ func TestFollow_IdempotentCapAndEvent(t *testing.T) {
 	if err != nil || !ins {
 		t.Fatalf("first follow: ins=%v err=%v", ins, err)
 	}
-	// Idempotent retry: no second edge, and the caller knows not to
-	// re-emit the event.
+	// Idempotent retry: no second edge, caller knows not to re-emit the event.
 	ins, err = s.Follow(ctx, a, b, 100)
 	if err != nil || ins {
 		t.Fatalf("retry follow: ins=%v err=%v", ins, err)
@@ -61,9 +60,8 @@ func TestFollow_IdempotentCapAndEvent(t *testing.T) {
 	}
 }
 
-// TestFollow_CapBoundaryIdempotentRetry is the regression case for the
-// cap-before-conflict ordering bug: retrying an edge already held must
-// never be charged against the cap, even when the cap is fully spent.
+// Guards the cap-before-conflict ordering bug: retrying an edge already
+// held must never be charged, even when the cap is fully spent.
 func TestFollow_CapBoundaryIdempotentRetry(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -78,8 +76,7 @@ func TestFollow_CapBoundaryIdempotentRetry(t *testing.T) {
 		t.Fatalf("follow b2: ins=%v err=%v", ins, err)
 	}
 
-	// Retrying an edge already held must succeed as a no-op even
-	// though the cap is fully spent: a retry is never charged.
+	// Retrying an already-held edge is a no-op even at a spent cap.
 	ins, err := s.Follow(ctx, a, b1, followCap)
 	if err != nil || ins {
 		t.Fatalf("retry at cap: ins=%v err=%v", ins, err)
@@ -90,8 +87,7 @@ func TestFollow_CapBoundaryIdempotentRetry(t *testing.T) {
 		a, b1).Scan(&events); err != nil || events != 1 {
 		t.Fatalf("b1 event count = %d, %v (want 1)", events, err)
 	}
-	// The retry must not double-charge cap_events either: only the two
-	// genuine follows (b1, b2) may have recorded an event.
+	// The retry must not double-charge cap_events; only b1/b2 recorded one.
 	var capEvents int
 	if err := poolOf(t, s).QueryRow(ctx,
 		`SELECT count(*) FROM cap_events WHERE user_id = $1 AND kind = 'follow'`,
@@ -105,10 +101,8 @@ func TestFollow_CapBoundaryIdempotentRetry(t *testing.T) {
 	}
 }
 
-// TestFollow_CapNotResetByUnfollowCycle is F1's regression case: the
-// rolling cap counts follow actions, not currently-held edges, so
-// retract-then-recreate cycling cannot bypass it the way it could
-// before cap_events existed.
+// The rolling cap counts follow actions, not currently-held edges, so
+// retract-then-recreate cycling cannot bypass it.
 func TestFollow_CapNotResetByUnfollowCycle(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -123,9 +117,8 @@ func TestFollow_CapNotResetByUnfollowCycle(t *testing.T) {
 			t.Fatalf("unfollow %s: %v", target, err)
 		}
 	}
-	// No edge is held at this point - both were unfollowed - but two
-	// genuine follow actions already happened in this window, so the
-	// third must still trip the cap.
+	// No edge is held here (both unfollowed), but two genuine follow
+	// actions already happened, so the third still trips the cap.
 	if _, err := s.Follow(ctx, a, b3, followCap); !errors.Is(err, store.ErrCapExceeded) {
 		t.Fatalf("cap err after unfollow-cycle = %v, want ErrCapExceeded", err)
 	}
@@ -236,8 +229,7 @@ func TestLike_CapBoundaryIdempotentRetry(t *testing.T) {
 		user, shelf1).Scan(&events); err != nil || events != 1 {
 		t.Fatalf("shelf1 event count = %d, %v (want 1)", events, err)
 	}
-	// The retry must not double-charge cap_events either: only the two
-	// genuine likes (shelf1, shelf2) may have recorded an event.
+	// The retry must not double-charge cap_events; only shelf1/shelf2 recorded one.
 	var capEvents int
 	if err := poolOf(t, s).QueryRow(ctx,
 		`SELECT count(*) FROM cap_events WHERE user_id = $1 AND kind = 'like'`,
@@ -268,9 +260,8 @@ func TestLike_CapNotResetByUnlikeCycle(t *testing.T) {
 			t.Fatalf("unlike %s: %v", shelf, err)
 		}
 	}
-	// No edge is held at this point - both were unliked - but two
-	// genuine like actions already happened in this window, so the
-	// third must still trip the cap.
+	// No edge is held here (both unliked), but two genuine like actions
+	// already happened, so the third still trips the cap.
 	if _, err := s.Like(ctx, user, shelf3, owner, likeCap); !errors.Is(err, store.ErrCapExceeded) {
 		t.Fatalf("cap err after unlike-cycle = %v, want ErrCapExceeded", err)
 	}
@@ -285,19 +276,17 @@ func TestLike_CapNotResetByUnlikeCycle(t *testing.T) {
 	}
 }
 
-// TestCapEvents_RetentionSweep pins the 48h self-retention: a genuine
-// follow's opportunistic sweep removes cap_events rows older than
-// 48h, but must never touch a row still inside the 24h window the cap
-// check actually reads.
+// Pins the 48h self-retention: a follow's opportunistic sweep removes
+// cap_events rows older than 48h but never touches the 24h window the
+// cap check reads.
 func TestCapEvents_RetentionSweep(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
 	pool := poolOf(t, s)
 	agedOut, stillCounted := uuid.New(), uuid.New()
 
-	// Backdate two seed rows directly - one past the 48h retention
-	// line, one inside the 24h cap window - unrelated to the follow
-	// that triggers the sweep below.
+	// Backdate two seed rows: one past the 48h retention line, one inside
+	// the 24h cap window, unrelated to the follow that triggers the sweep.
 	if _, err := pool.Exec(ctx,
 		`INSERT INTO cap_events (user_id, kind, created_at) VALUES ($1, 'follow', now() - interval '49 hours')`,
 		agedOut); err != nil {
@@ -487,11 +476,9 @@ func TestActivity_FeedTabsAndUndo(t *testing.T) {
 	}
 }
 
-// TestFeed_FollowingMergesAcrossFollowees pins the following tab's
-// per-followee merge against a flat oracle query over seeded data:
-// interleaved actors, page boundaries landing mid-actor, and a
-// non-followee that must never surface. Any divergence between the
-// merge shape and the naive whole-set sort fails here.
+// Checks the following tab's per-followee merge against a flat oracle
+// query: interleaved actors, page boundaries mid-actor, and a non-followee
+// that must never surface.
 func TestFeed_FollowingMergesAcrossFollowees(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -506,9 +493,8 @@ func TestFeed_FollowingMergesAcrossFollowees(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 30 followee events with interleaved timestamps (round-robin
-	// actors, one minute apart) plus 5 stranger events inside the same
-	// window.
+	// 30 followee events, round-robin actors one minute apart, plus 5
+	// stranger events in the same window.
 	base := time.Now().Add(-2 * time.Hour).Truncate(time.Second)
 	for i := range 30 {
 		actor := followees[i%len(followees)]
@@ -549,8 +535,7 @@ func TestFeed_FollowingMergesAcrossFollowees(t *testing.T) {
 		t.Fatalf("oracle rows = %d, want 30", len(want))
 	}
 
-	// Walk the feed with a page size that never divides evenly, so
-	// page boundaries land mid-actor.
+	// Page size 7 never divides evenly, so boundaries land mid-actor.
 	var got []uuid.UUID
 	var cursor *store.Cursor
 	for {
@@ -612,18 +597,15 @@ func TestPurgeUser_AnonymizeAndDelete(t *testing.T) {
 	leaver, other := uuid.New(), uuid.New()
 	leaverShelf, otherShelf := uuid.New(), uuid.New()
 
-	// leaver's graph: follows both ways, likes both ways, comments in
-	// both directions, activity everywhere.
+	// leaver's graph: follows/likes both ways, comments both directions.
 	_, _ = s.Follow(ctx, leaver, other, 100)
 	_, _ = s.Follow(ctx, other, leaver, 100)
 	_, _ = s.Like(ctx, leaver, otherShelf, other, 200)
 	_, _ = s.Like(ctx, other, leaverShelf, leaver, 200)
 	authored, _ := s.CreateComment(ctx, otherShelf, other, leaver, "leaver on other", 50)
 	received, _ := s.CreateComment(ctx, leaverShelf, leaver, other, "other on leaver", 50)
-	// leaver, as the shelf owner, removes other's comment on leaver's
-	// own shelf; that row gets hard-deleted below regardless of
-	// deleted_by (TestPurgeUser_PreservesOtherModeratorAttribution
-	// covers the deleted_by-NULLing path on a comment that survives).
+	// leaver (shelf owner) removes other's comment; hard-deleted below
+	// regardless of deleted_by (sibling test covers the NULLing path).
 	_, _ = s.DeleteComment(ctx, received.ID, leaver) // owner-removal: deleted_by = leaver
 
 	if err := s.PurgeUser(ctx, leaver); err != nil {
@@ -661,14 +643,10 @@ func TestPurgeUser_AnonymizeAndDelete(t *testing.T) {
 	}
 }
 
-// TestPurgeUser_PreservesOtherModeratorAttribution pins the
-// authored-elsewhere anonymize statement's deleted_by handling: a
-// comment the purge target authored on someone else's shelf, which
-// that shelf owner had already REMOVED before the purge, must keep
-// the owner's id in deleted_by afterward - only author_id and body
-// are erased. Nulling deleted_by unconditionally there would erase
-// the owner's own moderation action; the owner is not who is being
-// purged.
+// A comment the purge target authored on someone else's shelf, already
+// removed by that owner before the purge, must keep the owner's id in
+// deleted_by afterward (only author_id and body are erased); nulling it
+// unconditionally would erase the owner's own moderation action.
 func TestPurgeUser_PreservesOtherModeratorAttribution(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

@@ -20,10 +20,7 @@ import (
 )
 
 // authEnv is an in-process token mint + JWKS: real Ed25519 signatures
-// through the real jwtauth middleware, no auth service needed. The
-// nil-roles-means-"user" default in token is local policy - most
-// callers here want a plain user token and pass no roles at all -
-// jwtauthtest.Env.Token itself leaves roles exactly as passed.
+// through the real jwtauth middleware, no auth service needed.
 type authEnv struct {
 	v   *jwtauth.Validator
 	env *jwtauthtest.Env
@@ -44,10 +41,8 @@ func (a authEnv) token(t *testing.T, sub string, roles ...string) string {
 	return a.env.Token(t, sub, roles...)
 }
 
-// testLogger discards output: the valid-token route loop in
-// TestUnitAPIRoutesRequireJWT deliberately drives handlers with nil
-// collaborators, and httpkit.Recover logs those panics at ERROR - a
-// real logger would spam -v output with expected noise.
+// testLogger discards output; TestUnitAPIRoutesRequireJWT's nil
+// collaborators make httpkit.Recover log panics at ERROR otherwise.
 func testLogger() *slog.Logger { return slog.New(slog.DiscardHandler) }
 
 // newUnitServer mounts Handlers behind the real router + middleware.
@@ -157,8 +152,7 @@ func TestUnitBadParamIsProblemJSON(t *testing.T) {
 }
 
 // stubErrMeterProvider hands out a meter that refuses every counter
-// registration this service performs; the noop embeds satisfy the
-// rest of the interfaces.
+// registration; noop embeds satisfy the rest of the interfaces.
 type stubErrMeterProvider struct{ noop.MeterProvider }
 
 func (stubErrMeterProvider) Meter(string, ...metric.MeterOption) metric.Meter {
@@ -171,12 +165,9 @@ func (stubErrMeter) Int64Counter(string, ...metric.Int64CounterOption) (metric.I
 	return nil, errors.New("registration refused")
 }
 
-// TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
-// tolerate-nil idiom (shared across services): a caller that leaves
-// Options.Logger nil must not crash New, whose counter registration
-// otherwise logs straight through it. Every registration is forced to
-// fail, so New actually reaches opts.Logger.Error; without the
-// nil-logger guard this call would panic on the nil receiver.
+// A nil Options.Logger must not crash New. Forcing every meter
+// registration to fail makes New actually reach opts.Logger.Error,
+// exercising the nil-logger guard (otherwise a panic on the nil receiver).
 func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
 	prev := otel.GetMeterProvider()
 	otel.SetMeterProvider(stubErrMeterProvider{})

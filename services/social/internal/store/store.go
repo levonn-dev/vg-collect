@@ -1,7 +1,6 @@
-// Package store owns the social service's SQL. Events ride their
-// edges: an activity row is written exactly when its edge row
-// actually inserts, and deleted when the action is retracted, so a
-// retried idempotent PUT can never double-post to feeds.
+// Package store owns the social service's SQL. An activity row is written
+// only when its edge actually inserts, and deleted when the edge is
+// retracted, so a retried idempotent PUT never double-posts to feeds.
 package store
 
 import (
@@ -14,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 var (
@@ -27,43 +27,16 @@ type Store struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
 // Cursor is the keyset position (created_at, id), encoded
-// "<unixnano>.<uuid>". Keyset beats offsets here: stable while new
-// events arrive, and it can express "how far the raw stream was read"
-// for the bff's fill loop. bff re-encodes and validates the same wire
-// format across the service boundary, so both sides share httpkit's
-// type rather than risk drift between two hand copies.
+// "<unixnano>.<uuid>"; stable under inserts, unlike offsets. bff shares
+// this httpkit type across the service boundary to avoid wire-format drift.
 type Cursor = httpkit.Cursor
 
 var ParseCursor = httpkit.ParseCursor
 
-// scanAll drains rows into a slice, closing them once done. Every
-// call site in this package starts from an empty (non-nil) slice and
-// returns rows.Err() raw, so scanAll bakes in that one convention
-// rather than taking parameters no caller varies; each scan closure
-// keeps its own error-wrap text so a scan failure's message stays
-// call-site-specific.
-func scanAll[T any](rows pgx.Rows, scan func(pgx.Rows) (T, error)) ([]T, error) {
-	defer rows.Close()
-	out := []T{}
-	for rows.Next() {
-		x, err := scan(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, x)
-	}
-	return out, rows.Err()
-}
-
-// capCount counts a user's rows in the rolling 24h window, read
-// straight from a live table. Only comments use this: a comment's own
-// row IS its permanent history (delete tombstones it with deleted_at
-// set rather than removing it), so retract-then-recreate cycling
-// already burns the cap with no extra bookkeeping. Follows and likes
-// hard-delete their edge on retraction (feeds must never show a
-// retracted action), so a live-table count would forget every
-// retracted action - they read cap_events instead; see
-// capEventCount.
+// capCount counts a user's rows in the rolling 24h window from a live
+// table. Only comments use this: rows are tombstoned, not deleted, so the
+// count already includes retract-then-recreate cycling. Follows/likes
+// hard-delete their edge, so they read cap_events instead (see capEventCount).
 func capCount(ctx context.Context, tx pgx.Tx, table, col string, user uuid.UUID) (int, error) {
 	var n int
 	err := tx.QueryRow(ctx,
@@ -75,12 +48,9 @@ func capCount(ctx context.Context, tx pgx.Tx, table, col string, user uuid.UUID)
 	return n, nil
 }
 
-// capEventCount counts a user's rolling-24h actions of kind
-// ('follow' or 'like') from cap_events - an append-only log that
-// outlives the edge itself, unlike the live follows/likes tables (see
-// capCount's comment for why comments don't need this). The count
-// only ever reads back 24h, so it is unaffected by whether the 48h
-// retention sweep below has run yet.
+// capEventCount counts a user's rolling-24h ('follow'/'like') actions from
+// cap_events, an append-only log that outlives the edge (see capCount for
+// why comments don't need this); unaffected by the 48h sweep's timing.
 func capEventCount(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID) (int, error) {
 	var n int
 	err := tx.QueryRow(ctx,
@@ -92,12 +62,9 @@ func capEventCount(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID) 
 	return n, nil
 }
 
-// recordCapEvent charges one action against a user's rolling-24h kind
-// cap. Called only after the cap check passes, so this never runs for
-// the already-held idempotent-retry path. Opportunistically sweeps
-// rows older than 48h first - twice the 24h window capEventCount ever
-// reads - so the table self-retains without a background job, the
-// same idiom auth's auth_states sweep uses.
+// recordCapEvent charges one action against the rolling-24h cap; called
+// only after the cap check passes, so an idempotent retry is never charged.
+// Sweeps rows older than 48h first, so the table self-retains with no job.
 func recordCapEvent(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID) error {
 	if _, err := tx.Exec(ctx,
 		`DELETE FROM cap_events WHERE created_at < now() - interval '48 hours'`); err != nil {
@@ -110,13 +77,10 @@ func recordCapEvent(ctx context.Context, tx pgx.Tx, kind string, user uuid.UUID)
 	return nil
 }
 
-// Follow inserts the edge and, iff it inserted, the event. Returns
-// whether this call inserted (false = already following). The edge
-// insert runs before the cap check, so a retry of an edge already
-// held is never charged against the cap - only a genuine new edge is
-// counted, and it is counted after it lands. The cap itself counts
-// cap_events, not the live edge: unfollowing later must not let a
-// user re-earn cap headroom (see capEventCount).
+// Follow inserts the edge and, iff it inserted, the event; returns
+// whether this call inserted. The edge insert runs before the cap check,
+// so a retry of an already-held edge is never charged. The cap counts
+// cap_events, not the live edge, so unfollowing can't re-earn headroom.
 func (s *Store) Follow(ctx context.Context, follower, followee uuid.UUID, cap int) (bool, error) {
 	inserted := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -195,7 +159,7 @@ func (s *Store) FolloweeIDs(ctx context.Context, follower uuid.UUID) ([]uuid.UUI
 	if err != nil {
 		return nil, fmt.Errorf("store: followees: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (uuid.UUID, error) {
+	return pgkit.ScanAll(rows, []uuid.UUID{}, func(r pgx.Rows) (uuid.UUID, error) {
 		var id uuid.UUID
 		if err := r.Scan(&id); err != nil {
 			return uuid.UUID{}, fmt.Errorf("store: scan followee: %w", err)
@@ -204,12 +168,9 @@ func (s *Store) FolloweeIDs(ctx context.Context, follower uuid.UUID) ([]uuid.UUI
 	})
 }
 
-// Like inserts the edge (+event iff inserted). shelfOwner is
-// denormalized from the caller's collection resolve. As with Follow,
-// the edge insert runs before the cap check, so a retry of a like
-// already held is never charged against the cap. The cap itself
-// counts cap_events, not the live edge: unliking later must not let a
-// user re-earn cap headroom (see capEventCount).
+// Like inserts the edge (+event iff inserted); shelfOwner is denormalized
+// from the caller's collection resolve. As with Follow, the cap counts
+// cap_events, not the live edge, so unliking can't re-earn headroom.
 func (s *Store) Like(ctx context.Context, user, shelf, shelfOwner uuid.UUID, cap int) (bool, error) {
 	inserted := false
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -283,7 +244,7 @@ func (s *Store) ShelfSummaries(ctx context.Context, ids []uuid.UUID, viewer uuid
 	if err != nil {
 		return nil, fmt.Errorf("store: shelf summaries: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (ShelfSummary, error) {
+	return pgkit.ScanAll(rows, []ShelfSummary{}, func(r pgx.Rows) (ShelfSummary, error) {
 		var x ShelfSummary
 		if err := r.Scan(&x.ShelfID, &x.LikeCount, &x.CommentCount, &x.ViewerLikes); err != nil {
 			return ShelfSummary{}, fmt.Errorf("store: scan summary: %w", err)
@@ -300,7 +261,7 @@ func (s *Store) TopShelves(ctx context.Context, limit int) ([]uuid.UUID, error) 
 	if err != nil {
 		return nil, fmt.Errorf("store: top shelves: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (uuid.UUID, error) {
+	return pgkit.ScanAll(rows, []uuid.UUID{}, func(r pgx.Rows) (uuid.UUID, error) {
 		var id uuid.UUID
 		if err := r.Scan(&id); err != nil {
 			return uuid.UUID{}, fmt.Errorf("store: scan top: %w", err)

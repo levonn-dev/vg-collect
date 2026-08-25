@@ -3,8 +3,7 @@ package config
 
 import libconfig "github.com/levonn-dev/vgkeep/libs/go/config"
 
-// Config holds all environment-sourced configuration for the social
-// service.
+// Config holds the social service's environment-sourced configuration.
 type Config struct {
 	HTTPAddr    string `env:"HTTP_ADDR" envDefault:":8080"`
 	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
@@ -16,8 +15,8 @@ type Config struct {
 	CollectionServiceURL string `env:"COLLECTION_SERVICE_URL,required,notEmpty"`
 	UserServiceURL       string `env:"USER_SERVICE_URL,required,notEmpty"`
 
-	// Community-size dials: rolling-24h caps per user. Comments count
-	// tombstones (delete-repost spam still burns the cap).
+	// Rolling-24h per-user caps; comment counts include tombstones, so
+	// delete-repost spam still burns the cap.
 	CapComments24h int `env:"SOCIAL_CAP_COMMENTS_24H" envDefault:"50"`
 	CapFollows24h  int `env:"SOCIAL_CAP_FOLLOWS_24H"  envDefault:"100"`
 	CapLikes24h    int `env:"SOCIAL_CAP_LIKES_24H"    envDefault:"200"`

@@ -1,7 +1,6 @@
--- The social graph. shelf_id is a collection saved-view id; owner ids
--- are denormalized at write time so owner-scoped reads and the
--- account purge never need cross-service lookups. Visibility is NEVER
--- stored here: it is evaluated at read time against collection/user.
+-- The social graph. shelf_id is a collection saved-view id; owner ids are
+-- denormalized so owner-scoped reads and purge avoid cross-service lookups.
+-- Visibility is never stored here; it's evaluated at read time.
 CREATE TABLE follows (
     follower_id uuid NOT NULL,
     followee_id uuid NOT NULL,
@@ -21,10 +20,9 @@ CREATE TABLE likes (
 CREATE INDEX likes_shelf_idx ON likes (shelf_id);
 CREATE INDEX likes_owner_idx ON likes (shelf_owner_id);
 
--- Comment lifecycle: live -> self-deleted (deleted_by = author, body
--- NULL) / removed (deleted_by = owner, body RETAINED for a later
--- undelete) / purge-anonymized (author_id NULL, body NULL). The CHECK
--- pins live-row invariants; tombstone body rules are handler-enforced.
+-- Comment lifecycle: live -> self-deleted (deleted_by=author, body NULL)
+-- / removed (deleted_by=owner, body retained) / purge-anonymized
+-- (author_id NULL, body NULL). CHECK pins live-row invariants only.
 CREATE TABLE comments (
     id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     shelf_id       uuid NOT NULL,
@@ -45,11 +43,9 @@ CREATE INDEX comments_shelf_live_idx ON comments (shelf_id, created_at DESC, id 
 CREATE INDEX comments_author_idx ON comments (author_id);
 CREATE INDEX comments_owner_idx ON comments (shelf_owner_id);
 
--- Append-except-undo: retracting an action (unfollow, unlike, comment
--- delete) deletes its event so feeds never show retracted actions.
--- published_shelf keeps exactly one live row per shelf (the partial
--- unique index); republish refreshes it, throttled hourly in the
--- upsert.
+-- Append-except-undo: retracting an action deletes its event, so feeds
+-- never show retracted actions. published_shelf keeps exactly one live
+-- row per shelf (partial unique index); republish refreshes it, throttled hourly.
 CREATE TABLE activity (
     id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     actor_id          uuid NOT NULL,

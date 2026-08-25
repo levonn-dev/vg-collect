@@ -11,8 +11,6 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 )
 
-// newTestClient boots a server serving h and returns a Client pointed
-// at it, t.Fatal-ing on the constructor's own error.
 func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	t.Helper()
 	return reqtest.NewTestClient(t, h, func(baseURL string) *Client {
@@ -24,9 +22,6 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	})
 }
 
-// TestSharedShelf covers the happy path (forwards the bearer, decodes
-// the shelf) and the upstream-error path (a status outside the
-// 200/404 contract) that surfaces as ErrUpstream.
 func TestSharedShelf(t *testing.T) {
 	id := uuid.New()
 	ownerID := uuid.New()

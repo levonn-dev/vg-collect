@@ -7,6 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 // Event is one activity row - ids only, never visibility; the bff
@@ -41,15 +43,9 @@ func (s *Store) Feed(ctx context.Context, viewer uuid.UUID, tab string, cursor *
 	var query string
 	switch tab {
 	case "following":
-		// Per-followee top-K merge: each followee contributes at most
-		// one LIMIT worth of rows via its own (actor_id, created_at,
-		// id) index walk, and the outer sort merges those small sets.
-		// A flat IN-list query would instead gather every candidate
-		// row from every followee before sorting, so its cost grows
-		// with total activity volume; this shape's grows only with the
-		// followee count. The result is provably identical: the global
-		// newest LIMIT rows are always contained in the union of each
-		// followee's newest LIMIT rows below the cursor.
+		// Per-followee top-K merge (LATERAL join, index walk) costs
+		// O(followees), not O(activity volume); correct because the global
+		// top-LIMIT rows are always within the union of each followee's own.
 		query = `SELECT a.* FROM follows f
 			CROSS JOIN LATERAL (
 				SELECT ` + eventCols + ` FROM activity
@@ -71,7 +67,7 @@ func (s *Store) Feed(ctx context.Context, viewer uuid.UUID, tab string, cursor *
 	if err != nil {
 		return nil, fmt.Errorf("store: feed: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (Event, error) {
+	return pgkit.ScanAll(rows, []Event{}, func(r pgx.Rows) (Event, error) {
 		e, err := scanEvent(r)
 		if err != nil {
 			return Event{}, fmt.Errorf("store: scan event: %w", err)
@@ -80,9 +76,8 @@ func (s *Store) Feed(ctx context.Context, viewer uuid.UUID, tab string, cursor *
 	})
 }
 
-// RecordPublish keeps exactly one live publish row per shelf.
-// Republish refreshes created_at (a feed bump) at most once per
-// throttle window; inside the window it is a no-op ("throttled").
+// RecordPublish keeps exactly one live publish row per shelf; a republish
+// refreshes created_at at most once per throttle window (else "throttled").
 func (s *Store) RecordPublish(ctx context.Context, actor, shelf uuid.UUID, throttle time.Duration) (string, error) {
 	outcome := ""
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
@@ -118,25 +113,20 @@ func (s *Store) RecordPublish(ctx context.Context, actor, shelf uuid.UUID, throt
 	return outcome, err
 }
 
-// PurgeUser is the account-deletion leg: fully self-contained
-// (denormalized shelf_owner_id) and idempotent. Hard-deletes the
-// graph; anonymizes authored comments on surviving shelves.
+// PurgeUser is idempotent and self-contained (denormalized shelf_owner_id):
+// hard-deletes the graph, anonymizes authored comments on surviving shelves.
 func (s *Store) PurgeUser(ctx context.Context, userID uuid.UUID) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		steps := []struct{ q string }{
 			{`DELETE FROM follows WHERE follower_id = $1 OR followee_id = $1`},
 			{`DELETE FROM likes WHERE user_id = $1 OR shelf_owner_id = $1`},
-			// cap_events would self-expire within 48h anyway, but purge
-			// leaves nothing behind on principle.
+			// cap_events self-expires within 48h anyway; purge removes it now too.
 			{`DELETE FROM cap_events WHERE user_id = $1`},
 			{`DELETE FROM activity WHERE actor_id = $1 OR target_user_id = $1`},
 			{`DELETE FROM comments WHERE shelf_owner_id = $1`},
-			// deleted_by is nulled only when it names the purged user
-			// (their own prior self-delete); a shelf owner's earlier
-			// removal of this comment must survive purge-anonymization
-			// intact - the owner is not who is being purged, and erasing
-			// their moderation attribution here would be collateral
-			// damage the owner never asked for.
+			// deleted_by is nulled only when it names the purged user (their
+			// own self-delete); a shelf owner's earlier deletion must survive
+			// purge-anonymization, since the owner isn't who's being purged.
 			{`UPDATE comments SET author_id = NULL, body = NULL,
 				deleted_at = COALESCE(deleted_at, now()),
 				deleted_by = CASE WHEN deleted_by = $1 THEN NULL ELSE deleted_by END

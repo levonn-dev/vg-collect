@@ -286,9 +286,8 @@ func TestUnitUnfollow(t *testing.T) {
 
 // ---- likes ----
 
-// problemDetail decodes a problem+json response's code and detail so
-// a test can compare two responses byte-for-byte instead of just
-// checking that both happen to be a 404.
+// problemDetail decodes a problem+json response for byte-for-byte
+// comparison between two responses, not just a shared status code.
 func problemDetail(t *testing.T, resp *http.Response) (code, detail string) {
 	t.Helper()
 	var p struct {
@@ -346,12 +345,9 @@ func TestUnitLike(t *testing.T) {
 		wantProblem(t, resp, http.StatusBadGateway, "upstream_error")
 	})
 
-	// Effective visibility is the stricter of the shelf's own
-	// visibility and its owner's profile visibility: a shelf that
-	// is itself listed must still 404 when its owner is private, and
-	// that 404 must be indistinguishable from a genuinely missing
-	// shelf - otherwise PUT /likes/{shelfId} is an existence oracle
-	// for private profiles.
+	// Effective visibility is the stricter of shelf and owner visibility;
+	// a listed shelf with a private owner must 404 identically to a
+	// missing shelf, or the endpoint becomes an existence oracle.
 	t.Run("owner-private profile 404s as shelf_not_found and never touches the store", func(t *testing.T) {
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionclient.Shelf, error) {
 			return collectionclient.Shelf{ID: shelf, OwnerID: owner, Visibility: "listed"}, nil
@@ -539,9 +535,8 @@ func TestUnitSummaries(t *testing.T) {
 	})
 
 	t.Run("too many ids is a 400 before the store is touched", func(t *testing.T) {
-		// api/social.yaml declares maxItems: 100 on ids; specval's
-		// request-validation middleware now rejects 101+ entries ahead
-		// of this handler (the empty stubStore proves it).
+		// maxItems: 100 (api/social.yaml); specval rejects 101+ before
+		// this handler runs (the empty stubStore proves it).
 		q := url.Values{}
 		for range 101 {
 			q.Add("ids", uuid.New().String())
@@ -609,10 +604,8 @@ func TestUnitComments(t *testing.T) {
 		resp2 := do(t, http.MethodPost, srv2.URL+"/shelves/"+shelf.String()+"/comments", a2.token(t, me.String()), body("   "))
 		wantProblem(t, resp2, http.StatusBadRequest, "invalid_body")
 
-		// Sanctioned addition: the 2000-char DB CHECK boundary must 400
-		// before the store call (an opaque 500 otherwise), same as the
-		// empty-body case above - reuse srv2/a2 to prove the store and
-		// collection client are never touched for either invalid shape.
+		// The 2000-char DB CHECK boundary must 400 before the store call, not
+		// a 500; reuses srv2/a2 to prove the store is never touched.
 		resp3 := do(t, http.MethodPost, srv2.URL+"/shelves/"+shelf.String()+"/comments",
 			a2.token(t, me.String()), body(strings.Repeat("x", 2001)))
 		wantProblem(t, resp3, http.StatusBadRequest, "invalid_body")
@@ -681,10 +674,8 @@ func TestUnitComments(t *testing.T) {
 	})
 
 	t.Run("list limit is clamped by the api bounds", func(t *testing.T) {
-		// api/social.yaml declares minimum:1 maximum:50 on limit;
-		// specval's request-validation middleware enforces the bound
-		// ahead of this handler now (the empty stubStore proves it for
-		// the out-of-range cases).
+		// minimum:1 maximum:50 on limit (api/social.yaml); specval enforces
+		// it before this handler runs (the empty stubStore proves it).
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		for _, limit := range []string{"0", "51"} {
 			resp := do(t, http.MethodGet, srv.URL+"/shelves/"+shelf.String()+"/comments?limit="+limit,
@@ -773,10 +764,8 @@ func TestUnitComments(t *testing.T) {
 		}
 	})
 
-	// The counter itself is nil-guarded OTel (not asserted here); this
-	// pins that whatever outcome the store reports - self_delete or
-	// owner_delete - flows through h.count without the handler
-	// panicking or otherwise mishandling the string.
+	// OTel counter isn't asserted; this only pins that self_delete/owner_delete
+	// flows through h.count without the handler panicking.
 	t.Run("delete outcome flows through for both self_delete and owner_delete", func(t *testing.T) {
 		for _, outcome := range []string{"self_delete", "owner_delete"} {
 			t.Run(outcome, func(t *testing.T) {
@@ -836,9 +825,8 @@ func TestUnitCommentsByIds(t *testing.T) {
 	})
 
 	t.Run("too many ids is a 400 before the store is touched", func(t *testing.T) {
-		// api/social.yaml declares maxItems: 100 on ids; specval's
-		// request-validation middleware now rejects 101+ entries ahead
-		// of this handler (the empty stubStore proves it).
+		// maxItems: 100 (api/social.yaml); specval rejects 101+ before
+		// this handler runs (the empty stubStore proves it).
 		q := url.Values{}
 		for range 101 {
 			q.Add("ids", uuid.New().String())
@@ -929,14 +917,9 @@ func TestUnitFeedAndPublish(t *testing.T) {
 		}
 	})
 
-	// Defense in depth: the bff only ever reaches this endpoint with
-	// the shelf owner's own bearer, but the handler itself must not
-	// trust that - a caller recording a publish for a shelf they do
-	// not own gets the IDENTICAL shelf_not_found 404 a genuinely
-	// missing shelf would (never a new oracle for shelf existence),
-	// same posture as Follow/Like's owner-visibility gate. &stubStore{}
-	// has no recordPublish field, so either case reaching the store
-	// would panic loudly.
+	// A non-owner publish gets the same shelf_not_found 404 as a missing
+	// shelf (never a new oracle); &stubStore{} has no recordPublish field,
+	// so reaching the store would panic.
 	t.Run("publish by a non-owner is 404 shelf_not_found (byte-identical to a missing shelf), store untouched", func(t *testing.T) {
 		owner := uuid.New()
 		col := &stubCollection{sharedShelf: func(context.Context, string, uuid.UUID) (collectionclient.Shelf, error) {
@@ -970,21 +953,17 @@ func TestUnitFeedAndPublish(t *testing.T) {
 	})
 
 	t.Run("feed rejects a tab outside the enum", func(t *testing.T) {
-		// api/social.yaml enums tab to [following, you]; specval's
-		// request-validation middleware enforces the enum ahead of
-		// this handler now.
+		// tab enums to [following, you] (api/social.yaml); specval enforces
+		// it before this handler runs.
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/feed?tab=everything", a.token(t, me.String()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
 	})
 
 	t.Run("feed rejects a wrong-case tab", func(t *testing.T) {
-		// "Following" is the correct word with the wrong case: enum
-		// matching is case-sensitive (specval's request-validation
-		// middleware, which owns this check now, compares the raw
-		// string against the schema's exact enum values), so this must
-		// be rejected exactly like a nonsense tab value is - a
-		// case-insensitive match would silently accept it.
+		// Enum matching is case-sensitive (specval compares the raw string
+		// against exact schema values), so "Following" must reject like
+		// any other non-member value.
 		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 		resp := do(t, http.MethodGet, srv.URL+"/feed?tab=Following", a.token(t, me.String()), nil)
 		wantProblem(t, resp, http.StatusBadRequest, "invalid_param")
@@ -1029,6 +1008,15 @@ func TestUnitFeedAndPublish(t *testing.T) {
 		resp2 := do(t, http.MethodPost, srv.URL+"/events/shelf-published", a.token(t, me.String()),
 			map[string]string{"shelf_id": uuid.Nil.String()})
 		wantProblem(t, resp2, http.StatusBadRequest, "invalid_body")
+	})
+
+	t.Run("publish rejects an over-cap body (same invalid_body shape as a malformed one)", func(t *testing.T) {
+		// specval's MaxBodyBytes (routes.go, same 64KB as DecodeBody) catches
+		// this first, but the answer shape is identical either way.
+		srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
+		resp := do(t, http.MethodPost, srv.URL+"/events/shelf-published", a.token(t, me.String()),
+			strings.Repeat("a", 64<<10+1))
+		wantProblem(t, resp, http.StatusBadRequest, "invalid_body")
 	})
 
 	t.Run("publish maps collection errors", func(t *testing.T) {
@@ -1142,10 +1130,9 @@ func TestUnitTopAndPurge(t *testing.T) {
 	})
 }
 
-// TestUnitCallerRejectsMalformedSubject covers caller()'s own defensive
-// branch: a token can be validly signed (the JWT middleware only checks
-// signature/exp/iss/aud) yet carry a subject that is not a user uuid.
-// That must 500 cleanly, not panic, and must never reach the store.
+// caller() must 500 cleanly, not panic, when a validly-signed token (JWT
+// middleware only checks sig/exp/iss/aud) carries a non-uuid subject; the
+// store must never be reached.
 func TestUnitCallerRejectsMalformedSubject(t *testing.T) {
 	srv, a := newUnitServer(t, &stubStore{}, &stubCollection{}, &stubUsers{})
 	resp := do(t, http.MethodGet, srv.URL+"/explore/top-shelves", a.token(t, "not-a-uuid"), nil)

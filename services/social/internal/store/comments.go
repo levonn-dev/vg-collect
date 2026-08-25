@@ -8,6 +8,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 )
 
 // Comment is a row in any lifecycle state; live-read paths only ever
@@ -80,7 +82,7 @@ func (s *Store) ListLiveComments(ctx context.Context, shelf uuid.UUID, cursor *C
 	if err != nil {
 		return nil, fmt.Errorf("store: list comments: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (Comment, error) {
+	return pgkit.ScanAll(rows, []Comment{}, func(r pgx.Rows) (Comment, error) {
 		c, err := scanComment(r)
 		if err != nil {
 			return Comment{}, fmt.Errorf("store: scan comment: %w", err)
@@ -89,10 +91,8 @@ func (s *Store) ListLiveComments(ctx context.Context, shelf uuid.UUID, cursor *C
 	})
 }
 
-// LiveCommentsByIDs batch-loads live rows (feed excerpts). By
-// construction feed events only reference live comments (deletion
-// removes the event), so misses here mean a race, and the row just
-// drops from the hydration.
+// LiveCommentsByIDs batch-loads live rows for feed excerpts; feed events
+// only reference live comments, so a miss means a race and the row drops.
 func (s *Store) LiveCommentsByIDs(ctx context.Context, ids []uuid.UUID) ([]Comment, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+commentCols+` FROM comments
@@ -100,7 +100,7 @@ func (s *Store) LiveCommentsByIDs(ctx context.Context, ids []uuid.UUID) ([]Comme
 	if err != nil {
 		return nil, fmt.Errorf("store: comments by ids: %w", err)
 	}
-	return scanAll(rows, func(r pgx.Rows) (Comment, error) {
+	return pgkit.ScanAll(rows, []Comment{}, func(r pgx.Rows) (Comment, error) {
 		c, err := scanComment(r)
 		if err != nil {
 			return Comment{}, fmt.Errorf("store: scan comment: %w", err)
@@ -109,15 +109,10 @@ func (s *Store) LiveCommentsByIDs(ctx context.Context, ids []uuid.UUID) ([]Comme
 	})
 }
 
-// DeleteComment tombstones per the lifecycle: the author's own delete
-// erases the body (self-erasure, irreversible) and reports the outcome
-// "self_delete"; the shelf owner's removal retains the body (undelete
-// arrives with moderation tooling) and reports "owner_delete". The
-// author check runs first, so an owner deleting their own comment
-// still matches the author branch and reports self_delete. Either way
-// the comment's event is removed. Tombstones cannot be deleted again
-// (ErrNotFound); strangers get ErrForbidden. outcome is "" whenever
-// err is non-nil.
+// DeleteComment tombstones: author delete erases the body irreversibly
+// (self_delete); owner delete retains it (owner_delete), and an author
+// who is also the owner still gets self_delete. A re-delete of a
+// tombstone is ErrNotFound; a stranger gets ErrForbidden.
 func (s *Store) DeleteComment(ctx context.Context, id, caller uuid.UUID) (string, error) {
 	outcome := ""
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

@@ -1,10 +1,5 @@
-// Telemetry emission tests: the shared internalError and capExceeded
-// helpers' log/metric/response shape. Everything else domain-counter
-// related (follows, likes, comments, feedReads, publishEvents,
-// purgeRuns) rides through handlers_test.go's ordinary response-shape
-// assertions; these two helpers get direct pinning tests of their own
-// (collection's TestUnitInternalErrorLogCarriesCause is the model
-// both mirror).
+// Tests the shared internalError and capExceeded helpers directly; domain
+// counters ride through handlers_test.go's response-shape assertions.
 package server_test
 
 import (
@@ -30,9 +25,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
 )
 
-// syncBuffer is a mutex-guarded buffer: the httptest server's handler
-// goroutine writes log lines while the test goroutine reads them back.
-// Mirrors collection's syncBuffer (services/collection/internal/server/telemetry_test.go).
+// syncBuffer is a mutex-guarded buffer: the handler goroutine writes log
+// lines while the test goroutine reads them back.
 type syncBuffer struct {
 	mu  sync.Mutex
 	buf strings.Builder
@@ -81,8 +75,7 @@ func findLine(lines []map[string]any, msg string) map[string]any {
 }
 
 // newLoggedServer is newUnitServer with a capturing JSON logger, for
-// tests that must inspect the emitted log line rather than just the
-// response.
+// tests that inspect the log line, not just the response.
 func newLoggedServer(t *testing.T, st server.Store, col server.Collection, users server.Users) (*httptest.Server, authEnv, *syncBuffer) {
 	t.Helper()
 	buf := &syncBuffer{}
@@ -100,22 +93,15 @@ func newLoggedServer(t *testing.T, st server.Store, col server.Collection, users
 	return srv, a, buf
 }
 
-// capRejectionCount reads the capRejections counter's point for kind
-// (0 when that kind never incremented). Stays local rather than a bare
-// metrictest.Int64Sum call at each of the 3 sites below: binding the
-// fixed metric name once here, behind a domain-readable name, is the
-// same "genuinely adapts" call collection's collectDomainMetrics
-// makes for its own scope constant.
+// capRejectionCount reads the capRejections point for kind (0 if never
+// incremented), binding the metric name once instead of at each call site.
 func capRejectionCount(t *testing.T, reader *sdkmetric.ManualReader, kind string) int64 {
 	t.Helper()
 	return metrictest.Int64Sum(t, reader, "vg.social.caps.rejections", attribute.String("kind", kind))
 }
 
-// wantCapExceeded asserts a 429 cap_exceeded problem carrying
-// wantDetail verbatim - capExceeded's job is to preserve each of its
-// three call sites' exact pre-helper message, so the message itself
-// (not just the status/code the existing per-handler tests already
-// check) is the point of this assertion.
+// wantCapExceeded asserts a 429 cap_exceeded problem with wantDetail
+// verbatim; the message text itself is the point, not just the status/code.
 func wantCapExceeded(t *testing.T, resp *http.Response, wantDetail string) {
 	t.Helper()
 	if resp.StatusCode != http.StatusTooManyRequests {
@@ -136,12 +122,9 @@ func wantCapExceeded(t *testing.T, resp *http.Response, wantDetail string) {
 	}
 }
 
-// TestUnitInternalErrorLogCarriesCause pins the shared 500 helper:
-// the problem body stays the generic detail text a caller already
-// saw, while the log line carries the op and cause that text never
-// could. Unfollow is the representative site (a single store call, no
-// collection/users collaborators to wire up). Mirrors collection's
-// TestUnitInternalErrorLogCarriesCause.
+// internalError's 500 body stays generic detail text; the log line
+// carries the op and cause the body never could. Unfollow is the
+// representative site (single store call, no other collaborators).
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	boom := errors.New("pg exploded")
 	st := &stubStore{unfollow: func(context.Context, uuid.UUID, uuid.UUID) error { return boom }}
@@ -149,21 +132,17 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	resp := do(t, http.MethodDelete, srv.URL+"/follows/"+uuid.NewString(), a.token(t, uuid.NewString()), nil)
 	wantProblem(t, resp, http.StatusInternalServerError, "internal")
 
-	line := findLine(buf.lines(t), "store error")
+	line := findLine(buf.lines(t), "handler error")
 	if line == nil {
-		t.Fatal("no store error log line")
+		t.Fatal("no handler error log line")
 	}
 	if line["level"] != "ERROR" || line["op"] != "unfollow" || !strings.Contains(fmt.Sprint(line["err"]), "pg exploded") {
-		t.Fatalf("store error line: %v", line)
+		t.Fatalf("handler error line: %v", line)
 	}
 }
 
-// TestUnitCapExceeded_Follow, TestUnitCapExceeded_LikeShelf, and
-// TestUnitCapExceeded_CreateShelfComment each drive their real site's
-// cap-exceeded branch (fixtures mirror the "cap maps to 429" /
-// "cap 429s..." cases already in handlers_test.go) and check both
-// halves capExceeded(w, r, kind) must preserve: the capRejections
-// counter's kind label and the exact response detail text.
+// The three TestUnitCapExceeded_* tests each drive a real cap-exceeded
+// branch, checking both the capRejections kind label and the response detail.
 
 func TestUnitCapExceeded_Follow(t *testing.T) {
 	reader := metrictest.Install(t)

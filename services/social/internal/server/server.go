@@ -1,9 +1,6 @@
-// Package server maps HTTP (generated ServerInterface) onto the social
-// store, enforcing per-handler authorization from JWT claims. Shared
-// vocabulary: a "shelf" is a collection saved view seen through the
-// social layer. Writes that reference a shelf validate it through
-// collection first (never accept unvalidated writes); follows
-// validate the followee through the user service.
+// Package server maps HTTP (ServerInterface) onto the social store with
+// per-handler JWT authorization. A "shelf" is a collection saved view;
+// writes validate it through collection or the user service first.
 package server
 
 import (
@@ -25,10 +22,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/social/internal/userclient"
 )
 
-// Store is the persistence surface the handlers consume. Sentinels:
-// store.ErrCapExceeded (429), store.ErrForbidden (403),
-// store.ErrNotFound (404). Edge writes report whether this call
-// inserted so the handlers can label outcomes without re-reading.
+// Store is the persistence surface handlers consume. Sentinels map to
+// HTTP: ErrCapExceeded 429, ErrForbidden 403, ErrNotFound 404. Edge
+// writes report whether this call inserted, avoiding a re-read.
 type Store interface {
 	Follow(ctx context.Context, follower, followee uuid.UUID, cap int) (bool, error)
 	Unfollow(ctx context.Context, follower, followee uuid.UUID) error
@@ -59,9 +55,8 @@ type Users interface {
 	CardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]userclient.Card, error)
 }
 
-// publishRefreshThrottle bounds feed bumps from visibility
-// flip-flopping: one refresh per shelf per hour, a mechanism guard
-// (deliberately not config).
+// publishRefreshThrottle bounds feed bumps from visibility flip-flopping:
+// one refresh per shelf per hour, deliberately not config.
 const publishRefreshThrottle = time.Hour
 
 // Options carries construction-time dependencies and the
@@ -116,9 +111,8 @@ func New(st Store, col Collection, users Users, opts Options) *Handlers {
 	}
 }
 
-// count gives every social handler in handlers.go one
-// instrument-plus-attribute call shape instead of each site inlining
-// vgotel.Count directly; the nil guard lives in vgotel.Count.
+// count wraps vgotel.Count with one instrument-plus-attribute shape;
+// the nil guard lives in vgotel.Count.
 func (h *Handlers) count(ctx context.Context, c metric.Int64Counter, key, val string) {
 	vgotel.Count(ctx, c, attribute.String(key, val))
 }
@@ -133,22 +127,16 @@ func problem(w http.ResponseWriter, r *http.Request, status int, code, detail st
 	httpkit.WriteProblemFields(w, r, status, code, detail)
 }
 
-// internalError answers a 500 and logs its cause: op is the log's
-// stable "op" label, detail the response's human-readable text; the
-// two vary independently (e.g. op "list_comments" against detail
-// "list failed"). Same shape as collection's h.internalError and
-// enrichment's twin.
+// internalError logs the cause under a stable "op" label and answers a
+// 500 with a separate human-readable detail (they vary independently).
 func (h *Handlers) internalError(w http.ResponseWriter, r *http.Request, op, detail string, err error) {
-	h.logger.ErrorContext(r.Context(), "store error", "op", op, "err", err)
+	h.logger.ErrorContext(r.Context(), "handler error", "op", op, "err", err)
 	problem(w, r, http.StatusInternalServerError, "internal", detail)
 }
 
-// capExceeded counts one rate-cap rejection on capRejections and
-// answers 429. Follow, LikeShelf, and CreateShelfComment reach this
-// identical branch, differing only in kind (the counter's label) and
-// the noun in detail; kept as a literal per-kind switch rather than
-// derived from kind's plural spelling, so a future kind cannot go
-// stale by silently mismatching its message.
+// capExceeded counts one rejection and answers 429. The switch is
+// literal per kind, not derived from kind's plural spelling, so a new
+// kind cannot silently go stale.
 func (h *Handlers) capExceeded(w http.ResponseWriter, r *http.Request, kind string) {
 	h.count(r.Context(), h.capRejections, "kind", kind)
 	var detail string

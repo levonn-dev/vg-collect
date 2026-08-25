@@ -1,7 +1,6 @@
-// Package collectionclient resolves shelves through collection's
-// /shared surface, relaying the end-user's own bearer. Social accepts
-// no unvalidated shelf writes: a like or comment first proves the
-// shelf exists and is non-private for the caller.
+// Package collectionclient resolves shelves through collection's /shared
+// surface using the caller's bearer; writes must first confirm the shelf
+// exists and is non-private.
 package collectionclient
 
 import (
@@ -42,9 +41,8 @@ func New(baseURL string) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
-// SharedShelf resolves a shelf id. Collection's 404 covers both
-// unknown and private (no existence oracle) - both are
-// ErrShelfNotFound here.
+// SharedShelf resolves a shelf id; collection's 404 covers unknown and
+// private alike (no existence oracle), both mapped to ErrShelfNotFound.
 func (c *Client) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (Shelf, error) {
 	resp, err := c.api.GetSharedShelfWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {

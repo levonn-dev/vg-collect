@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -18,10 +17,8 @@ import (
 
 var _ api.ServerInterface = (*Handlers)(nil)
 
-// GetCommentsByIds' and GetShelvesSocialSummary's ids params both
-// declare maxItems: 100 in api/social.yaml; specval's
-// request-validation middleware enforces that bound ahead of these
-// handlers.
+// GetCommentsByIds and GetShelvesSocialSummary cap ids at maxItems:
+// 100 (api/social.yaml), enforced by specval before these handlers run.
 
 func (h *Handlers) Follow(w http.ResponseWriter, r *http.Request, userId openapi_types.UUID) {
 	me, bearer, ok := h.caller(w, r)
@@ -84,10 +81,8 @@ func (h *Handlers) GetProfileSocialSummary(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// LikeShelf also gates on the shelf owner's profile visibility,
-// mirroring Follow: a private owner must 404 exactly like a missing
-// or shelf-private shelf, since the bff relays this mutation without
-// re-running its effectiveShelf gate.
+// LikeShelf 404s on a private owner too, matching Follow: the bff relays
+// this mutation without re-running its own visibility gate.
 func (h *Handlers) LikeShelf(w http.ResponseWriter, r *http.Request, shelfId openapi_types.UUID) {
 	me, bearer, ok := h.caller(w, r)
 	if !ok {
@@ -189,9 +184,8 @@ func (h *Handlers) ListShelfComments(w http.ResponseWriter, r *http.Request, she
 	if !ok {
 		return
 	}
-	// Bounds (minimum 1, maximum 50) are now specval's job; only the
-	// default-when-absent fill (the generated param binder does not
-	// apply schema defaults) stays here.
+	// specval enforces bounds (1-50); this only fills the default-when-absent
+	// gap, since the generated param binder skips schema defaults.
 	limit := 20
 	if params.Limit != nil {
 		limit = *params.Limit
@@ -224,11 +218,8 @@ func (h *Handlers) CreateShelfComment(w http.ResponseWriter, r *http.Request, sh
 	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) {
 		return
 	}
-	// minLength(1) is specval's job, but it cannot reject a
-	// whitespace-only body (minLength counts raw characters);
-	// TrimSpace catches what specval cannot. maxLength(2000) is
-	// entirely specval's job, so this only fires on the
-	// blank-after-trim case.
+	// specval's minLength(1) counts raw chars, so whitespace-only bodies
+	// pass; TrimSpace catches those. maxLength(2000) is fully specval's job.
 	body := strings.TrimSpace(req.Body)
 	if body == "" {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "body must not be blank")
@@ -302,8 +293,7 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 	if !ok {
 		return
 	}
-	// tab's enum membership (common.yaml's shared tab parameter:
-	// [following, you]) is now specval's job.
+	// tab enum ([following, you], common.yaml) is validated by specval.
 	cur, ok := parseCursorParam(w, r, params.Cursor)
 	if !ok {
 		return
@@ -331,11 +321,9 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 			TargetUserId: e.TargetUserID, CreatedAt: e.CreatedAt,
 		}
 	}
-	// Unlike ListShelfComments' page-boundary cursor, next_cursor here
-	// tracks how far the RAW stream was read for the bff's fill loop
-	// (it filters by visibility after fetching, so a short raw page
-	// still needs a cursor to resume from); only a truly empty page -
-	// the raw stream itself exhausted - omits it.
+	// next_cursor tracks the raw stream position, not page boundaries: the
+	// bff filters by visibility after fetching, so even a short page needs
+	// a cursor to resume from; omitted only when the raw stream is exhausted.
 	if len(events) > 0 {
 		s := (store.Cursor{CreatedAt: events[len(events)-1].CreatedAt, ID: events[len(events)-1].ID}).String()
 		out.NextCursor = &s
@@ -348,15 +336,15 @@ func (h *Handlers) RecordShelfPublished(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	var req struct {
-		ShelfID uuid.UUID `json:"shelf_id"`
+	var req api.RecordShelfPublishedJSONRequestBody
+	if !httpkit.DecodeBody(w, r, maxBodyBytes, &req) {
+		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 4*1024)
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.ShelfID == uuid.Nil {
+	if req.ShelfId == uuid.Nil {
 		problem(w, r, http.StatusBadRequest, "invalid_body", "shelf_id required")
 		return
 	}
-	shelf, err := h.col.SharedShelf(r.Context(), bearer, req.ShelfID)
+	shelf, err := h.col.SharedShelf(r.Context(), bearer, req.ShelfId)
 	if errors.Is(err, collectionclient.ErrShelfNotFound) {
 		problem(w, r, http.StatusNotFound, "shelf_not_found", "no such shelf")
 		return
@@ -365,15 +353,8 @@ func (h *Handlers) RecordShelfPublished(w http.ResponseWriter, r *http.Request) 
 		problem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
 		return
 	}
-	// Defense in depth: the bff only ever calls this endpoint with the
-	// shelf owner's own bearer (publishIfListed fires off that
-	// caller's own successful view write), so this gate is
-	// unreachable through the current call graph - but a caller
-	// recording a publish for a shelf they do not own must not be
-	// trusted regardless. Same posture as Follow/Like's
-	// owner-visibility gate: answer the IDENTICAL shelf_not_found 404
-	// the missing-shelf branch above already emits, so a mismatch is
-	// never a new oracle for shelf existence.
+	// Unreachable via the bff (it always sends the owner's own bearer), but
+	// a non-owner still gets the same shelf_not_found 404, not a new oracle.
 	if me != shelf.OwnerID {
 		problem(w, r, http.StatusNotFound, "shelf_not_found", "no such shelf")
 		return
