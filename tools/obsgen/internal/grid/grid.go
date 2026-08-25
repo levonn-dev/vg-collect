@@ -33,10 +33,8 @@ func Check(rects []Rect) []Violation {
 	return out
 }
 
-// CheckStability reports panels that Grafana's render-time vertical
-// compaction would move: any rect that could shift up one row without
-// colliding renders above its authored position. A clean result means
-// the authored layout is exactly what operators see.
+// CheckStability reports panels Grafana's render-time vertical compaction
+// would move: any rect that could shift up one row without colliding.
 func CheckStability(rects []Rect) []Violation {
 	var out []Violation
 	for i, r := range rects {
@@ -61,11 +59,8 @@ func CheckStability(rects []Rect) []Violation {
 	return out
 }
 
-// overlaps reports whether a and b's rectangles share any grid area;
-// edge-adjacent rectangles (touching but not covering any shared cell)
-// do not overlap. Shared by Check's own pairwise pass and
-// CheckStability's one-row-up trial so the two can never define
-// collision differently.
+// overlaps reports whether a and b share any grid area; edge-adjacent
+// rects don't overlap. Shared by Check and CheckStability so collision is defined once.
 func overlaps(a, b Rect) bool {
 	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }

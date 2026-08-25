@@ -15,11 +15,21 @@ spec:
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        runAsNonRoot: true
+        # Numeric uid so the kubelet can verify runAsNonRoot (distroless nonroot = 65532).
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
+          securityContext: &appSecCtx
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
           env: &appEnv
             - name: PG_PASSWORD
               valueFrom:
@@ -58,6 +68,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - { name: http, containerPort: 8080 }
+          securityContext: *appSecCtx
           env: *appEnv
           volumeMounts: *caMounts
           livenessProbe:

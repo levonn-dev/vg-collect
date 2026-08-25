@@ -1,6 +1,4 @@
-# Golden blocks: shared panels instantiated per service at the y anchor
-# each service manifest declares under golden_blocks. Fragment gridPos.y
-# is the offset inside the block.
+# Golden blocks: shared panels instantiated per service at the golden_blocks y anchor; fragment gridPos.y is the offset inside the block.
 blocks:
   stat_row:
     panels:
@@ -403,6 +401,73 @@ blocks:
               "datasource": { "type": "prometheus", "uid": "prometheus" },
               "expr": "sum(rate(pg_stat_database_xact_rollback{service=\"{service}-pg\",datname!~\"template.*\"}[$__rate_interval]))",
               "legendFormat": "rollback",
+              "exemplar": false
+            }
+          ]
+        }
+  mongo:
+    panels:
+      - |
+        {
+          "type": "timeseries",
+          "title": "Mongo pool connections",
+          "gridPos": { "h": 8, "w": 8, "x": 0, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "vg_mongokit_pool_connections{service_name=\"{service}\"}",
+              "legendFormat": "open",
+              "exemplar": false
+            },
+            {
+              "refId": "B",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "vg_mongokit_pool_connections_idle{service_name=\"{service}\"}",
+              "legendFormat": "idle",
+              "exemplar": false
+            },
+            {
+              "refId": "C",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "vg_mongokit_pool_connections_max{service_name=\"{service}\"}",
+              "legendFormat": "max",
+              "exemplar": false
+            }
+          ]
+        }
+      - |
+        {
+          "type": "timeseries",
+          "title": "Mongo pool acquire rate",
+          "gridPos": { "h": 8, "w": 8, "x": 8, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "rate(vg_mongokit_pool_acquires_total{service_name=\"{service}\"}[$__rate_interval])",
+              "legendFormat": "acquires",
+              "exemplar": false
+            }
+          ]
+        }
+      - |
+        {
+          "type": "timeseries",
+          "title": "Mongo pool cleared events",
+          "gridPos": { "h": 8, "w": 8, "x": 16, "y": 0 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": { "type": "prometheus", "uid": "prometheus" },
+              "expr": "increase(vg_mongokit_pool_cleared_total{service_name=\"{service}\"}[5m])",
+              "legendFormat": "cleared",
               "exemplar": false
             }
           ]

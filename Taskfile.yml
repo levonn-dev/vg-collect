@@ -1,29 +1,18 @@
-# go-task taskfile (https://taskfile.dev). Run `task` with no args to list
-# every task with its description. The layout mirrors the dev flow:
-# bootstrap -> lint -> build/test -> gen -> run.
-#
-# vgkeep is a multi-module Go monorepo plus a Vite/React frontend. The
-# Go tasks fan out over every module discovered by the GO_MODULES var
-# (every directory containing a go.mod); the frontend and the per-service
-# OpenAPI codegen live in included Taskfiles (see `includes:` at the bottom
-# and call them namespaced, e.g. `task frontend:test`, `task auth:gen`).
-#
-# CI (.github/workflows/ci.yml) runs `task lint`, `task test:cover`, and
-# `task gen` (drift-checked). `task check` is the local pre-commit
-# equivalent (non-mutating).
+# go-task taskfile (https://taskfile.dev). `task` with no args lists every
+# task. Go tasks fan out over every module in GO_MODULES (dirs with a
+# go.mod); frontend and per-service codegen live in included Taskfiles,
+# called namespaced (e.g. `task frontend:test`, `task auth:gen`).
 
 version: "3"
 
 vars:
-  # Every directory with a go.mod, one per line. Drives the fan-out loops
-  # below, so a new service is picked up automatically once it has a module.
+  # Dirs with a go.mod, one per line; drives the fan-out loops below.
   GO_MODULES:
     sh: find . -name go.mod -not -path '*/node_modules/*' -exec dirname {} \; | sort
 
 env:
-  # Shared test datastore servers: one long-lived container per kind,
-  # started once by test:datastores and reused across runs. Concurrent
-  # runs stay apart via the TESTDS_RUN scope test/test:cover mint.
+  # Shared test datastore containers, one per kind, started once by
+  # test:datastores and reused; TESTDS_RUN scopes concurrent runs apart.
   PGTEST_URL: postgres://pgtest:pgtest@127.0.0.1:54329/pgtest?sslmode=disable
   MONGOTEST_URL: mongodb://127.0.0.1:27019
   VALKEYTEST_URL: redis://127.0.0.1:63790
@@ -59,9 +48,8 @@ tasks:
       - helm repo add jaegertracing https://jaegertracing.github.io/helm-charts --force-update >/dev/null
       - helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update >/dev/null
       - helm dependency update deploy/charts/platform
-      # helm applies a chart's crds/ only on install, never upgrade;
-      # vg-platform already exists, so the monitoring CRDs go in by hand
-      # (idempotent; also the upgrade path when the chart version bumps).
+      # helm only applies a chart's crds/ on install, not upgrade, so the
+      # monitoring CRDs are applied by hand here (idempotent).
       - helm show crds prometheus-community/kube-prometheus-stack --version 87.10.1
           | kubectl apply --server-side --force-conflicts -f -
       - helm upgrade --install vg-platform deploy/charts/platform
@@ -73,25 +61,21 @@ tasks:
   bootstrap:cluster:down:
     desc: 'Tear down the platform (both helm releases + the vg-platform namespace). The next bootstrap:cluster mints a NEW dev CA, so TLS secrets already issued in vgkeep keep chaining to the old one; for a full reset run `task nuke && task bootstrap:cluster:down`.'
     cmds:
-      # helm uninstall (never a bare namespace delete): the releases own
-      # cluster-scoped objects (ClusterIssuers, cert-manager/ESO webhook
-      # configs, IngressClass, RBAC) that a namespace delete would strand,
-      # leaving webhooks pointing at dead services. Reverse install order.
+      # helm uninstall, not a bare namespace delete: the releases own
+      # cluster-scoped objects (ClusterIssuers, webhook configs, RBAC) a
+      # namespace delete would strand. Reverse install order.
       - helm uninstall vg-platform-config -n vg-platform --ignore-not-found
       - helm uninstall vg-platform -n vg-platform --ignore-not-found
-      # Survivors by design: cert-manager CRDs (helm.sh/resource-policy
-      # keep) and APISIX ingress CRDs (chart crds/ dir); the next
-      # bootstrap:cluster re-adopts them. ESO CRDs are plain templates, so
-      # their removal cascades to ExternalSecrets/ClusterSecretStores
-      # cluster-wide. The delete below waits for finalization, so an
-      # immediate bootstrap:cluster does not race a Terminating namespace.
+      # cert-manager CRDs (resource-policy: keep) and APISIX's (chart
+      # crds/ dir) survive for reuse. ESO CRDs are templates, so removal
+      # cascades ExternalSecrets/ClusterSecretStores cluster-wide; the
+      # delete blocks until finalized, so a re-run cannot race it.
       - kubectl delete namespace vg-platform --ignore-not-found
 
   # -------------------------------- lint ---------------------------------
   #
-  # golangci-lint v2 has formatters (gofmt + goimports) enabled, so `lint`
-  # also checks formatting (there is no separate fmt task) and `lint:fix`
-  # applies it. helm lint is check-only (no autofix), so it runs in both.
+  # golangci-lint v2 also formats (gofmt/goimports): lint covers formatting
+  # too, and lint:fix applies it. helm lint is check-only, so it runs in both.
 
   lint:
     desc: 'Verify everything: golangci-lint (incl. gofmt/goimports) per module + helm lint + frontend eslint + obsgen lint. The CI gate.'
@@ -221,9 +205,8 @@ tasks:
       - task: test:datastores
       # Deferred: clears this run's test databases even when the suite fails.
       - defer: { task: test:datastores:clean, vars: { RUN: '{{.RUN}}' } }
-      # -p 2 keeps concurrent binaries' load on the shared datastores and
-      # the Docker daemon a trickle; the kits' self-test boots still rely
-      # on the testcontainers reaper for cleanup.
+      # -p 2 caps concurrent load on the shared datastores and Docker
+      # daemon; the kits' self-test boots still rely on the reaper for cleanup.
       - for: { var: GO_MODULES, as: MOD }
         cmd: cd {{.MOD}} && go test -count=1 -p 2 ./...
       - task: frontend:test
@@ -307,10 +290,7 @@ tasks:
 
   # -------------------------------- run ----------------------------------
   #
-  # The dev stack runs under Tilt (see Tiltfile); `task run` is the
-  # day-to-day entrypoint. `task bootstrap:cluster` installs the platform
-  # prerequisites once before the first run. Teardown tiers: `down` (stop
-  # the stack), `nuke` (fresh start).
+  # `task bootstrap:cluster` must run once, before the first `task run`.
 
   run:
     desc: Start the full dev stack under Tilt (foreground; Ctrl-C to stop)
@@ -326,10 +306,8 @@ tasks:
     desc: 'Full reset: tilt down + delete the vgkeep namespace (drops datastore PVCs + issued TLS secrets)'
     cmds:
       - task: down
-      # Tilt never deletes namespaces on `tilt down`; dropping vgkeep
-      # clears the datastore PVCs and the cert-manager-issued *-tls
-      # secrets, so a platform cycle (bootstrap:cluster:down, then
-      # bootstrap:cluster) cannot leave them chained to a replaced CA.
+      # tilt down never deletes namespaces; this clears vgkeep's PVCs and
+      # TLS secrets, preventing a reinstall from chaining to a replaced CA.
       - kubectl delete namespace vgkeep --ignore-not-found
 
   e2e:

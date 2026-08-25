@@ -30,4 +30,6 @@ kind: ServiceAccount
 metadata:
   name: {{ .Chart.Name }}
   labels: {{- include "vg-lib.labels" . | nindent 4 }}
+# None of these services call the Kubernetes API.
+automountServiceAccountToken: false
 {{- end }}

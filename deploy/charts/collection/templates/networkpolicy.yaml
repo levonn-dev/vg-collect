@@ -1,10 +1,7 @@
 {{ include "vg-lib.pg.ownerOnly" . }}
 {{ include "vg-lib.valkey.ownerOnly" . }}
-# Collection's callers: the bff (the whole collection surface is
-# browser-driven), social (shelf resolves for follows/likes/comments),
-# and the rematch CronJob (it exchanges the shared secret for a
-# service JWT at auth, then calls this endpoint with a normal bearer;
-# this admission is the outer layer).
+# Collection's callers: bff (the whole surface is browser-driven), social (shelf resolves for
+# follows/likes/comments), and the rematch CronJob (JWT via auth, then a normal bearer here; this is the outer admission layer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

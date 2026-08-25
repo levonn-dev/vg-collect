@@ -4,29 +4,13 @@ group:
   interval: 1m
 datasource: prometheus
 services: [auth, bff, collection, enrichment, social, user]
-# kube_ and node_ are emitted by kube-state-metrics and node-exporter;
-# up is Prometheus's own scrape-health series. All three come from
-# infrastructure this repo scrapes but never registers metrics for
-# itself, so no scan - Go or TypeScript - could ever discover them.
-# (Frontend browser-telemetry metrics, vg_frontend_, need no exemption
-# here: the lint name scan's TypeScript pass over frontend/src
-# resolves them directly.)
+# kube_/node_ (kube-state-metrics/node-exporter) and up (Prometheus itself) come from infrastructure this repo
+# never registers metrics for, so no name scan could discover them; frontend's vg_frontend_ needs no exemption since the TS scan finds it directly.
 external_metric_prefixes: [kube_, node_, up]
 templates:
-  # Most fields below match vg-social-down's original values exactly
-  # (social was this template's first instantiator): title uses the
-  # lowercase {service} form ("social service down", not "Social
-  # service down"); severity is page (not crit - this rule set only
-  # uses page/warn). summary is the one field that departs from
-  # social's wording: it names the datastore-neutral truth ("metrics
-  # exporters", not "postgres exporter") because bff (Valkey only, no
-  # Postgres) and enrichment (Mongo+Valkey, no Postgres) also
-  # instantiate this template; alerts/social.yaml carries social's own
-  # wording back as an explicit summary override. runbook and
-  # panel_ref point at the shared golden-block section/panel
-  # (dashboards/golden.yaml's Availability panel; stack.md's "Service
-  # down" section), since every service instantiates this template
-  # with the identical query shape.
+  # summary uses datastore-neutral wording ("metrics exporters", not "postgres exporter") since bff (Valkey
+  # only) and enrichment (Mongo+Valkey) also instantiate this template without Postgres; alerts/social.yaml overrides it with social's own wording.
+  # runbook and panel_ref point at the shared golden-block section, not a per-service one (dashboards/golden.yaml's Availability panel; stack.md's "Service down" section).
   availability:
     uid: vg-{service}-down
     title: "{service} service down"

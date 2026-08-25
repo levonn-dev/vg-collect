@@ -12,10 +12,8 @@ import (
 )
 
 // TestLoad_ValidTreeLoadsExactFields is the base case: every field the
-// loader is responsible for assembling, checked against the literal values
-// testdata/valid's files declare. testdata/valid uses a two-service stand-in
-// roster (alpha, bravo) rather than the real service list - the loader does
-// not know or care what the real services are called.
+// loader assembles, checked against testdata/valid's literal values (a
+// two-service stand-in roster).
 func TestLoad_ValidTreeLoadsExactFields(t *testing.T) {
 	got, err := manifest.Load("testdata/valid")
 	if err != nil {
@@ -233,16 +231,10 @@ func TestLoad_ValidTreeLoadsExactFields(t *testing.T) {
 }
 
 // TestLoad_InvalidTreesFailWithOffendingPath tables every problem the
-// loader must catch: a strict-decode rejection for each distinct manifest
-// file kind (proving KnownFields(true) is wired for all of them, not just
-// some), the two cross-file uid rules, and the roster/file-presence check.
-// Each fixture tree is otherwise a complete, valid tree (every sibling file
-// a full load would touch is present and unremarkable) with exactly one
-// deliberate defect, so every case is checked two ways: the joined error
-// contains the specific file path and detail a fix needs (not just that an
-// error occurred), and joinedCount confirms Load found exactly that one
-// problem rather than also tripping over an unrelated missing file left
-// over from a sparser fixture.
+// loader must catch: strict-decode rejection per manifest file kind, the
+// two cross-file uid rules, and roster/file-presence checks. Each
+// fixture is otherwise complete and valid with one deliberate defect, so
+// joinedCount confirms exactly one problem is found.
 func TestLoad_InvalidTreesFailWithOffendingPath(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -289,9 +281,8 @@ func TestLoad_InvalidTreesFailWithOffendingPath(t *testing.T) {
 			name: "uid collision error cites the file Load actually read, not the decoded service field",
 			dir:  "testdata/duplicate-uid-mismatched-service-field",
 			want: []string{"vg-dup-thing", "alerts/alpha.yaml", "alerts/bravo.yaml"},
-			// alpha.yaml's own service: field says "not-actually-alpha"; a
-			// path rebuilt from that decoded field (the bug this fixture
-			// pins) would cite a file that was never read.
+			// alpha.yaml's own service: field says "not-actually-alpha"; a path
+			// rebuilt from that field (the bug this fixture pins) would cite a file never read.
 			avoid: []string{"not-actually-alpha"},
 		},
 		{
@@ -356,21 +347,12 @@ func TestLoad_InvalidTreesFailWithOffendingPath(t *testing.T) {
 }
 
 // TestLoad_GoldenBlockValidation exercises the block-shaped dashboard
-// golden schema's own validation rules. Rather than a dedicated testdata
-// fixture tree per case (TestLoad_InvalidTreesFailWithOffendingPath's own
-// style), each case here writes its one deliberate defect inline into a
-// fresh copy of testdata/valid via writeValidTreeCopy - that copy is
-// otherwise complete and valid, so joinedCount stays checkable at exactly
-// 1 the same way. The successful round-trip these cases guard against
-// regressing (a valid block loads with its GoldenBlocks anchor intact) is
-// already proven by TestLoad_ValidTreeLoadsExactFields against this same
-// base tree, so there is no separate "valid" case here.
-// availabilityBlock and alphaCustomPanel are the one deliberate-defect
-// overrides in TestLoad_GoldenBlockValidation and TestLoad_SectionValidation
-// both build on top of via writeValidTreeCopy: a complete, otherwise-valid
-// golden block and a complete, otherwise-valid alpha custom panel, shared
-// so each override string only needs to change the one field its own case
-// is actually about.
+// golden schema's validation rules, writing each case's one defect into a
+// fresh copy of testdata/valid via writeValidTreeCopy (no separate "valid"
+// case: that round-trip is already proven by TestLoad_ValidTreeLoadsExactFields).
+//
+// availabilityBlock and alphaCustomPanel are the complete, otherwise-valid
+// base content both this test and TestLoad_SectionValidation build their overrides on.
 const availabilityBlock = `blocks:
   availability:
     panels:
@@ -469,18 +451,12 @@ func TestLoad_GoldenBlockValidation(t *testing.T) {
 	}
 }
 
-// TestLoad_SectionValidation exercises the sections: schema's own
+// TestLoad_SectionValidation exercises the sections: schema's
 // validation rules, in the same writeValidTreeCopy style
-// TestLoad_GoldenBlockValidation uses for golden_blocks: each case
-// writes its one deliberate defect into a fresh copy of testdata/valid,
-// otherwise complete and valid, so joinedCount stays checkable at
-// exactly 1. The successful round-trip these cases guard against
-// regressing (a valid sections map loads with its anchor intact) is
-// already proven by TestLoad_ValidTreeLoadsExactFields against this
-// same base tree (bravo's Refresh: 40 entry), so there is no separate
-// "valid" case here. Uniqueness needs no case either - Sections is a Go
-// map keyed on title, so two sections sharing a title cannot even be
-// written down.
+// TestLoad_GoldenBlockValidation uses. No separate "valid" or
+// "duplicate title" case: the former is proven by
+// TestLoad_ValidTreeLoadsExactFields, the latter can't be written
+// (Sections is a Go map keyed on title).
 func TestLoad_SectionValidation(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -505,13 +481,8 @@ func TestLoad_SectionValidation(t *testing.T) {
 			wantJoined: 1,
 		},
 		{
-			// A single entry can fail both clauses at once: an empty
-			// title with a negative anchor. The loader's joined-error
-			// style surfaces every distinct problem it finds in one
-			// pass elsewhere (see e.g. TestLoad_InvalidTreesFailWithOffendingPath's
-			// multi-file cases) - validateSections must not special-case
-			// itself out of that by stopping at the first clause an
-			// entry fails.
+			// a single entry can fail both clauses at once; validateSections
+			// must not special-case itself out of the loader's joined-error discipline by stopping at the first.
 			name: "section entry fails both clauses at once (empty title and negative anchor)",
 			overrides: map[string]string{
 				"dashboards/alpha.yaml": "service: alpha\ndashboard:\n  uid: vg-alpha\n  title: Alpha\ngolden_blocks:\n  availability: 128\nsections:\n  \"\": -1\ncustom_panels:\n  - |\n" + alphaCustomPanel,
@@ -546,11 +517,8 @@ func TestLoad_SectionValidation(t *testing.T) {
 	}
 }
 
-// writeValidTreeCopy copies testdata/valid into a fresh t.TempDir(), then
-// overwrites each path in overrides (relative to the copy's root, e.g.
-// "dashboards/golden.yaml") with its given content - the inline defect
-// every TestLoad_GoldenBlockValidation case above writes directly at its
-// own call site rather than checking in as its own testdata fixture.
+// writeValidTreeCopy copies testdata/valid into a fresh t.TempDir(),
+// then overwrites each path in overrides with its given content.
 func writeValidTreeCopy(t *testing.T, overrides map[string]string) string {
 	t.Helper()
 	dst := t.TempDir()
@@ -565,12 +533,9 @@ func writeValidTreeCopy(t *testing.T, overrides map[string]string) string {
 	return dst
 }
 
-// joinedCount reports how many errors an errors.Join result actually
-// combines, using the standard multi-error Unwrap() []error interface
-// rather than counting newlines in the message (a single joined yaml.v3
-// decode error can itself span multiple lines, so line-counting would
-// overcount). It fails the test outright if err was not built by
-// errors.Join - every error Load returns must be, per its own contract.
+// joinedCount reports how many errors errors.Join combined, via
+// Unwrap() []error rather than counting message newlines (a single
+// yaml.v3 decode error can span multiple lines, overcounting).
 func joinedCount(t *testing.T, err error) int {
 	t.Helper()
 	u, ok := err.(interface{ Unwrap() []error })

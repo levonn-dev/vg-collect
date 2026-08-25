@@ -6,13 +6,9 @@ fail=0
 for mod in $(find . -name go.mod -not -path '*/node_modules/*' -exec dirname {} \; | sort); do
   (cd "$mod" && go test ./... -coverprofile=cover.out -covermode=atomic > /dev/null)
   grep -v -e '/internal/gen/' -e '/cmd/' -e '/libs/go/contract/' "$mod/cover.out" > "$mod/cover.filtered" || [ $? -eq 1 ]
-  # /cmd/ exclusion: entrypoint wiring is validated by smoke/e2e, not
-  # unit tests.
-  # /libs/go/contract/ exclusion: that module is oapi-codegen output top
-  # to bottom (client packages generated straight at the module root, no
-  # internal/gen wrapper directory to hide behind); same generated-has-
-  # nothing-to-gate reasoning as /internal/gen/ above, just a different
-  # directory shape.
+  # /cmd/ exclusion: entrypoint wiring is validated by smoke/e2e, not unit tests.
+  # /libs/go/contract/ exclusion: fully oapi-codegen output at the module
+  # root (no internal/gen/ wrapper to catch it via the pattern above).
   # A module whose only statements are generated has nothing to gate:
   # the filtered profile is header-only and counts as a vacuous pass.
   if [ "$(wc -l < "$mod/cover.filtered")" -le 1 ]; then

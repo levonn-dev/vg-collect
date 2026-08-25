@@ -1,10 +1,6 @@
-// Package alerts renders a loaded observability manifest into the
-// Grafana alert provisioning file: one rule group (golden-template
-// instantiations expanded per service, then that service's own custom
-// rules, in manifest order) plus a deleteRules stanza per retired uid.
-// Writing the result to its destination path is a later concern, the
-// same split internal/dashboards draws for the dashboard side; this
-// package only builds the bytes.
+// Package alerts renders a loaded manifest into the Grafana alert
+// provisioning file: one rule group (golden templates then custom
+// rules) plus a deleteRules stanza per retired uid. Builds bytes only.
 package alerts
 
 import (
@@ -25,34 +21,18 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// runbookPrefix is the canonical GitHub blob URL every rule's
-// runbook_url annotation expands from a manifest's short form (e.g.
-// "stack.md#service-down"): the exact prefix every runbook_url in
-// today's vg-rules.yaml already uses. Kept in this one place so the
-// expansion can never drift between rules.
+// runbookPrefix is the GitHub blob URL prefix every rule's runbook_url
+// expands a manifest's short form into (e.g. "stack.md#service-down").
 const runbookPrefix = "https://github.com/levonn-dev/vgkeep/blob/main/docs/runbooks/"
 
-// goldenRelativeSeconds is the relativeTimeRange.from every golden
-// template instantiation's query (refId A) uses. A golden Template has
-// no manifest-authored range - Template carries no Range field, and
-// Overrides has no range field either (only for/condition/severity/
-// summary) - so this is a fixed generator constant, not manifest-driven,
-// unlike a custom Rule's relativeTimeRange (see rangeSeconds below),
-// which always comes from its own Range field. The value matches
-// vg-social-down's real relativeTimeRange: social's existing rule is the
-// availability template's own zero-change migration source, so the
-// template must reproduce social's real value exactly, and both golden
-// templates today (availability, pdb_budget) query a current-state gauge
-// rather than a rate()/increase() window, so a fixed five-minute
-// lookback is enough to avoid a spurious no-data gap either way.
+// goldenRelativeSeconds (300 = 5 min) is the fixed relativeTimeRange.from
+// for every golden template: Template/Overrides carry no range field, and
+// both templates query a gauge, not rate()/increase(), so a fixed
+// lookback avoids a spurious no-data gap.
 const goldenRelativeSeconds = 300
 
-// expandedRule is every field a rendered rule needs, already resolved:
-// {service}/{Service} substituted, golden overrides applied, and the
-// condition string split into its evaluator type/value - the shared
-// shape expandRules produces for both a golden template instantiation
-// and a fully custom Rule, so ruleNode only ever has one input shape to
-// render regardless of a rule's origin.
+// expandedRule is a rendered rule's fields, already resolved (substitution,
+// overrides, condition split) for both a golden instantiation and a Rule.
 type expandedRule struct {
 	uid             string
 	title           string
@@ -71,19 +51,10 @@ type expandedRule struct {
 	datasource      string // refId A's datasourceUid, already resolved against the tree default
 }
 
-// Emit renders m into the complete vg-rules.yaml bytes: apiVersion 1,
-// one group (metadata from m.Alerts.Group), rules ordered cluster-file-
-// then-services-in-manifest-order (golden template instantiations before
-// a service's own custom rules, matching internal/dashboards' own
-// expandAlerts order so the two packages agree on where an alert with a
-// given uid "lives"), then a deleteRules stanza per retired uid (omitted
-// entirely when there are none, matching today's file). idx is
-// dashboards.Assemble's own PanelIndex output for the same m - a rule
-// with a non-empty panel_ref gains __dashboardUid__/__panelId__
-// annotations resolved against it and m.Dashboards.Services; a rule
-// with no panel_ref gains neither. Emit is a pure function of its
-// two arguments: calling it twice on the same inputs produces
-// byte-identical output.
+// Emit renders m into vg-rules.yaml bytes: cluster rules, then each
+// service's golden instantiations, then its custom rules, matching
+// internal/dashboards' own ordering. idx resolves a rule's panel_ref
+// into dashboard-link annotations. Pure: same inputs, byte-identical output.
 func Emit(m *manifest.Model, idx dashboards.PanelIndex) ([]byte, error) {
 	expanded, errs := expandRules(m)
 	if len(errs) > 0 {
@@ -143,15 +114,9 @@ func Emit(m *manifest.Model, idx dashboards.PanelIndex) ([]byte, error) {
 	return padFlowMappings(buf.Bytes()), nil
 }
 
-// expandRules walks every alert the manifest declares - cluster rules in
-// their own manifest order, then each service in the model's own order
-// (golden template instantiations, sorted by template name since
-// ServiceAlerts.Golden is a Go map and ranging it directly would make
-// output order depend on map iteration; then that service's custom
-// rules in manifest order) - collecting every expansion problem
-// (unparseable condition, a custom rule with no usable range) instead of
-// stopping at the first, matching internal/manifest.Load's and
-// internal/dashboards.Assemble's own collect-everything convention.
+// expandRules walks cluster rules, then each service's golden
+// instantiations (sorted by template name; Golden is a Go map) then its
+// custom rules, collecting every error instead of stopping at the first.
 func expandRules(m *manifest.Model) ([]expandedRule, []error) {
 	var (
 		out  []expandedRule
@@ -192,18 +157,9 @@ func expandRules(m *manifest.Model) ([]expandedRule, []error) {
 	return out, errs
 }
 
-// expandCustomRule resolves a cluster.yaml or per-service custom Rule
-// into an expandedRule. Unlike a golden instantiation, a custom rule's
-// relativeTimeRange.from always comes from its own Range field (parsed
-// as a Go duration string into whole seconds) - Range is required here:
-// there is no context-free default that would reproduce any of today's
-// real rules' actual relativeTimeRange, migrated or not, so an empty
-// Range is a hard error rather than a silent zero. datasource resolves
-// the same way Range does not: r.Datasource is optional, and an empty
-// value falls back to treeDatasource (m.Alerts.Datasource) - today's
-// real rules are all on the same Prometheus instance except one Loki
-// query, so leaving the field empty is the common case, not the
-// exception.
+// expandCustomRule resolves a Rule into an expandedRule. Range is
+// required (a duration string; empty is a hard error, no default
+// exists). Datasource is optional and falls back to treeDatasource.
 func expandCustomRule(r manifest.Rule, treeDatasource string) (expandedRule, error) {
 	op, val, err := splitCondition(r.UID, r.Condition)
 	if err != nil {
@@ -236,18 +192,10 @@ func expandCustomRule(r manifest.Rule, treeDatasource string) (expandedRule, err
 	}, nil
 }
 
-// expandGoldenInstance resolves one service's instantiation of tmpl,
-// applying ov's overrides (for/condition/severity/summary only - never
-// uid or expr: Overrides has no uid or expr field at all, so a service
-// needing a different expr writes a custom rule instead of overriding
-// one) and substituting {service}/{Service} into every string field a
-// template can carry. A zero-value ov.Field means "use the template's
-// own value" - Overrides has no way to distinguish "explicitly set back
-// to the template default" from "left absent", which no manifest
-// content needs today. A golden instantiation always uses
-// treeDatasource: Template has no Datasource field and Overrides has no
-// override slot for one either, since every template query today is the
-// same Prometheus instance the tree default already names.
+// expandGoldenInstance applies ov's overrides (for/condition/severity/
+// summary only - Overrides has no uid or expr field) and substitutes
+// {service}/{Service}. A zero-value override means "use the template's
+// value"; datasource is always treeDatasource (no override slot exists).
 func expandGoldenInstance(tmpl manifest.Template, ov manifest.Overrides, service, treeDatasource string) (expandedRule, error) {
 	forDuration := tmpl.For
 	if ov.For != "" {
@@ -291,13 +239,8 @@ func expandGoldenInstance(tmpl manifest.Template, ov manifest.Overrides, service
 	}, nil
 }
 
-// splitCondition parses a manifest condition string ("lt 1", "gt 0.05")
-// into its evaluator type and value. The value is validated as numeric
-// (Grafana's evaluator schema requires it) but returned as its original
-// text, not a reformatted float64 - so "0.05" or "25" round-trip through
-// the emitted YAML exactly as the manifest wrote them, with no risk of a
-// float64 round-trip silently changing precision or dropping/adding
-// digits.
+// splitCondition parses "lt 1"/"gt 0.05" into evaluator type and value;
+// value is validated numeric but kept as text to avoid float round-trip precision loss.
 func splitCondition(uid, condition string) (op, value string, err error) {
 	fields := strings.Fields(condition)
 	if len(fields) != 2 {
@@ -309,10 +252,8 @@ func splitCondition(uid, condition string) (op, value string, err error) {
 	return fields[0], fields[1], nil
 }
 
-// rangeSeconds parses a custom Rule's Range field (a Go duration string
-// like "10m" or "26h") into whole seconds for refId A's
-// relativeTimeRange.from. An empty Range is an error naming the rule's
-// uid - see expandCustomRule's doc comment for why there is no default.
+// rangeSeconds parses Range (a Go duration string like "10m") into whole
+// seconds; empty Range errors naming the rule's uid.
 func rangeSeconds(uid, rangeStr string) (int, error) {
 	if rangeStr == "" {
 		return 0, fmt.Errorf("rule %s: range is required (relativeTimeRange has no default)", uid)
@@ -324,13 +265,8 @@ func rangeSeconds(uid, rangeStr string) (int, error) {
 	return int(d / time.Second), nil
 }
 
-// resolvePanelLink splits ref's "service/title" shape and resolves it
-// against idx (the panel id source for the dashboard-link annotations)
-// and dashUIDs (the service's dashboard uid, from m.Dashboards.Services)
-// - both checked explicitly so a panel_ref that Assemble would also
-// have rejected, or one that simply names a service dashUIDs has no
-// entry for, fails Emit loudly too rather than silently emitting an
-// annotation with a blank or missing field.
+// resolvePanelLink splits ref's "service/title" and resolves it against
+// idx and dashUIDs; either miss fails Emit loudly instead of emitting a blank annotation.
 func resolvePanelLink(uid, ref string, idx dashboards.PanelIndex, dashUIDs map[string]string) (dashboardUID string, panelID int, err error) {
 	service, title, ok := strings.Cut(ref, "/")
 	if !ok {
@@ -351,16 +287,9 @@ func resolvePanelLink(uid, ref string, idx dashboards.PanelIndex, dashUIDs map[s
 	return dashUID, id, nil
 }
 
-// ruleNode builds one rule's complete envelope: refId A (the query,
-// instant + relativeTimeRange from er.relativeSeconds, datasourceUid
-// from er.datasource - the rule's own override or the tree default,
-// already resolved by expandCustomRule/expandGoldenInstance), refId C
-// (the threshold expression, condition parsed into evaluator type/value,
-// datasourceUid always __expr__ regardless of er.datasource - it names
-// Grafana's server-side expression engine, never a real data source),
-// condition: C, noDataState/execErrState/for/labels verbatim, and
-// annotations (summary, runbook_url, plus the two dashboard-link
-// annotations when er.panelRef is set).
+// ruleNode builds one rule's envelope: refId A (the query, using
+// er.datasource) and refId C (the threshold expression; datasourceUid
+// is always "__expr__", Grafana's expression engine, never er.datasource).
 func ruleNode(er expandedRule, idx dashboards.PanelIndex, dashUIDs map[string]string) (*yaml.Node, error) {
 	dataA := mapNode(
 		strNode("refId"), strNode("A"),
@@ -419,23 +348,16 @@ func ruleNode(er expandedRule, idx dashboards.PanelIndex, dashUIDs map[string]st
 
 // --- yaml.v3 node helpers -------------------------------------------
 //
-// Every rule field is built through these rather than struct tags plus
-// yaml.Marshal, because the envelope must reproduce today's hand-authored
-// file's exact per-field styles (summary always double-quoted even when
-// plain style would be syntactically valid; runbook_url always plain) -
-// choices yaml.v3's own automatic style resolution would not reliably
-// reproduce (it quotes only when a value is not representable in plain
-// style, e.g. a leading '{', not as a blanket per-key policy).
+// Built manually rather than via struct tags + yaml.Marshal, to
+// reproduce exact per-field styles (summary always double-quoted,
+// runbook_url always plain) that yaml.v3's automatic resolution won't guarantee.
 
 func strNode(s string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s}
 }
 
-// quotedStrNode forces double-quoted style regardless of content -
-// summary (every occurrence in today's file, whether or not plain style
-// would have been valid for that particular text) and __panelId__
-// (whose numeric-looking text must stay a string, not fall back to
-// yaml.v3's own implicit-type quoting heuristic).
+// quotedStrNode forces double-quoted style regardless of content: used
+// for summary and for __panelId__ (numeric-looking text that must stay a string).
 func quotedStrNode(s string) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s, Style: yaml.DoubleQuotedStyle}
 }
@@ -452,12 +374,8 @@ func intNode(n int) *yaml.Node {
 	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: strconv.Itoa(n)}
 }
 
-// numLiteralNode carries a condition's already-validated numeric text
-// verbatim (see splitCondition) rather than reformatting it through a
-// parsed float64, so e.g. "0.05" can never come out as "0.05000" or
-// "5e-02". The tag is chosen from the text's own shape purely for
-// semantic correctness (plain-style output is identical either way,
-// since a plain scalar's bytes are just its Value verbatim).
+// numLiteralNode carries a condition's numeric text verbatim (never
+// reformatted through float64, avoiding e.g. "0.05" becoming "5e-02").
 func numLiteralNode(text string) *yaml.Node {
 	tag := "!!int"
 	if strings.ContainsAny(text, ".eE") {
@@ -482,20 +400,9 @@ func flowSeqNode(items ...*yaml.Node) *yaml.Node {
 	return &yaml.Node{Kind: yaml.SequenceNode, Style: yaml.FlowStyle, Content: items}
 }
 
-// padFlowMappings inserts the inner-brace padding today's hand-authored
-// vg-rules.yaml uses for both flow mappings this package ever emits
-// ("{ from: 600, to: 0 }", "{ type: gt, params: [0.05] }"), which
-// yaml.v3's flow-mapping emitter never produces on its own ("{from: ...}"
-// - verified against the emitter source, emitterc.go's
-// yaml_emitter_emit_flow_mapping_key/value: both '{' and '}' are written
-// via yaml_emitter_write_indicator with need_whitespace=false, and no
-// per-node Style covers this). Both patterns are anchored on their
-// preceding key name ("relativeTimeRange: ", "evaluator: "), so neither
-// can match inside an unrelated PromQL expr string even if one someday
-// contained similar punctuation - an expr would have to contain the
-// literal text "relativeTimeRange: {from: <digits>, to: <digits>}" (or
-// the evaluator equivalent) to collide, which is not a valid PromQL
-// fragment.
+// padFlowMappings adds inner-brace spacing ("{ from: ..., to: ... }")
+// that yaml.v3 never emits and has no per-node style for. Both regexes
+// anchor on their preceding key name, so neither can match inside a PromQL expr string.
 var (
 	reRelativeTimeRange = regexp.MustCompile(`relativeTimeRange: \{from: (-?\d+), to: (-?\d+)\}`)
 	reEvaluator         = regexp.MustCompile(`evaluator: \{type: (\w+), params: \[([^\]]*)\]\}`)

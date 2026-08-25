@@ -32,25 +32,17 @@ type clusterFile struct {
 	Alerts []Rule `yaml:"alerts"`
 }
 
-// dashGoldenFile is dashboards/golden.yaml's exact shape: a map of named
-// blocks, each a group of verbatim Grafana panel JSON fragments (the
-// same shape a service file's own custom_panels list uses - real Grafana
-// panel JSON carries gridPos as one of its own keys, not a sibling
-// manifest field, see e.g. any panel in
-// deploy/charts/platform/files/dashboards/*.json).
+// dashGoldenFile is dashboards/golden.yaml's exact shape: named blocks
+// of verbatim Grafana panel JSON fragments (gridPos is a panel JSON key, not a sibling manifest field).
 type dashGoldenFile struct {
 	Blocks map[string]Block `yaml:"blocks"`
 }
 
-// serviceDashFile is dashboards/<service>.yaml's exact shape; its nested
-// dashboard.uid/dashboard.title flatten onto ServiceDash once decoded.
-// GoldenBlocks is optional - a service that instantiates no golden block
-// simply omits golden_blocks:, decoding to a nil map, not an error.
-// Sections is likewise optional - a service that declares no sections
-// simply omits sections:, decoding to a nil map (see ServiceDash.Sections).
-// CustomPanels decodes as []string rather than []json.RawMessage directly:
-// yaml.v3 has no built-in conversion from a scalar node to a []byte-shaped
-// type, so Load converts each entry once the strict decode succeeds.
+// serviceDashFile is dashboards/<service>.yaml's exact shape; nested
+// dashboard.uid/title flatten onto ServiceDash. GoldenBlocks/Sections are
+// optional (nil map, not an error, if omitted). CustomPanels decodes as
+// []string since yaml.v3 has no scalar-to-[]byte conversion; Load
+// converts each entry after decode.
 type serviceDashFile struct {
 	Service   string `yaml:"service"`
 	Dashboard struct {
@@ -62,13 +54,9 @@ type serviceDashFile struct {
 	CustomPanels []string       `yaml:"custom_panels"`
 }
 
-// Load reads every manifest file under dir (deploy/observability by
-// convention) and assembles the fully-validated Model. It collects every
-// problem it finds - a strict-decode failure, a missing per-service file, a
-// uid collision - into one joined error instead of stopping at the first
-// one, so a single Load call surfaces everything a fix needs to address. A
-// non-nil error always means a nil Model: callers never see a partially
-// valid tree.
+// Load reads every manifest file under dir and assembles the
+// fully-validated Model, collecting every problem into one joined error
+// instead of stopping at the first. A non-nil error always means a nil Model.
 func Load(dir string) (*Model, error) {
 	var errs []error
 
@@ -137,12 +125,10 @@ func Load(dir string) (*Model, error) {
 }
 
 // decodeFile reads rel (relative to dir) and strictly decodes it as yaml
-// into out. KnownFields rejects any key out's type does not declare, so a
-// typo'd manifest field fails Load instead of silently vanishing; every
-// error names rel so the offending file is never in doubt.
+// into out; KnownFields fails a typo'd field instead of silently dropping it.
 func decodeFile(dir, rel string, out any) error {
 	path := filepath.Join(dir, rel)
-	data, err := os.ReadFile(path) //nolint:gosec // G304: rel is always one of this package's own fixed or roster-derived manifest filenames, never external input.
+	data, err := os.ReadFile(path) //nolint:gosec // G304: rel is always one of this package's own fixed or roster-derived manifest filenames, not external input.
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", rel, err)
 	}
@@ -171,12 +157,8 @@ func loadCluster(dir string) ([]Rule, error) {
 	return f.Alerts, nil
 }
 
-// loadedServiceAlerts pairs one loaded per-service alerts file with the
-// relative path Load actually read it from. The path is kept separate from
-// alerts.Service (the file's own decoded service: field) because nothing
-// checks the two agree - a uid-collision error must cite the file that was
-// really parsed, not a path reconstructed from content that could be
-// stale, copy-pasted, or simply wrong.
+// loadedServiceAlerts pairs a loaded alerts file with the path it was
+// read from (kept separate from the decoded service: field, which nothing checks against it).
 type loadedServiceAlerts struct {
 	path   string
 	alerts ServiceAlerts
@@ -210,13 +192,9 @@ func loadRetired(dir string) ([]RetiredUID, error) {
 	return r, nil
 }
 
-// checkServiceRosterOrder validates that alerts/golden.yaml's services
-// list is alphabetically ordered. Neither internal/dashboards.Assemble
-// nor internal/alerts.Emit re-sorts m.Alerts.Services/m.Dashboards.Services
-// themselves - both walk the roster in the order Load preserved it, so
-// enforcing the order once here, at the single source both sides read
-// their own per-service ordering from, is what keeps generated output
-// ordered without either downstream package needing its own check.
+// checkServiceRosterOrder validates alerts/golden.yaml's services list
+// is alphabetically ordered; neither Assemble nor Emit re-sorts it
+// themselves, so enforcing it once here keeps generated output ordered.
 func checkServiceRosterOrder(services []string) error {
 	for i := 1; i < len(services); i++ {
 		if services[i] < services[i-1] {
@@ -226,11 +204,9 @@ func checkServiceRosterOrder(services []string) error {
 	return nil
 }
 
-// checkUIDs enforces the two cross-file uid rules the loader owns: no two
-// live (non-retired) rules share a uid, and no retired uid collides with
-// one still live. Golden-template uids carry an unexpanded {service}
-// placeholder and are excluded - they are unique per template key, not per
-// literal string, and expanding them is generation's job, not the loader's.
+// checkUIDs enforces two rules: no two live rules share a uid, and no
+// retired uid collides with a live one. Golden-template uids (unexpanded
+// {service}) are excluded - unique per template key, expansion is generation's job.
 func checkUIDs(cluster []Rule, services []loadedServiceAlerts, retired []RetiredUID) []error {
 	var errs []error
 	live := make(map[string]string) // uid -> the file it first appeared in
@@ -261,13 +237,9 @@ func checkUIDs(cluster []Rule, services []loadedServiceAlerts, retired []Retired
 	return errs
 }
 
-// loadDashGolden reads dashboards/golden.yaml and validates every block's
-// panels: each block must declare at least one panel, and every panel
-// fragment must parse as JSON with a complete, in-bounds gridPos (all of
-// h/w/x/y present, x >= 0, y >= 0, w > 0, h > 0, x+w <= 24 - Grafana's
-// grid is 24 columns wide). Blocks are validated in sorted name order so
-// a multi-block error's joined output is deterministic rather than
-// following Go's randomized map iteration.
+// loadDashGolden reads golden.yaml and validates every block: at least
+// one panel, each with a complete, in-bounds gridPos (Grafana's grid is
+// 24 columns). Blocks are validated in sorted order for deterministic error output.
 func loadDashGolden(dir string) (map[string]Block, error) {
 	rel := filepath.Join("dashboards", "golden.yaml")
 	var f dashGoldenFile
@@ -294,13 +266,9 @@ func loadDashGolden(dir string) (map[string]Block, error) {
 	return f.Blocks, nil
 }
 
-// validateBlockPanelGeometry parses raw as JSON and checks its gridPos:
-// present, complete (h, w, x, y all set - an omitted field is distinct
-// from an explicit zero, so this decodes gridPos as a raw key set before
-// reading it as GridPos), and within Grafana's 24-column grid. Bounds
-// checking itself is internal/grid.Check's own job - reused here as a
-// single-Rect call rather than a second, hand-rolled copy of its five
-// clauses, so the two can never silently drift apart.
+// validateBlockPanelGeometry checks gridPos is present, complete (h/w/x/y
+// all set, checked as a raw key set so omitted differs from explicit
+// zero), and in-bounds via internal/grid.Check (reused, not duplicated).
 func validateBlockPanelGeometry(raw string) error {
 	var shape struct {
 		GridPos json.RawMessage `json:"gridPos"`
@@ -332,10 +300,8 @@ func validateBlockPanelGeometry(raw string) error {
 	return nil
 }
 
-// loadServiceDash reads dashboards/<service>.yaml for every service the
-// golden roster declares - the same roster-driven discovery
-// loadServiceAlerts uses for the alert side, so a service missing its
-// dashboard file fails Load the same way one missing its alerts file does.
+// loadServiceDash reads dashboards/<service>.yaml for every roster
+// service, the same roster-driven discovery loadServiceAlerts uses.
 func loadServiceDash(dir string, roster []string) ([]ServiceDash, []error) {
 	var (
 		out  []ServiceDash
@@ -363,21 +329,10 @@ func loadServiceDash(dir string, roster []string) ([]ServiceDash, []error) {
 	return out, errs
 }
 
-// validateSections validates every service's sections entries: each
-// title (the map key) must be non-empty, and each anchor (the y
-// coordinate the generator places that section's row panel at) must not
-// be negative. The two clauses run independently rather than the second
-// short-circuiting on the first: a single entry can fail both at once
-// (an empty title with a negative anchor), and the loader's joined-error
-// style surfaces every distinct problem it finds in one pass everywhere
-// else, so this validation does not get to stop early either. Uniqueness
-// needs no check of its own - two sections sharing a title cannot exist
-// in the first place, since Sections is a Go map keyed on title.
-// Services are walked in their own (already roster-ordered) slice
-// order, and each service's own section titles in sorted order, so a
-// multi-service error's joined output is deterministic rather than
-// following Go's randomized map iteration - the same discipline
-// validateGoldenBlockRefs already follows for golden_blocks.
+// validateSections checks each title is non-empty and each anchor is
+// non-negative, independently (a single entry can fail both). Uniqueness
+// needs no check: Sections is a Go map keyed on title. Sorted title order
+// keeps a multi-error joined output deterministic.
 func validateSections(services []ServiceDash) []error {
 	var errs []error
 	for _, sd := range services {
@@ -394,17 +349,9 @@ func validateSections(services []ServiceDash) []error {
 	return errs
 }
 
-// validateGoldenBlockRefs validates every service's golden_blocks entries
-// against the blocks dashboards/golden.yaml actually defines: each key
-// must name a defined block, and each anchor (the y coordinate the
-// block's panels are offset from) must not be negative. Named for the
-// direction it checks (a reference exists) rather than internal/lint's
-// same-shaped but opposite-direction checkGoldenBlocks (a block is
-// referenced), so the two are never mistaken for each other. Services
-// are walked in their own (already roster-ordered) slice order, and
-// each service's own golden_blocks keys in sorted order, so a
-// multi-service error's joined output is deterministic rather than
-// following Go's randomized map iteration.
+// validateGoldenBlockRefs checks each golden_blocks key names a defined
+// block and each anchor is non-negative - the opposite direction of
+// internal/lint's checkGoldenBlocks (a block being referenced).
 func validateGoldenBlockRefs(golden map[string]Block, services []ServiceDash) []error {
 	var errs []error
 	for _, sd := range services {

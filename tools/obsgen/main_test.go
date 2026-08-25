@@ -7,24 +7,16 @@ import (
 	"testing"
 )
 
-// TestRunGen_Success proves the load-then-assemble-then-emit path
-// main.go wires up: a small internally-consistent manifest tree (one
-// service, one golden template whose panel_ref resolves against the
-// one golden panel) loads and assembles without error.
+// TestRunGen_Success proves the load-assemble-emit path with a small
+// internally-consistent manifest tree (one service, panel_ref resolves).
 func TestRunGen_Success(t *testing.T) {
 	if err := runGen("testdata/gen-success", t.TempDir()); err != nil {
 		t.Fatalf("runGen: unexpected error: %v", err)
 	}
 }
 
-// TestRunGen_WritesOutputs proves runGen's actual file-writing step:
-// vg-rules.yaml carries its leading generated-by comment and every
-// dashboard json its own generated-by description field
-// (internal/dashboards.Assemble owns the dashboard side; this only
-// checks the byte main.go itself prepends), both land at their
-// canonical deploy/charts/platform-relative paths under outRoot, and a
-// second run overwrites with byte-identical content ("task gen twice"
-// must be byte-idempotent).
+// TestRunGen_WritesOutputs proves the outputs carry their generated-by
+// headers, land at canonical paths, and a second run is byte-identical.
 func TestRunGen_WritesOutputs(t *testing.T) {
 	outRoot := t.TempDir()
 	if err := runGen("testdata/gen-success", outRoot); err != nil {
@@ -32,7 +24,7 @@ func TestRunGen_WritesOutputs(t *testing.T) {
 	}
 
 	rulesPath := filepath.Join(outRoot, "deploy/charts/platform/files/alerting/vg-rules.yaml")
-	rules, err := os.ReadFile(rulesPath) //nolint:gosec // G304: rulesPath is built from this test's own t.TempDir(), never external input.
+	rules, err := os.ReadFile(rulesPath) //nolint:gosec // G304: rulesPath is built from this test's own t.TempDir(), not external input.
 	if err != nil {
 		t.Fatalf("reading %s: %v", rulesPath, err)
 	}
@@ -45,7 +37,7 @@ func TestRunGen_WritesOutputs(t *testing.T) {
 	}
 
 	dashPath := filepath.Join(outRoot, "deploy/charts/platform/files/dashboards/alpha.json")
-	dash, err := os.ReadFile(dashPath) //nolint:gosec // G304: dashPath is built from this test's own t.TempDir(), never external input.
+	dash, err := os.ReadFile(dashPath) //nolint:gosec // G304: dashPath is built from this test's own t.TempDir(), not external input.
 	if err != nil {
 		t.Fatalf("reading %s: %v", dashPath, err)
 	}
@@ -53,8 +45,7 @@ func TestRunGen_WritesOutputs(t *testing.T) {
 		t.Errorf("alpha.json missing the generated-by description field; got:\n%s", dash)
 	}
 
-	// Byte-idempotent: running gen again over the same tree must not
-	// change either output.
+	// running gen again over the same tree must not change either output.
 	if err := runGen("testdata/gen-success", outRoot); err != nil {
 		t.Fatalf("runGen (second run): unexpected error: %v", err)
 	}
@@ -82,10 +73,7 @@ func firstLines(b []byte, n int) string {
 	return strings.Join(lines, "\n")
 }
 
-// TestRunGen_Errors proves every failure path runGen wraps is
-// distinguishable by its message prefix: a manifest tree that fails to
-// load at all, one that loads but fails to assemble, and a valid tree
-// whose outRoot cannot be written to.
+// TestRunGen_Errors proves every failure path is distinguishable by its message prefix.
 func TestRunGen_Errors(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -109,10 +97,8 @@ func TestRunGen_Errors(t *testing.T) {
 			name: "outRoot's target directory cannot be created (MkdirAll fails)",
 			dir:  "testdata/gen-success",
 			outRoot: func(t *testing.T) string {
-				// A regular file where writeOutputs needs to MkdirAll a
-				// directory: the canonical way to force an os.MkdirAll
-				// failure portably, without relying on unwritable
-				// permissions (root can write past those in CI).
+				// a file where MkdirAll needs a directory forces failure portably,
+				// without unwritable permissions (root bypasses those in CI).
 				root := t.TempDir()
 				blocker := filepath.Join(root, "deploy")
 				if err := os.WriteFile(blocker, []byte("not a directory"), 0o600); err != nil {
@@ -126,10 +112,8 @@ func TestRunGen_Errors(t *testing.T) {
 			name: "vg-rules.yaml's own path is blocked (WriteFile fails)",
 			dir:  "testdata/gen-success",
 			outRoot: func(t *testing.T) string {
-				// The parent directory creates cleanly, but the file
-				// path itself is pre-occupied by a directory, so
-				// os.WriteFile - not os.MkdirAll - is what fails; the
-				// distinct failure point from the case above.
+				// the file path itself is pre-occupied by a directory, so
+				// WriteFile (not MkdirAll) fails here, unlike the case above.
 				root := t.TempDir()
 				rulesPath := filepath.Join(root, "deploy/charts/platform/files/alerting/vg-rules.yaml")
 				if err := os.MkdirAll(rulesPath, 0o750); err != nil {
@@ -154,9 +138,8 @@ func TestRunGen_Errors(t *testing.T) {
 	}
 }
 
-// TestRunLint_Clean proves a tree with no lint problems - runbook
-// anchors resolve, panel_ref resolves, every expr names only known
-// metrics or an external prefix - exits clean (nil error).
+// TestRunLint_Clean proves a tree with no lint problems (anchors and
+// panel_ref resolve, every expr names a known metric) exits clean.
 func TestRunLint_Clean(t *testing.T) {
 	dir := "testdata/lint-clean/deploy/observability"
 	if err := runLint(dir, "testdata/lint-clean"); err != nil {
@@ -164,10 +147,8 @@ func TestRunLint_Clean(t *testing.T) {
 	}
 }
 
-// TestRunLint_Findings proves a tree with real problems (an unknown
-// metric and a missing runbook anchor - see testdata/lint-findings/
-// deploy/observability/alerts/alpha.yaml) fails with a nonzero-exit-
-// triggering error naming how many findings fired.
+// TestRunLint_Findings proves a tree with real problems (unknown metric,
+// missing runbook anchor) fails, naming how many findings fired.
 func TestRunLint_Findings(t *testing.T) {
 	dir := "testdata/lint-findings/deploy/observability"
 	err := runLint(dir, "testdata/lint-findings")
@@ -179,9 +160,8 @@ func TestRunLint_Findings(t *testing.T) {
 	}
 }
 
-// TestRunLint_LoadError proves a manifest tree that fails to load
-// (same fixture TestRunGen_Errors uses) fails before lint.Run is ever
-// reached, with the same "loading manifests:" prefix runGen uses.
+// TestRunLint_LoadError proves a load failure short-circuits before
+// lint.Run runs, with the same "loading manifests:" prefix runGen uses.
 func TestRunLint_LoadError(t *testing.T) {
 	err := runLint("testdata/does-not-exist", "testdata/lint-clean")
 	if err == nil {

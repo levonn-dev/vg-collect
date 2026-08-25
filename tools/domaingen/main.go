@@ -1,14 +1,7 @@
-// Command domaingen runs two independent codegen jobs. The first reads
-// api/domain.yaml - the cross-language region and platform tables -
-// and emits a generated Go file for libs/go/regionkit and a generated
-// TypeScript file for the frontend; one source of truth, two
-// languages. The second reads a bundled (self-contained) OpenAPI
-// document - api/bundled/bff.yaml - and emits frontend/src/gen/facets.ts,
-// the frontend's only source for constraint values (maxLength, minLength,
-// pattern, minimum, maximum, default) a form or a validator reads; see the
-// facets section further down for that job's own doc comment. `task gen`
-// runs both jobs on every codegen pass, and CI's drift check fails if a
-// hand edit to any output ever diverges from its generator.
+// Command domaingen runs two codegen jobs from api/domain.yaml and
+// api/bundled/bff.yaml: libs/go/regionkit's Go table, a frontend TS
+// file, and frontend/src/gen/facets.ts (schema constraint values).
+// `task gen` runs both; CI fails if a generated file diverges.
 package main
 
 import (
@@ -26,10 +19,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// domain is api/domain.yaml's parsed shape. Field order within each
-// slice is document order (yaml.v3 preserves sequence order on
-// decode), which both emitters rely on for deterministic,
-// declaration-ordered output.
+// domain is api/domain.yaml's parsed shape; slice order is document
+// order, which both emitters rely on for deterministic output.
 type domain struct {
 	Regions        []regionRow        `yaml:"regions"`
 	JPConsoleNames []string           `yaml:"jp_console_names"`
@@ -37,20 +28,16 @@ type domain struct {
 	ReleaseRegions []releaseRegionRow `yaml:"release_regions"`
 }
 
-// regionRow is one entry in domain.yaml's regions list. LocalizationChain
-// is nil/empty for a region with no localized bundles (ntsc_u,
-// region_free today) - both emitters skip such a region's row in the
-// localization-chains table rather than emitting an empty chain.
+// regionRow is one entry in domain.yaml's regions list; LocalizationChain
+// is empty for ntsc_u/region_free, and emitters skip such rows entirely.
 type regionRow struct {
 	Name              string   `yaml:"name"`
 	Class             string   `yaml:"class"`
 	LocalizationChain []string `yaml:"localization_chain"`
 }
 
-// platformRow is one entry in domain.yaml's platforms list. Name is
-// descriptive only (not part of either generated table's data); a
-// TwinIGDBID of 0 means the platform has no JP-regional twin (the
-// yaml omits the field entirely for such a row).
+// platformRow is one entry in domain.yaml's platforms list; Name is
+// descriptive only, and TwinIGDBID 0 means no JP-regional twin.
 type platformRow struct {
 	IGDBID     int64  `yaml:"igdb_id"`
 	Name       string `yaml:"name"`
@@ -58,15 +45,8 @@ type platformRow struct {
 	TwinIGDBID int64  `yaml:"twin_igdb_id"`
 }
 
-// releaseRegionRow is one entry in domain.yaml's release_regions list:
-// IGDB's release_region vendor enum (the id an IGDB release_dates or
-// release_regions row carries on the wire) decoded to its canonical
-// name. EntryRegion is the collector's-entry region a release in that
-// region badges as, for a region with a direct 1:1 mapping; empty for
-// a row with none (worldwide today - it expands to more than one
-// entry region instead of picking one, a decision only the consuming
-// picker can make), same convention as platformRow's TwinIGDBID: the
-// yaml omits the field entirely for such a row.
+// releaseRegionRow decodes one release_regions entry: IGDB's enum id to
+// a name, plus EntryRegion (empty when no 1:1 mapping, e.g. worldwide).
 type releaseRegionRow struct {
 	IGDBID      int    `yaml:"igdb_id"`
 	Name        string `yaml:"name"`
@@ -74,9 +54,7 @@ type releaseRegionRow struct {
 }
 
 // parseDomain decodes domain.yaml. KnownFields is on: an unrecognized
-// key (a typo'd field name) fails the parse instead of silently
-// vanishing, since a swallowed typo would defeat the whole point of a
-// single generated source of truth.
+// key fails the parse instead of vanishing silently.
 func parseDomain(data []byte) (*domain, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
@@ -87,11 +65,8 @@ func parseDomain(data []byte) (*domain, error) {
 	return &d, nil
 }
 
-// generateGo renders libs/go/regionkit/tables_gen.go for package pkg.
-// The raw source is built as plain text, then run through go/format
-// so map-literal alignment and spacing are always canonical gofmt
-// output regardless of how domain.yaml's row count or column widths
-// change - the generator never hand-predicts gofmt's formatting.
+// generateGo renders libs/go/regionkit/tables_gen.go for package pkg,
+// built as plain text then run through go/format for canonical output.
 func generateGo(d *domain, pkg string) ([]byte, error) {
 	var b strings.Builder
 
@@ -190,21 +165,15 @@ func generateGo(d *domain, pkg string) ([]byte, error) {
 }
 
 // tsString renders s as a single-quoted TS string literal, escaping
-// backslashes and single quotes. domain.yaml's values are reviewed
-// identifiers and short names, not arbitrary text, but a generator
-// that emits unescaped string literals is one stray apostrophe away
-// from silently producing broken TS, so escaping stays correct
-// regardless of what the source data looks like.
+// backslashes and quotes regardless of how trusted the input looks.
 func tsString(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `'`, `\'`)
 	return "'" + s + "'"
 }
 
-// generateTS renders frontend/src/gen/domain.ts. Unlike generateGo,
-// there is no stdlib formatter to normalize the output through, so
-// the builder emits already-canonical (2-space indented, single-
-// quoted) TypeScript directly.
+// generateTS renders frontend/src/gen/domain.ts; with no TS formatter
+// available, the builder emits already-canonical 2-space output directly.
 func generateTS(d *domain) ([]byte, error) {
 	var b strings.Builder
 
@@ -302,7 +271,7 @@ func main() {
 }
 
 func run(yamlPath, goOut, goPackage, tsOut string) error {
-	data, err := os.ReadFile(yamlPath) //nolint:gosec // G304: yamlPath is a caller-supplied CLI flag (api/domain.yaml by convention); this is a codegen tool run by developers/CI, not a service handling untrusted input.
+	data, err := os.ReadFile(yamlPath) //nolint:gosec // G304: yamlPath is a CLI flag from a codegen tool, not untrusted service input.
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", yamlPath, err)
 	}
@@ -341,36 +310,19 @@ func writeFile(path string, data []byte) error {
 
 // --- facets: constraint values mirrored from a bundled OpenAPI document ----
 //
-// This job walks a bundled (self-contained) OpenAPI document - api/bundled/
-// bff.yaml - and emits literal TypeScript "as const" data for every schema,
-// every component parameter, and every inline operation parameter. The
-// frontend reads constraint values (maxLength, minLength, pattern, minimum,
-// maximum, default) straight out of this data instead of a hand-maintained
-// constants module.
+// Walks api/bundled/bff.yaml and emits TS "as const" data (maxLength,
+// minLength, pattern, minimum, maximum, default) for every schema,
+// component parameter, and inline operation parameter. schema.ts is the
+// sole enum-value source, so enum keys drop here; a schema whose only
+// content besides its enum is "type" gets no entry.
 //
-// schema.ts (emitted separately by openapi-typescript --enum-values) is the
-// sole enum-value source: every enum key this walk would otherwise carry is
-// dropped, and a named vocabulary schema whose only content was its value
-// list (a bare "type" plus "enum", nothing else) earns no entry at all,
-// since schema.ts already exports its values by name. A schema or parameter
-// that pairs its enum with other facet-worthy content (most commonly a
-// default) keeps that entry; only the enum key itself disappears.
-//
-// Bundled input only: a self-contained document never carries a bare
-// "{ $ref: ... }" as a components.schemas or components.parameters entry -
-// that only happens when this is pointed at an unbundled spec by mistake,
-// and this throws rather than silently emitting an empty facet. Two $ref
-// forms ARE legitimate bundle content: a $ref nested inside a schema's own
-// properties (one named schema's property pointing at another named
-// schema), mirrored through untouched, and a parameter whose schema is a
-// local $ref into components.schemas (a parameter typed by a shared enum
-// vocabulary), resolved one level so the parameter facet carries the
-// vocabulary's own surviving facet keys exactly as an inline copy would.
+// Assumes bundled input: a bare "{ $ref }" in components.schemas or
+// components.parameters throws. A $ref nested in a schema's properties
+// passes through untouched; a parameter schema that is itself a local
+// $ref into components.schemas resolves one level.
 
-// facetKeys are the constraint keys a parameter facet ever carries. enum is
-// deliberately absent: schema.ts is the sole enum-value source (see the
-// section doc comment above), so a parameter whose only facet-worthy
-// content was its enum resolves to an empty {}.
+// facetKeys are the constraint keys a facet carries; enum is deliberately
+// absent (schema.ts is the sole enum-value source).
 var facetKeys = []string{"maximum", "minimum", "default", "maxLength", "minLength", "pattern"}
 
 var httpMethods = map[string]bool{
@@ -382,23 +334,16 @@ var localSchemaRefPattern = regexp.MustCompile(`^#/components/schemas/([^/]+)$`)
 
 var facetIdentifierPattern = regexp.MustCompile(`^[A-Za-z_$][A-Za-z0-9_$]*$`)
 
-// facets is buildFacets' result: one entry per surviving
-// components.schemas name, the components.parameters facets keyed by
-// parameter name, and the inline operation-parameter facets keyed by
-// operationId then parameter name.
+// facets is buildFacets' result: schemas keyed by name, parameters keyed
+// by name, and operation params keyed by operationId then param name.
 type facets struct {
 	Schemas         map[string]interface{}
 	Parameters      map[string]interface{}
 	OperationParams map[string]interface{}
 }
 
-// parseBundle decodes a bundled OpenAPI document into its dynamic shape.
-// Unlike domain.yaml, a bundle carries no fixed schema this tool can decode
-// into typed Go structs - components.schemas holds arbitrary, deeply
-// nested JSON Schema - so it comes back as plain
-// map[string]interface{}/[]interface{}/scalars, the same dynamically-typed
-// shape any JSON Schema walk requires, since components.schemas nests
-// arbitrarily deep.
+// parseBundle decodes a bundled document into its dynamic shape: plain
+// maps/slices/scalars, since components.schemas nests arbitrary JSON Schema.
 func parseBundle(data []byte) (map[string]interface{}, error) {
 	var v interface{}
 	if err := yaml.Unmarshal(data, &v); err != nil {
@@ -411,10 +356,8 @@ func parseBundle(data []byte) (map[string]interface{}, error) {
 	return doc, nil
 }
 
-// nestedMap walks doc through keys, returning an empty map for a missing or
-// non-mapping step at any point - equivalent to JS's "?." optional-chaining
-// with a "?? {}" fallback: a missing or wrong-shaped step anywhere in the
-// path yields an empty map instead of a panic.
+// nestedMap walks doc through keys, returning an empty map instead of
+// panicking on a missing or wrong-shaped step (like JS's ?. with ?? {}).
 func nestedMap(doc map[string]interface{}, keys ...string) map[string]interface{} {
 	var cur interface{} = doc
 	for _, key := range keys {
@@ -445,8 +388,8 @@ func refTarget(node interface{}) (string, bool) {
 	return ref, ok
 }
 
-// assertNoRef fails loudly when node is a bare "{ $ref: ... }" - the
-// unbundled-input signal guarded against in the section doc comment above.
+// assertNoRef fails when node is a bare "{ $ref: ... }", the signal that
+// input is an unbundled spec.
 func assertNoRef(node interface{}, where string) error {
 	if ref, ok := refTarget(node); ok {
 		return fmt.Errorf("domaingen: unresolved $ref at %s (%s); a bundled document should never need one here - is the input actually api/bundled/bff.yaml?", where, ref)
@@ -454,13 +397,8 @@ func assertNoRef(node interface{}, where string) error {
 	return nil
 }
 
-// resolveParamSchema resolves a parameter schema that is itself a bare
-// local $ref into the document's own components.schemas (a parameter typed
-// by a shared enum vocabulary), one level deep. Any other $ref shape -
-// cross-file, or a target the document does not carry - means the input is
-// not a genuine self-contained bundle, and this fails loudly rather than
-// silently emitting an empty facet. A schema with no $ref at all passes
-// through unchanged.
+// resolveParamSchema resolves a schema that is a bare local $ref into
+// components.schemas one level deep; any other $ref shape fails loudly.
 func resolveParamSchema(schema interface{}, doc map[string]interface{}, where string) (interface{}, error) {
 	ref, ok := refTarget(schema)
 	if !ok {
@@ -496,19 +434,9 @@ func extractFacet(schema interface{}, doc map[string]interface{}, where string) 
 	return facet, nil
 }
 
-// stripEnumDeep returns a deep copy of value with every JSON-Schema "enum"
-// KEYWORD removed, at any depth - never a property merely NAMED "enum". The
-// distinction is structural, not a blind key-name match: within a schema
-// object's own keys, "enum" is the constraint keyword and drops; within a
-// "properties" map, every key is a field name (a field can legitimately be
-// called "enum"), never a keyword, so "properties" routes to
-// stripEnumDeepProperties instead, which keeps every field name verbatim
-// and only strips the enum keyword one level down, inside that field's own
-// schema. Arrays keep their source order always (an enum or required list
-// is semantically ordered data, not something to reorder), and every other
-// key is otherwise untouched, including a $ref nested inside a schema's own
-// properties, which this leaves exactly as bundled (see the section doc
-// comment above).
+// stripEnumDeep deep-copies value, dropping every JSON-Schema "enum"
+// keyword at any depth - never a field literally named "enum", which
+// routes through stripEnumDeepProperties inside a "properties" map instead.
 func stripEnumDeep(value interface{}) interface{} {
 	switch v := value.(type) {
 	case []interface{}:
@@ -535,13 +463,8 @@ func stripEnumDeep(value interface{}) interface{} {
 	}
 }
 
-// stripEnumDeepProperties walks a schema's "properties" map one level below
-// stripEnumDeep's own key check, where every key is a field name rather
-// than a JSON-Schema keyword - so no key here is ever eligible for the
-// enum-keyword drop, including a field literally named "enum". Each field's
-// own value is a fresh schema object, so it recurses back through
-// stripEnumDeep, where that field's own "enum" key (if it has one) is once
-// again a real keyword and strips normally.
+// stripEnumDeepProperties walks a "properties" map: every key here is a
+// field name, never the enum keyword, even one literally named "enum".
 func stripEnumDeepProperties(value interface{}) interface{} {
 	m, ok := value.(map[string]interface{})
 	if !ok {
@@ -554,13 +477,8 @@ func stripEnumDeepProperties(value interface{}) interface{} {
 	return out
 }
 
-// isPureEnumVocabulary reports whether node's only content, besides its own
-// enum list, is a bare "type" - the shape of a named vocabulary schema
-// whose sole purpose was to carry its value list. schema.ts already
-// exports that list by name, so such a schema earns no facets.ts entry at
-// all once "enum" drops (see the section doc comment above); a schema that
-// pairs its enum with anything else (most commonly a default) keeps its
-// entry, minus the enum key.
+// isPureEnumVocabulary reports whether node's only content besides its
+// enum is "type" (schema.ts already exports such vocabularies by name).
 func isPureEnumVocabulary(node interface{}) bool {
 	m, ok := node.(map[string]interface{})
 	if !ok {
@@ -577,9 +495,8 @@ func isPureEnumVocabulary(node interface{}) bool {
 	return true
 }
 
-// buildSchemaFacets mirrors every components.schemas entry with its enum
-// keys stripped at every depth, omitting a pure enum vocabulary entirely
-// (see isPureEnumVocabulary).
+// buildSchemaFacets mirrors every components.schemas entry with enum keys
+// stripped, omitting a pure enum vocabulary entirely (see isPureEnumVocabulary).
 func buildSchemaFacets(schemas map[string]interface{}) (map[string]interface{}, error) {
 	out := make(map[string]interface{}, len(schemas))
 	for name, node := range schemas {
@@ -594,9 +511,8 @@ func buildSchemaFacets(schemas map[string]interface{}) (map[string]interface{}, 
 	return out, nil
 }
 
-// buildParameterFacets emits components/parameters keyed by component
-// name, facet keys only (no curation: every components.parameters entry
-// gets a facet, even an empty one).
+// buildParameterFacets emits components/parameters keyed by name; every
+// entry gets a facet, even an empty one (no curation).
 func buildParameterFacets(parameters map[string]interface{}, doc map[string]interface{}) (map[string]interface{}, error) {
 	out := make(map[string]interface{}, len(parameters))
 	for name, node := range parameters {
@@ -617,11 +533,8 @@ func buildParameterFacets(parameters map[string]interface{}, doc map[string]inte
 	return out, nil
 }
 
-// buildOperationParamFacets walks every operation in every path, keeping
-// only parameters written inline in the operation (not a $ref to a
-// components.parameters entry - buildParameterFacets already covers
-// those). An operation with no inline parameters gets no entry at all:
-// this covers every operation WITH inline params, not every operation.
+// buildOperationParamFacets keeps only inline parameters (a $ref to
+// components.parameters is buildParameterFacets' job); no inline params means no entry.
 func buildOperationParamFacets(paths map[string]interface{}, doc map[string]interface{}) (map[string]interface{}, error) {
 	out := map[string]interface{}{}
 	for pathKey, pathItemRaw := range paths {
@@ -694,10 +607,8 @@ func buildFacets(doc map[string]interface{}) (facets, error) {
 
 // --- facets: TypeScript literal serialization -------------------------
 
-// serializeFacetValue renders value (a decoded YAML scalar, array, or
-// object) as a TypeScript literal. Object keys are sorted at serialization
-// time (Go map iteration order is randomized) - arrays keep their source
-// order always, per stripEnumDeep's own comment.
+// serializeFacetValue renders value as a TypeScript literal; object keys
+// are sorted (Go map order is randomized), arrays keep source order.
 func serializeFacetValue(value interface{}, indent string) string {
 	switch v := value.(type) {
 	case []interface{}:
@@ -709,17 +620,12 @@ func serializeFacetValue(value interface{}, indent string) string {
 	}
 }
 
-// facetJSONLiteral renders a decoded YAML scalar as a JSON/TypeScript
-// literal. Every facet scalar (string, number, bool, or null) is valid
-// JSON, and JSON syntax for those types is also valid TypeScript syntax, so
-// encoding/json's own escaping is all every one of those values ever needs -
-// no separate TypeScript-literal formatter required.
+// facetJSONLiteral renders a scalar as JSON, which is also valid
+// TypeScript syntax for these types, so no separate TS formatter is needed.
 func facetJSONLiteral(value interface{}) string {
 	b, err := json.Marshal(value)
 	if err != nil {
-		// Every facet scalar is decoded YAML (string/number/bool/null);
-		// reaching here means the bundle carries something this walk was
-		// never meant to see.
+		// facet scalars are always JSON-safe; this indicates a malformed bundle.
 		panic(fmt.Sprintf("domaingen: facet scalar %#v is not JSON-serializable: %v", value, err))
 	}
 	return string(b)
@@ -768,14 +674,8 @@ func serializeFacetObject(obj map[string]interface{}, indent string) string {
 	return "{\n" + strings.Join(lines, "\n") + "\n" + indent + "}"
 }
 
-// generateFacetsTS renders frontend/src/gen/facets.ts: one as-const export
-// per surviving components.schemas entry (alphabetical), then parameters
-// and operationParams. Built as a line list joined with "\n", not
-// concatenated per block, so the file ends with exactly one trailing
-// newline (a blank line after every block, but no blank line dangling past
-// the last one) - the convention a plain lines.join("\n") always yields,
-// since a trailing empty element in the slice adds a separator before it
-// but nothing after.
+// generateFacetsTS renders facets.ts: as-const exports per schema
+// (alphabetical), then parameters and operationParams.
 func generateFacetsTS(f facets) ([]byte, error) {
 	lines := []string{"// Code generated by domaingen from api/bundled/bff.yaml. DO NOT EDIT.", ""}
 
@@ -802,7 +702,7 @@ func generateFacetsTS(f facets) ([]byte, error) {
 // runFacets is the facets job's CLI-level entry point: a bundle path in, an
 // output file path out.
 func runFacets(bundlePath, facetsOut string) error {
-	data, err := os.ReadFile(bundlePath) //nolint:gosec // G304: bundlePath is a caller-supplied CLI flag (api/bundled/bff.yaml by convention); this is a codegen tool run by developers/CI, not a service handling untrusted input.
+	data, err := os.ReadFile(bundlePath) //nolint:gosec // G304: bundlePath is a CLI flag from a codegen tool, not untrusted service input.
 	if err != nil {
 		return fmt.Errorf("reading %s: %w", bundlePath, err)
 	}

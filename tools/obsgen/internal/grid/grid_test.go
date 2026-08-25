@@ -27,10 +27,8 @@ func TestCheckCleanAndTouching(t *testing.T) {
 	}
 }
 
-// TestCheckStability_FloaterBesideHole mirrors the live-confirmed bff
-// defect: two panels leave an 8-column hole between them, and the panel
-// directly below that hole can shift up one row without colliding with
-// either neighbor (they only border its trial position, not occupy it).
+// TestCheckStability_FloaterBesideHole mirrors a live bff defect: an
+// 8-column hole between two panels lets the panel below shift up one row without colliding.
 func TestCheckStability_FloaterBesideHole(t *testing.T) {
 	v := CheckStability([]Rect{
 		{Title: "Left", X: 0, Y: 0, W: 8, H: 8},
@@ -45,10 +43,8 @@ func TestCheckStability_FloaterBesideHole(t *testing.T) {
 	}
 }
 
-// TestCheckStability_FullyPackedClean proves a grid with no holes at all
-// (every row's panels span the full 24 columns) reports no floaters:
-// each lower panel's one-row-up trial always collides with the panel
-// directly above it.
+// TestCheckStability_FullyPackedClean proves a fully packed grid (no
+// holes) reports no floaters: every one-row-up trial collides.
 func TestCheckStability_FullyPackedClean(t *testing.T) {
 	v := CheckStability([]Rect{
 		{Title: "a", X: 0, Y: 0, W: 12, H: 8},
@@ -62,9 +58,7 @@ func TestCheckStability_FullyPackedClean(t *testing.T) {
 }
 
 // TestCheckStability_RowAbovePackedRegionClean proves a full-width row
-// sitting above a fully packed region blocks both halves of that region
-// from floating: the row's own width covers every column either half
-// could trial into.
+// blocks both halves of a packed region below it from floating.
 func TestCheckStability_RowAbovePackedRegionClean(t *testing.T) {
 	v := CheckStability([]Rect{
 		{Title: "Section", X: 0, Y: 0, W: 24, H: 1},
@@ -76,10 +70,8 @@ func TestCheckStability_RowAbovePackedRegionClean(t *testing.T) {
 	}
 }
 
-// TestCheckStability_PanelDirectlyUnderRowClean isolates the minimal
-// case: one panel narrower than the row above it is still blocked,
-// because the collision is with the row (which spans every column),
-// not with anything matching the panel's own width.
+// TestCheckStability_PanelDirectlyUnderRowClean proves a narrower panel
+// is still blocked by the full-width row above it, not by matching width.
 func TestCheckStability_PanelDirectlyUnderRowClean(t *testing.T) {
 	v := CheckStability([]Rect{
 		{Title: "Section", X: 0, Y: 0, W: 24, H: 1},

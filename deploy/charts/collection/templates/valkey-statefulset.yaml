@@ -1,3 +1,2 @@
-# Cache semantics: no persistence - the dashboard cache rebuilds
-# from Postgres and enrichment on a restart.
+# Cache semantics: no persistence; the dashboard cache rebuilds from Postgres and enrichment on a restart.
 {{- include "vg-lib.valkey.statefulset" . }}

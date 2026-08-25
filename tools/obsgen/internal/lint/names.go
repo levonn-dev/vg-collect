@@ -13,29 +13,19 @@ import (
 )
 
 // vgotelImportPath and metricImportPath are the two import paths Known
-// resolves a per-file local alias against - vgotelImportPath for the
-// vgotel.Counter/Histogram wrapper call shape, metricImportPath for
-// the metric.WithUnit(...) option a direct OTel SDK registration
-// carries. Every real caller today leaves metricImportPath unaliased
-// ("metric") but aliases vgotelImportPath ("vgotel" by convention -
-// libs/go/otel's own package name is "otel", and every caller already
-// imports the upstream SDK's "otel" package too, forcing an alias);
-// Known does not hardcode either spelling, only the import paths.
+// resolves a per-file local alias against; it never hardcodes either
+// spelling. Every real caller aliases vgotelImportPath as "vgotel"
+// (libs/go/otel's own package name, "otel", collides with the upstream SDK import).
 const (
 	vgotelImportPath = "github.com/levonn-dev/vgkeep/libs/go/otel"
 	metricImportPath = "go.opentelemetry.io/otel/metric"
 )
 
-// registration argument positions. vgotel.Counter/Histogram's own
-// signature is (meter, name, description, unit, ...): name at index 1,
-// unit at index 3. A pass-through closure - the shape social,
-// collection and bff each define once per meter and call by literal
-// name at every registration site - drops the meter parameter (it is
-// captured from the enclosing scope, not passed in), so the same two
-// arguments land two positions earlier at the closure's own call
-// sites.
-// The Logged variants (CounterLogged/HistogramLogged) insert a logger
-// parameter after the meter, shifting name and unit one position right.
+// vgotel.Counter/Histogram's signature is (meter, name, description,
+// unit, ...): name at index 1, unit at index 3. A pass-through closure
+// drops the meter (captured, not passed), shifting both two positions
+// earlier. The Logged variants insert a logger after meter, shifting
+// name/unit one position right.
 const (
 	directNameIndex  = 1
 	directUnitIndex  = 3
@@ -45,15 +35,8 @@ const (
 	closureUnitIndex = 2
 )
 
-// registrationKind distinguishes a Counter registration (contributes
-// one "_total"-suffixed name) from a Histogram one (contributes three:
-// "_bucket", "_count", "_sum") from a Gauge one - an UpDownCounter,
-// ObservableUpDownCounter, or ObservableGauge, none of them monotonic,
-// so the Prometheus exporter adds no structural suffix at all beyond
-// the unit suffix (contributes exactly the base name; see
-// libs/go/pgkit's and libs/go/valkeykit's own pool-connection-count
-// gauges, already queried unsuffixed in docs/runbooks/stack.md's own
-// "Pool gauges emit without traffic" verification section).
+// registrationKind distinguishes Counter (_total suffix), Histogram
+// (_bucket/_count/_sum), and Gauge (no structural suffix, not monotonic).
 type registrationKind int
 
 const (
@@ -63,36 +46,16 @@ const (
 )
 
 // Known scans every .go file under repoRoot/services and
-// repoRoot/libs/go, plus every .ts and .tsx file under
-// repoRoot/frontend/src (the browser telemetry - see names_ts.go), for
-// metric registrations and returns every Prometheus-form name they
-// expand to (see expandNames). It recognizes three Go call shapes, all
-// real in this repo: a direct vgotel call (vgotel.Counter(meter,
-// "name", "desc", "unit"), user/auth/enrichment's shape - grep for
-// vgotel.Counter in services/ to see it), a same-order pass-through
-// closure (counter := func(name, desc, unit string) T { c, _ :=
-// vgotel.Counter(meter, name, desc, unit); return c }, called as
-// counter("name", "desc", "unit") - social/collection/bff's shape),
-// and a call directly on the OTel SDK's own metric.Meter - one of the
-// twelve Xxx64[Observable]Kind instrument-creation methods (see
-// otelMethodKind) - with the metric name as the call's own first
-// argument and the unit, if any, in a metric.WithUnit(...) option
-// among the rest (libs/go/pgkit's and libs/go/valkeykit's own
-// pool-connection gauges/counters, services/collection's
-// pending-submissions gauge, services/auth's signing-keys gauge and
-// its oidc package's provider-latency histogram - grep services/ and
-// libs/go/ for ObservableGauge to see the shape), plus one TypeScript
-// call shape (RECEIVER.create<Kind>("name", { unit: "..." }) -
-// frontend/src/telemetryImpl.ts's shape, see names_ts.go for its own
-// scope notes). Known does not attempt general data-flow analysis
-// beyond the one Go closure pattern above: a registration whose name
-// is not a literal at one of these four call shapes contributes
-// nothing (no error - the manifests can only ever reference a name an
-// author could grep for, so a dynamically-built name is out of scope
-// by construction, the same discipline every real registration in the
-// repo already follows) - except a TypeScript template literal
-// containing interpolation, which names_ts.go's doc comment explains
-// is a scan error rather than a silent skip.
+// repoRoot/libs/go, plus every .ts/.tsx file under repoRoot/frontend/src
+// (see names_ts.go), for metric registrations and returns every
+// Prometheus-form name they expand to (see expandNames). It recognizes
+// three Go call shapes (direct vgotel call, pass-through closure, direct
+// OTel SDK call - see otelMethodKind) plus one TypeScript shape
+// (RECEIVER.create<Kind>("name", { unit: "..." })). A registration whose
+// name is not a literal at one of these call shapes contributes nothing
+// (no error: a dynamically-built name is out of scope by construction),
+// except a TypeScript template literal containing interpolation, which
+// names_ts.go treats as a scan error rather than a silent skip.
 func Known(repoRoot string) (map[string]struct{}, error) {
 	known := make(map[string]struct{})
 
@@ -111,15 +74,9 @@ func Known(repoRoot string) (map[string]struct{}, error) {
 	return known, nil
 }
 
-// scanTree walks every non-test .go file under root, folding each
-// file's registrations into known. _test.go files are skipped
-// deliberately, not just for speed: libs/go/otel/emit_test.go, a real
-// file in this repo, registers throwaway counters/histograms (e.g.
-// name "vg.test.count", unit "u") purely to exercise the vgotel
-// wrapper itself. Those are not application metrics any manifest would
-// ever reference, and "u" is not one of the exporter's recognized unit
-// forms, so scanning test files would make Known fail on every run
-// instead of building a clean known-metric set.
+// scanTree walks every non-test .go file under root. _test.go is
+// skipped deliberately: libs/go/otel/emit_test.go registers throwaway
+// counters with unit "u", not a recognized form, which would fail Known on every run.
 func scanTree(root string, known map[string]struct{}) error {
 	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -133,14 +90,8 @@ func scanTree(root string, known map[string]struct{}) error {
 }
 
 // scanFile parses one Go source file and folds its registrations into
-// known. Parsing is syntax-only (go/parser, no go/types): Known never
-// resolves what an import path's identifiers actually mean or what
-// type a call's receiver has, only recognizes the three call shapes
-// textually (a direct-OTel-SDK call is matched by method name alone -
-// see otelMethodKind - which is why this function never needs to know
-// a call's receiver expression at all, unlike the vgotel-specific
-// shapes below), so a fixture file whose imports do not resolve to a
-// real module (this package's own testdata) still scans correctly.
+// known. Parsing is syntax-only (go/parser, no go/types), so a fixture
+// whose imports don't resolve to a real module still scans correctly.
 func scanFile(path string, known map[string]struct{}) error {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
@@ -150,10 +101,8 @@ func scanFile(path string, known map[string]struct{}) error {
 
 	vgAlias := resolveImportAlias(file, vgotelImportPath)
 	metricAlias := resolveImportAlias(file, metricImportPath)
-	// passThroughClosures(file, "") - an empty vgAlias, the common case
-	// for a file that does not import libs/go/otel at all - is safe and
-	// cheap: directKind never matches a "" alias, so it simply finds no
-	// closures, the same outcome as skipping the call outright.
+	// an empty vgAlias (file doesn't import libs/go/otel) is safe: directKind
+	// never matches "", so no closures are found.
 	closures := passThroughClosures(file, vgAlias)
 
 	var errs []error
@@ -186,10 +135,8 @@ func scanFile(path string, known map[string]struct{}) error {
 	return nil
 }
 
-// resolveImportAlias returns the local identifier file binds
-// importPath to, or "" if the file does not import it at all (the
-// common case for both import paths Known cares about: most Go files
-// in the repo register no metrics at all).
+// resolveImportAlias returns the local identifier file binds importPath
+// to, or "" if the file doesn't import it at all (the common case).
 func resolveImportAlias(file *ast.File, importPath string) string {
 	for _, imp := range file.Imports {
 		path, err := strconv.Unquote(imp.Path.Value)
@@ -248,16 +195,9 @@ func loggedKind(call *ast.CallExpr, alias string) (registrationKind, bool) {
 }
 
 // otelMethodKind maps the twelve metric.Meter instrument-creation
-// method names to their structural suffix kind, for a registration
-// made directly against the OTel SDK rather than through this
-// package's vgotel.Counter/Histogram wrapper. Matched by method name
-// alone in scanFile - never by resolving the receiver's static type,
-// since Known parses syntax only - which is safe here: the twelve
-// names are distinctive enough that an unrelated method sharing one
-// would be a remarkable coincidence, and grepping services/ and
-// libs/go/ while building this confirms none exists. Every Int64/
-// Float64 pair maps to the same kind - the SDK's value type never
-// changes the Prometheus name it expands to.
+// method names to their suffix kind, matched by name alone (syntax-only
+// parsing, no receiver-type resolution) since the names are distinctive
+// enough that a collision is a remarkable coincidence.
 var otelMethodKind = map[string]registrationKind{
 	"Int64Counter":             kindCounter,
 	"Float64Counter":           kindCounter,
@@ -275,17 +215,10 @@ var otelMethodKind = map[string]registrationKind{
 	"Float64ObservableGauge":         kindGauge,
 }
 
-// passThroughClosures finds every local closure in file shaped like
-// social/collection/bff's counter/histogram helper: a short variable
-// declaration (x := func(...) {...}) whose body calls
-// alias.Counter/alias.Histogram, passing the closure's own parameters
-// straight through in the same order vgotel.Counter/Histogram itself
-// declares them (skipping only the meter, which the closure captures
-// rather than accepting as a parameter). The returned map is
-// closure-variable-name -> which vgotel function it wraps, letting
-// scanFile's call-site walk treat a call to that variable exactly like
-// a direct call, just at the closure's own (meter-less) argument
-// offsets.
+// passThroughClosures finds every local closure shaped like a
+// counter/histogram helper (x := func(...) {...} calling
+// alias.Counter/Histogram with params passed straight through, meter
+// skipped). Returns closure-variable-name -> which vgotel function it wraps.
 func passThroughClosures(file *ast.File, alias string) map[string]registrationKind {
 	closures := make(map[string]registrationKind)
 
@@ -358,12 +291,8 @@ func paramNames(fl *ast.FieldList) []string {
 	return names
 }
 
-// passThroughArgs reports whether callArgs (a call to
-// vgotel.Counter/Histogram found inside a closure body) passes that
-// closure's own params straight through starting at index 1 (index 0
-// is the meter, a free variable the closure captures rather than
-// receives) - i.e. callArgs[i+1] is a bare reference to params[i], for
-// every param including a trailing variadic (histogram's buckets).
+// passThroughArgs reports whether callArgs passes params straight
+// through starting at index 1 (index 0 is the meter), including a trailing variadic.
 func passThroughArgs(callArgs []ast.Expr, params []string) bool {
 	if len(callArgs) != len(params)+1 {
 		return false
@@ -381,12 +310,9 @@ func passThroughArgs(callArgs []ast.Expr, params []string) bool {
 	return true
 }
 
-// recordCall extracts a call's literal name/unit arguments (at
-// nameIdx/unitIdx) and folds every Prometheus name they expand to into
-// known. A non-literal name or unit (e.g. a name built at runtime)
-// contributes nothing - see Known's doc comment - rather than an
-// error; only a recognized-but-unrecognized unit on an otherwise-
-// literal registration is a scan error (see expandNames).
+// recordCall extracts a call's literal name/unit args and folds every
+// expanded name into known. A non-literal name/unit contributes nothing;
+// an unrecognized unit on a literal registration is a scan error.
 func recordCall(known map[string]struct{}, errs *[]error, path string, args []ast.Expr, nameIdx, unitIdx int, kind registrationKind) {
 	if len(args) <= unitIdx {
 		return
@@ -410,14 +336,9 @@ func recordCall(known map[string]struct{}, errs *[]error, path string, args []as
 	}
 }
 
-// recordDirectOTelCall extracts one direct metric.Meter registration
-// call's literal name - the call's own first argument, since this is
-// a method call on the meter itself rather than vgotel.Counter/
-// Histogram's free-function shape (there is no separate meter argument
-// to skip) - and its unit, if any, from a metric.WithUnit(...) option
-// among the rest (see findWithUnit), then folds every Prometheus name
-// they expand to into known. Same non-literal-name and unrecognized-
-// unit handling as recordCall.
+// recordDirectOTelCall extracts a direct metric.Meter call's literal
+// name (its first argument, no meter to skip) and unit (from
+// metric.WithUnit, see findWithUnit); same handling as recordCall.
 func recordDirectOTelCall(known map[string]struct{}, errs *[]error, path string, args []ast.Expr, kind registrationKind, metricAlias string) {
 	if len(args) == 0 {
 		return
@@ -437,15 +358,9 @@ func recordDirectOTelCall(known map[string]struct{}, errs *[]error, path string,
 	}
 }
 
-// findWithUnit scans opts - a registration call's option arguments,
-// e.g. metric.WithDescription(...), metric.WithUnit(...) - for a
-// metricAlias.WithUnit call and returns its literal argument. Returns
-// "" (the same "no suffix" treatment an explicit empty unit gets) if
-// no such option is present - libs/go/pgkit's and libs/go/valkeykit's
-// own real registrations always carry one, but nothing requires it -
-// or if metricAlias is "" (the file does not import
-// go.opentelemetry.io/otel/metric at all, so it cannot be calling
-// metric.WithUnit either).
+// findWithUnit scans opts for a metricAlias.WithUnit call and returns
+// its literal argument, or "" if absent (same as an explicit empty
+// unit) or metricAlias is "" (unimported).
 func findWithUnit(opts []ast.Expr, metricAlias string) string {
 	if metricAlias == "" {
 		return ""
@@ -485,14 +400,9 @@ func stringLit(e ast.Expr) (string, bool) {
 	return s, true
 }
 
-// expandNames turns one registered (name, unit) pair into every
-// Prometheus series name it produces: dots become underscores, the
-// exporter's unit suffix (see unitSuffix) is appended, and then a
-// counter contributes one "_total"-suffixed name, a histogram
-// contributes three ("_bucket", "_count", "_sum" - a Prometheus
-// histogram has no bare queryable series under the base name itself),
-// and a gauge contributes exactly the base name (not monotonic, so no
-// structural suffix at all).
+// expandNames turns one (name, unit) pair into every Prometheus series
+// name: dots become underscores, unitSuffix is appended, then counter ->
+// one _total name, histogram -> three (_bucket/_count/_sum), gauge -> the base name.
 func expandNames(name, unit string, kind registrationKind) ([]string, error) {
 	suffix, err := unitSuffix(unit)
 	if err != nil {
@@ -512,16 +422,9 @@ func expandNames(name, unit string, kind registrationKind) ([]string, error) {
 	}
 }
 
-// unitSuffix implements the exporter's documented unit-suffix rules:
-// "s" and "ms" are duration units, "By" is a byte-count unit, and a
-// curly-brace unit (e.g. "{event}") is a semantic annotation the
-// exporter drops rather than turning into a name suffix. An empty unit
-// is treated the same as a curly-brace one (a legitimate "no unit"
-// declaration, not a mistake). Anything else is not one of the forms
-// this repo's registrations use, so it fails loud rather than silently
-// picking a suffix (or none) that might be wrong - a genuinely new
-// unit form should extend this table deliberately, not slip through
-// unnoticed.
+// unitSuffix implements the exporter's unit-suffix rules: s/ms are
+// durations, By is bytes, {x} and empty are no-suffix. Anything else
+// fails loud rather than silently guessing a suffix.
 func unitSuffix(unit string) (string, error) {
 	switch {
 	case unit == "":

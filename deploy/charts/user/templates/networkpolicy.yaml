@@ -1,6 +1,5 @@
 {{ include "vg-lib.pg.ownerOnly" . }}
-# User's callers: auth (profile upsert + role reads at mint/refresh),
-# the bff (me composition), and social (followee validation).
+# User's callers: auth (profile upsert + role reads at mint/refresh), bff (me composition), social (followee validation).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

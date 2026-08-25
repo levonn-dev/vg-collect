@@ -1,6 +1,5 @@
 // Package expand holds golden-content expansion shared by the alert,
-// dashboard, and lint pipelines: service-name substitution and block
-// instantiation.
+// dashboard, and lint pipelines: service-name substitution and block instantiation.
 package expand
 
 import (
@@ -11,24 +10,16 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// Substitute replaces {Service}/{service} placeholders (capitalized and
-// lowercase forms) with service, wherever they appear in s - an alert
-// template's uid, title, expr, summary, or panel_ref, or a dashboard
-// golden panel fragment's title, expr, or label selector. Order between
-// the two replacements does not matter: the two placeholder spellings
-// never overlap as substrings of each other.
+// Substitute replaces {Service}/{service} placeholders with service,
+// wherever they appear in s (the two spellings never overlap as substrings).
 func Substitute(s, service string) string {
 	s = strings.ReplaceAll(s, "{Service}", DisplayName(service))
 	s = strings.ReplaceAll(s, "{service}", service)
 	return s
 }
 
-// serviceDisplayNames overrides capitalize's plain first-letter
-// fallback for a service whose {Service} form is not just its name
-// capitalized: bff is an acronym, not a plain word, so it must render
-// "BFF", not "Bff". Add an entry here only when capitalize's fallback
-// is wrong for that service - every other service's {Service} form
-// still comes from capitalize alone.
+// serviceDisplayNames overrides capitalize's fallback for a service
+// whose {Service} form isn't plain capitalization (bff -> "BFF", not "Bff").
 var serviceDisplayNames = map[string]string{
 	"bff": "BFF",
 }
@@ -50,11 +41,8 @@ func capitalize(s string) string {
 }
 
 // BlockPanel is one golden block panel instantiated for one service:
-// {service}/{Service} already substituted into Fragment, paired with
-// the y anchor that service's own golden_blocks entry gave Block.
-// Fragment's own gridPos.y is left exactly as authored - block-relative,
-// an offset from AnchorY - Blocks never touches gridPos; adding the two
-// together is internal/dashboards.Assemble's job.
+// Fragment already has {service}/{Service} substituted; its gridPos.y is
+// left block-relative (an offset from AnchorY) - Assemble adds the two.
 type BlockPanel struct {
 	Service  string
 	Block    string
@@ -62,15 +50,10 @@ type BlockPanel struct {
 	Fragment string
 }
 
-// Blocks instantiates every golden block each service's manifest opts
-// into (golden_blocks), once per panel, substituting {service}/
-// {Service} into the panel's fragment text. A service with no
-// golden_blocks entries is skipped outright - a service is never
-// required to use a block. Order is deterministic: service (m.
-// Dashboards.Services' own order, which Load guarantees is
-// alphabetical), then that service's block names alphabetically
-// (ServiceDash.GoldenBlocks is a Go map), then panel order within the
-// block (Block.Panels' own declaration order).
+// Blocks instantiates every golden block each service opts into
+// (golden_blocks), substituting {service}/{Service} per panel. Order is
+// deterministic: service, then block name (GoldenBlocks is a Go map,
+// sorted), then panel declaration order.
 func Blocks(m *manifest.Model) []BlockPanel {
 	var out []BlockPanel
 	for _, sd := range m.Dashboards.Services {

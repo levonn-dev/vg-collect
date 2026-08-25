@@ -1,11 +1,7 @@
 {{ include "vg-lib.mongo.ownerOnly" . }}
 {{ include "vg-lib.valkey.ownerOnly" . }}
-# Enrichment's callers: the bff (search/resolve/product pass-throughs),
-# the collection service (product snapshots at entry creation, batch
-# prices for values and the dashboard), and the refresh CronJob (it
-# exchanges the shared secret for a service JWT at auth, then calls
-# this endpoint with a normal bearer; this admission is the outer
-# layer).
+# Enrichment's callers: bff (search/resolve/product pass-throughs), collection (product snapshots at entry
+# creation, batch prices for values/dashboard), and the refresh CronJob (JWT via auth, then a normal bearer here; this is the outer admission layer).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

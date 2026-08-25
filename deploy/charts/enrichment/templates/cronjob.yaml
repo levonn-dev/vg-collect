@@ -5,8 +5,7 @@ metadata:
   labels: {{- include "enrichment.labels" . | nindent 4 }}
 spec:
   schedule: {{ .Values.refresh.schedule | quote }}
-  # The service holds its own in-flight guard (409); Forbid keeps k8s
-  # from even starting an overlapping trigger.
+  # The service holds its own in-flight guard (409); Forbid keeps k8s from starting an overlapping trigger.
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 3
@@ -22,22 +21,29 @@ spec:
             app.kubernetes.io/part-of: vgkeep
         spec:
           restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            # Numeric uid so the kubelet can verify runAsNonRoot (curlimages/curl = 100:101).
+            runAsUser: 100
+            runAsGroup: 101
+            seccompProfile: { type: RuntimeDefault }
           containers:
             - name: trigger
               image: {{ .Values.refresh.image | quote }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
+                readOnlyRootFilesystem: true
               env:
                 - name: INTERNAL_SERVICE_TOKEN
                   valueFrom:
                     secretKeyRef: { name: enrichment-secrets, key: internal-service-token }
               command: ["/bin/sh", "-c"]
-              # Exchange-then-trigger, then the nightly catalog refresh
-              # (detaches: 202, work continues after this job exits),
-              # with community-region promotion riding the same run so
-              # a just-promoted community region is visible on the next
-              # catalog read. && keeps failures visible; the normalize
-              # sweep answers a synchronous count.
+              # Refresh detaches (202, continues after this job exits); normalize-community-regions rides the
+              # same run so a just-promoted region is visible on the next catalog read. && surfaces failures; normalize answers synchronously.
               args:
                 - >-
+                  set -e -o pipefail;
                   TOKEN=$(curl -fsS -X POST --max-time 30
                   -H "X-Internal-Token: $INTERNAL_SERVICE_TOKEN"
                   -H "Content-Type: application/json"

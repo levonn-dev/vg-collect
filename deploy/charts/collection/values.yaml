@@ -17,13 +17,8 @@ resources:
   requests: { cpu: 50m, memory: 64Mi }
   limits: { memory: 128Mi }
 
-# The daily entry rematch: a CronJob exchanges the shared internal
-# secret for a short-lived service JWT at auth (POST
-# /internal/service-token), then POSTs the cluster-internal rematch
-# endpoint with that bearer. Scheduled an hour after enrichment's
-# catalog refresh (0 6): the offset serializes the two nightly jobs
-# against the shared provider budget, though correctness never depends
-# on which one runs first.
+# CronJob exchanges the shared internal secret for a service JWT at auth (POST /internal/service-token),
+# then POSTs the internal rematch endpoint with that bearer; scheduled an hour after enrichment's 0 6 refresh to serialize shared provider-budget usage (order doesn't affect correctness).
 rematch:
   schedule: "0 7 * * *"
   image: curlimages/curl:8.14.1
@@ -38,6 +33,9 @@ postgres:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 256Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
 valkey:
   enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
@@ -46,10 +44,12 @@ valkey:
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
 otel:
-  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
-  # disables export entirely (the service logs JSON to stdout only).
+  # OTLP gRPC endpoint for traces/metrics/logs; empty string disables export (JSON stdout logs only).
   exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
 
 secretStore:

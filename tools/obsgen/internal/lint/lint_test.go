@@ -10,13 +10,9 @@ import (
 )
 
 // TestKnown_ExtractsRepresentativeRegistrations proves names.Known
-// against a fixture tree that mirrors all three real registration
-// shapes found in services/ and libs/go/ (a direct vgotel call -
-// user/auth/enrichment's shape; a same-order pass-through closure -
-// social/collection/bff's shape; a direct OTel SDK call - pgkit's/
-// valkeykit's/auth's own gauges), scans both services/ and libs/go/,
-// and expands every exporter unit form unitSuffix recognizes
-// (curly-brace, s, ms, By, and no unit at all).
+// against a fixture mirroring all three real registration shapes
+// (vgotel direct call, pass-through closure, direct OTel SDK call),
+// scanning services/ and libs/go/ and every exporter unit form.
 func TestKnown_ExtractsRepresentativeRegistrations(t *testing.T) {
 	known, err := lint.Known("testdata/names-valid")
 	if err != nil {
@@ -44,12 +40,8 @@ func TestKnown_ExtractsRepresentativeRegistrations(t *testing.T) {
 		// services/widget: direct OTel SDK call, counter with no
 		// metric.WithUnit option at all (the no-unit case) -> counter -> _total.
 		"vg_widget_no_unit_count_total",
-		// services/widget: direct OTel SDK call, histogram with a real
-		// (non-curly-brace) "s" unit -> unit suffix "_seconds" applied to
-		// the base name BEFORE the three-way structural split, proving
-		// that ordering on the direct path specifically (the "s"-unit
-		// histogram case above only exercises it via the vgotel-closure
-		// path).
+		// direct OTel SDK call, "s" unit: suffix applied to the base name
+		// BEFORE the three-way split (the closure case above tests it via vgotel instead).
 		"vg_widget_pool_wait_seconds_bucket",
 		"vg_widget_pool_wait_seconds_count",
 		"vg_widget_pool_wait_seconds_sum",
@@ -80,10 +72,7 @@ func TestKnown_ExtractsRepresentativeRegistrations(t *testing.T) {
 		t.Error("Known() scanned a file outside services/ and libs/go/")
 	}
 
-	// Exact size: proves no extra names snuck in beyond the ones wanted
-	// above (the fixture's dynamic registration and the out-of-tree
-	// decoy are the only other registrations present, and neither may
-	// contribute a name).
+	// exact size proves no extra names snuck in beyond want (the dynamic and decoy registrations must not contribute).
 	if len(known) != len(want) {
 		t.Errorf("len(Known()) = %d, want %d; got %v", len(known), len(want), known)
 	}
@@ -102,10 +91,8 @@ func TestKnown_UnrecognizedUnitErrors(t *testing.T) {
 	}
 }
 
-// TestKnown_MissingTree proves a repoRoot with no services/ or libs/go/
-// directory fails loud (a misconfigured repoRoot should not silently
-// yield an empty known set, which would make every subsequent metric-
-// name check in lint.Run report every real metric as unknown).
+// TestKnown_MissingTree proves a repoRoot missing services/libs/go/
+// fails loud, not silently yielding an empty known set.
 func TestKnown_MissingTree(t *testing.T) {
 	_, err := lint.Known("testdata/does-not-exist")
 	if err == nil {
@@ -113,30 +100,16 @@ func TestKnown_MissingTree(t *testing.T) {
 	}
 }
 
-// repoRoot is the fixture every TestRun_* case below reads real files
-// from (docs/runbooks, services/, libs/go/) - see
-// testdata/repo/docs/runbooks/{stack,widget}.md for the headings and
-// fenced blocks validModel's rules/panels are built to resolve
-// cleanly against.
+// repoRoot is the fixture every TestRun_* case reads real files from
+// (docs/runbooks, services/, libs/go/).
 const repoRoot = "testdata/repo"
 
-// validModel builds a small, internally-consistent manifest.Model -
-// one cluster rule, one service ("widget") with a golden availability
-// instantiation and two custom rules (one Prometheus, one loki), one
-// golden dashboard panel (carrying a real "legendFormat": "{{pod}}"
-// target field - Grafana's own double-brace legend syntax, which real
-// dashboards put on nearly every timeseries panel and which nests a
-// single-brace-shaped span inside it, proving the whole-fragment
-// placeholder scan's jurisdiction stays clean against it) and three
-// custom panels (a plain Prometheus one, one carrying a Grafana
-// $__rate_interval macro, and a Loki-datasourced logs panel whose expr
-// is LogQL) - that produces zero findings against repoRoot. Every
-// TestRun_Findings case below starts
-// from a fresh call to this (never a shared instance - Model holds
-// slices/maps, and mutating a shared instance would leak between
-// subtests) and changes exactly one thing, mirroring internal/
-// dashboards/assemble_test.go's and internal/alerts/emit_test.go's own
-// fixtureModel-plus-mutate pattern.
+// validModel builds a small, internally-consistent manifest.Model that
+// produces zero findings against repoRoot: one cluster rule, one
+// service with a golden instantiation and two custom rules (prometheus,
+// loki), one golden panel, three custom panels. Every TestRun_Findings
+// case gets a fresh call (never shared: Model holds slices/maps) and
+// changes exactly one thing.
 func validModel() *manifest.Model {
 	return &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -182,16 +155,8 @@ func validModel() *manifest.Model {
 							PanelRef: "widget/Spins",
 						},
 						{
-							// Clean-side twin of the "token-scans instead
-							// of AST-parsing" case below: a loki-
-							// datasourced rule whose expr is LogQL (not
-							// valid PromQL, so it must never hit the AST
-							// path) quoting a metric name that IS
-							// registered. Proves the token-scan path
-							// passes cleanly on real content, not only
-							// that it fires on bad content - without
-							// this, "clean" and "token-scanned" were
-							// never exercised together anywhere.
+							// clean-side twin of the token-scan case below: a loki rule
+							// (LogQL, never AST-parsed) quoting a REGISTERED name, proving the token-scan path passes cleanly too.
 							UID: "vg-widget-loki-check", Title: "Widget error log spike",
 							Expr: `{service_name="widget"} |= "vg_widget_spins_count_total"`, Condition: "gt 0",
 							Instant: true, Range: "5m", For: "5m",
@@ -215,18 +180,11 @@ func validModel() *manifest.Model {
 					GoldenBlocks: map[string]int{"availability": 0},
 					CustomPanels: []json.RawMessage{
 						json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "targets": [{"expr": "sum(rate(vg_widget_spins_count_total[5m]))"}]}`),
-						// Clean-side macro case: real dashboards write the
-						// range selector of nearly every rate panel as
-						// [$__rate_interval], which Grafana expands client-
-						// side and promql/parser rejects on sight. The
-						// panel must parse (after parse-only substitution)
-						// and still have its metric names checked.
+						// clean-side macro case: [$__rate_interval] must parse
+						// (after parse-only substitution) and still get its metric names checked.
 						json.RawMessage(`{"title": "Spin rate", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "datasource": {"type": "prometheus", "uid": "prometheus"}, "targets": [{"refId": "A", "datasource": {"type": "prometheus", "uid": "prometheus"}, "expr": "sum(rate(vg_widget_spins_count_total[$__rate_interval]))"}]}`),
-						// Clean-side Loki case: every real dashboard carries
-						// one logs panel whose datasource is loki and whose
-						// expr is LogQL, not PromQL. It must route to the
-						// token scan (no expr-parse-error) while the vg_
-						// name it quotes stays jurisdiction-checked.
+						// clean-side loki case: LogQL must route to token scan (no
+						// expr-parse-error) while the vg_ name it quotes stays checked.
 						json.RawMessage(`{"title": "Recent error logs", "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"refId": "A", "datasource": {"type": "loki", "uid": "loki"}, "expr": "{service_name=\"widget\"} | severity_text=\"ERROR\" |= \"vg_widget_spins_count_total\""}]}`),
 					},
 				},
@@ -236,15 +194,8 @@ func validModel() *manifest.Model {
 }
 
 // TestRun_Clean proves the happy path: validModel against repoRoot
-// produces zero findings - every rule's runbook anchor resolves, every
-// panel_ref resolves, every expr parses and names only known metrics
-// or an external prefix (the Prometheus-datasourced rules/panels via
-// the AST path - including one panel whose range selector is a Grafana
-// $__rate_interval macro - and the loki-datasourced rule and logs panel
-// via the token-scan fallback, proving those paths pass cleanly, not
-// only that they fire on bad content), and both of repoRoot's own
-// runbook files' fenced blocks (one AST-checked, one token-scanned) are
-// clean too.
+// produces zero findings, exercising both the AST and token-scan paths
+// cleanly, not just their failure modes.
 func TestRun_Clean(t *testing.T) {
 	findings := lint.Run(validModel(), repoRoot)
 	if len(findings) != 0 {
@@ -264,10 +215,7 @@ func findingsWithRule(findings []lint.Finding, want string) []lint.Finding {
 }
 
 // TestRun_Findings tables every check Run owns, each isolated to one
-// deliberate change from validModel's otherwise-clean baseline so a
-// failure is unambiguous about which check broke. want lists
-// substrings that must all appear somewhere in the combined
-// Path+Rule+Message text of at least one finding carrying wantRule.
+// change from validModel's clean baseline.
 func TestRun_Findings(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -279,17 +227,13 @@ func TestRun_Findings(t *testing.T) {
 		{
 			name: "duplicate uid after {service} expansion",
 			mutate: func(m *manifest.Model) {
-				// Collides with the golden availability instantiation's
-				// own expanded uid (vg-{service}-down -> vg-widget-down),
-				// a collision internal/manifest.Load's own checkUIDs
-				// cannot see (it excludes template uids - see checkUIDs'
-				// doc comment).
+				// collides with the golden instantiation's expanded uid
+				// (vg-{service}-down -> vg-widget-down), invisible to Load's own checkUIDs.
 				m.Alerts.Cluster[0].UID = "vg-widget-down"
 			},
 			wantRule: "duplicate-uid",
-			// The finding lands on the SECOND occurrence (the golden
-			// instantiation, alerts/widget.yaml) and names the FIRST
-			// (alerts/cluster.yaml) - both facts, not just the shared uid.
+			// the finding lands on the SECOND occurrence (alerts/widget.yaml)
+			// and names the FIRST (alerts/cluster.yaml).
 			wantPath:   "alerts/widget.yaml",
 			wantSubstr: "also used in alerts/cluster.yaml",
 		},
@@ -314,10 +258,8 @@ func TestRun_Findings(t *testing.T) {
 			wantSubstr: "title still contains {Svc}",
 		},
 		{
-			// goldenItem must build the linted item from the override
-			// actually in effect, not the template's own default summary -
-			// otherwise this exact typo would reach vg-rules.yaml unnoticed
-			// (see goldenItem's doc comment).
+			// goldenItem must build the item from the override actually in
+			// effect, not the template default, or this typo reaches vg-rules.yaml unnoticed.
 			name: "unresolved placeholder from a misspelled golden override summary",
 			mutate: func(m *manifest.Model) {
 				m.Alerts.Services[0].Golden["availability"] = manifest.Overrides{Summary: "{servce} down"}
@@ -389,9 +331,7 @@ func TestRun_Findings(t *testing.T) {
 			},
 			wantRule: "runbook-anchor-missing",
 			wantPath: "alerts/widget.yaml",
-			// Stops short of the raw os.ReadFile error text (platform-
-			// dependent wording) - only the part this package itself
-			// formats is asserted.
+			// stops short of the raw os.ReadFile error text (platform-dependent); only this package's own formatting is asserted.
 			wantSubstr: "rule vg-widget-spins-high: docs/runbooks/does-not-exist.md:",
 		},
 		{
@@ -419,9 +359,7 @@ func TestRun_Findings(t *testing.T) {
 			},
 			wantRule: "expr-parse-error",
 			wantPath: "alerts/widget.yaml",
-			// Only this package's own "rule <uid>:" prefix is asserted,
-			// not promql/parser's own error wording, which is free to
-			// change across dependency versions.
+			// only this package's own "rule <uid>:" prefix is asserted, not promql/parser's own wording.
 			wantSubstr: "rule vg-widget-spins-high:",
 		},
 		{
@@ -437,15 +375,12 @@ func TestRun_Findings(t *testing.T) {
 			name: "rule on a non-prometheus datasource token-scans instead of AST-parsing",
 			mutate: func(m *manifest.Model) {
 				m.Alerts.Services[0].Alerts[0].Datasource = "loki"
-				// Not valid PromQL (LogQL filter syntax) - proves the
-				// datasource routing skips AST parsing entirely rather
-				// than reporting a spurious expr-parse-error.
+				// not valid PromQL (LogQL): proves routing skips AST parsing rather than reporting a spurious expr-parse-error.
 				m.Alerts.Services[0].Alerts[0].Expr = `{service_name="widget"} |= "vg_widget_totally_unknown_total"`
 			},
 			wantRule: "unknown-metric",
 			wantPath: "alerts/widget.yaml",
-			// One contiguous substring proving both the routing (token-
-			// scanned, not AST-parsed) and the specific token found.
+			// proves both the routing (token-scanned, not AST-parsed) and the specific token found.
 			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
 		},
 		{
@@ -469,19 +404,13 @@ func TestRun_Findings(t *testing.T) {
 		{
 			name: "loki-datasourced panel token-scans instead of AST-parsing",
 			mutate: func(m *manifest.Model) {
-				// Panel-level datasource only (no per-target override),
-				// exercising the fallback step of the resolution order;
-				// every real logs panel redundantly sets the same
-				// datasource at both levels. The expr is LogQL, so
-				// routing it to the AST path would produce a spurious
-				// expr-parse-error instead of this unknown-metric
-				// finding.
+				// panel-level datasource only (no target override), exercising the
+				// fallback step; LogQL routed to AST would spuriously expr-parse-error.
 				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": {"type": "loki", "uid": "loki"}, "targets": [{"expr": "{service_name=\"widget\"} | severity_text=\"ERROR\" |= \"vg_widget_totally_unknown_total\""}]}`)
 			},
 			wantRule: "unknown-metric",
 			wantPath: "dashboards/widget.yaml",
-			// One contiguous substring proving both the routing (token-
-			// scanned, not AST-parsed) and the specific token found.
+			// proves both the routing (token-scanned, not AST-parsed) and the specific token found.
 			wantSubstr: `(datasource loki, token-scanned): token "vg_widget_totally_unknown_total"`,
 		},
 		{
@@ -500,19 +429,14 @@ func TestRun_Findings(t *testing.T) {
 			},
 			wantRule: "unknown-metric",
 			wantPath: "dashboards/widget.yaml",
-			// "metric" (not "token") and no token-scanned marker: only the
-			// AST path words a finding this way, so this substring proves
-			// the target-level prometheus won over the panel-level loki.
+			// "metric" (not "token"), no token-scanned marker: proves target-level prometheus won over panel-level loki.
 			wantSubstr: `panel widget/Spins: metric "vg_widget_totally_unknown_total"`,
 		},
 		{
 			name: "a datasource named by bare string still routes (and keeps the panel readable)",
 			mutate: func(m *manifest.Model) {
-				// Grafana's other accepted spelling for the same field.
-				// A strict object-only decode would fail on the whole
-				// fragment, silently dropping the panel and cascading
-				// into an unresolved panel_ref for "widget/Spins"
-				// instead of the routing this asserts.
+				// Grafana's other accepted spelling; a strict object-only decode
+				// would drop the whole panel, cascading into a panel_ref finding instead.
 				m.Dashboards.Services[0].CustomPanels[0] = json.RawMessage(`{"title": "Spins", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "datasource": "loki", "targets": [{"expr": "{service_name=\"widget\"} |= \"vg_widget_totally_unknown_total\""}]}`)
 			},
 			wantRule:   "unknown-metric",
@@ -531,10 +455,8 @@ func TestRun_Findings(t *testing.T) {
 		{
 			name: "a rule expr carrying a Grafana macro is still a parse error (rules get no substitution)",
 			mutate: func(m *manifest.Model) {
-				// A Grafana alert rule's query is sent to the datasource
-				// as authored - no dashboard macro is ever expanded for
-				// it - so a macro here is a real defect, not the false
-				// positive the panel path exists to avoid.
+				// a rule's query is sent to the datasource as authored (no
+				// dashboard macro expansion), so a macro here is a real defect.
 				m.Alerts.Services[0].Alerts[0].Expr = "rate(vg_widget_spins_count_total[$__rate_interval])"
 			},
 			wantRule:   "expr-parse-error",
@@ -546,20 +468,14 @@ func TestRun_Findings(t *testing.T) {
 			mutate: func(m *manifest.Model) {
 				m.Dashboards.Blocks["availability"].Panels[0] = `{"title": "{Svc} Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up"}]}`
 			},
-			// This mutation also cascades into a second, different-rule
-			// finding (panel_ref "widget/Availability" no longer
-			// resolves, since the panel's own title changed) -
-			// findingsWithRule below filters to this case's own rule, so
-			// that side effect does not interfere with either count or
-			// path/substring assertions.
+			// also cascades into a second finding (panel_ref no longer resolves);
+			// findingsWithRule filters to this case's own rule, so it doesn't interfere.
 			wantRule:   "unresolved-placeholder",
 			wantPath:   "golden.yaml block availability",
 			wantSubstr: "fragment still contains {Svc}",
 		},
 		{
-			// Proves the whole-fragment scan catches a typo'd placeholder
-			// buried inside a quoted label selector, not just the panel's
-			// parsed title.
+			// proves the whole-fragment scan catches a placeholder inside a label selector, not just the parsed title.
 			name: "golden panel fragment has an unresolved placeholder outside the title (a quoted selector)",
 			mutate: func(m *manifest.Model) {
 				m.Dashboards.Blocks["availability"].Panels[0] = `{"title": "Availability", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "up{namespace=\"vgkeep\", pod=~\"{servce}-.*\"}"}]}`
@@ -601,13 +517,9 @@ func TestRun_Findings(t *testing.T) {
 	}
 }
 
-// TestRun_PanelMacroDoesNotMaskBreakage proves the parse-only variable
-// substitution cannot hide a genuinely broken panel expr: the query
-// below carries a real Grafana macro AND an unbalanced parenthesis, and
-// must still produce exactly one expr-parse-error. It also proves the
-// finding quotes the expr as authored (macro text intact) rather than
-// the substituted copy the parser actually saw, so whoever reads the
-// finding sees the text that is really in the manifest.
+// TestRun_PanelMacroDoesNotMaskBreakage proves the parse-only
+// substitution cannot hide a real break (macro + unbalanced paren still
+// errors), and the finding quotes the expr as authored, not substituted.
 func TestRun_PanelMacroDoesNotMaskBreakage(t *testing.T) {
 	const broken = `sum(rate(vg_widget_spins_count_total[$__rate_interval])`
 
@@ -631,17 +543,9 @@ func TestRun_PanelMacroDoesNotMaskBreakage(t *testing.T) {
 	}
 }
 
-// TestRun_MetricJurisdiction proves the unknown-metric check's
-// jurisdiction on the rule/panel AST path (TestRun_RunbookDocScan
-// proves the same rule on the runbook-scan path): only a vg_-prefixed
-// selector name absent from the known set is a finding. A non-vg_ name
-// - here, the real OTel HTTP server instrumentation's own
-// http_server_request_duration_seconds_count, which this repo emits
-// but never registers by hand, so it could never appear in Known()'s
-// set either - is outside this lint's jurisdiction and must not fire,
-// regardless of whether it happens to be a real, currently-emitted
-// series. The check's purpose is catching a vg_-owned metric rename,
-// not policing every metric name this repo's dependencies emit.
+// TestRun_MetricJurisdiction proves only a vg_-prefixed unknown name
+// fires: a real but non-vg_ series (http_server_request_duration_seconds_count)
+// this repo emits but never registers must not, regardless of being real.
 func TestRun_MetricJurisdiction(t *testing.T) {
 	m := validModel()
 	m.Alerts.Cluster = append(m.Alerts.Cluster,
@@ -671,24 +575,13 @@ func TestRun_MetricJurisdiction(t *testing.T) {
 	}
 }
 
-// TestRun_RunbookDocScan proves the runbook-doc-wide check: every
-// docs/runbooks/*.md fenced block is checked regardless of whether any
-// rule cites that file, and both
-// treatments (AST for a block that parses as PromQL, token-scan
-// fallback for one that does not) catch a metric name nothing
-// registers - the walk->step class of drift this check exists to
-// catch - while a real, non-vg_ name (section 3 of the fixture's
-// runbook) never fires, proving the jurisdiction narrowing (see
-// unresolvedMetric) applies to this path too, not just rule/panel
-// exprs. testdata/repo-runbook-drift's services/ and libs/go/ register
-// nothing, so any vg_ metric its one runbook cites is necessarily
-// unknown.
+// TestRun_RunbookDocScan proves every runbook's fenced block is
+// checked regardless of citation, both AST and token-scan paths catch
+// an unregistered name, and a real non-vg_ name still never fires.
 func TestRun_RunbookDocScan(t *testing.T) {
 	m := validModel()
-	// This fixture's runbooks do not define validModel's own anchors;
-	// only the doc-wide scan's findings are asserted below, so the
-	// model's other rules are left as is rather than rebuilt from
-	// scratch for a check that does not read them.
+	// this fixture's runbooks don't define validModel's anchors; only the
+	// doc-wide scan's findings are asserted below.
 	findings := lint.Run(m, "testdata/repo-runbook-drift")
 
 	unknown := findingsWithRule(findings, "unknown-metric")
@@ -726,12 +619,9 @@ func TestRun_RunbookDocScan(t *testing.T) {
 	}
 }
 
-// TestRun_MetricScanErrorDegradesGracefully proves that when Known
-// itself fails (here: a repoRoot with no services/libs tree at all),
-// Run reports exactly that as one finding and skips every metric-name-
-// dependent check rather than reporting every real metric as unknown -
-// while every check that does not depend on Known (uid uniqueness
-// here) still runs normally.
+// TestRun_MetricScanErrorDegradesGracefully proves a failed Known
+// yields exactly one finding and skips metric-dependent checks, while
+// Known-independent checks (uid uniqueness) still run.
 func TestRun_MetricScanErrorDegradesGracefully(t *testing.T) {
 	m := validModel()
 	m.Alerts.Cluster[0].UID = "vg-widget-down" // also trip a uid collision, unrelated to the metric scan

@@ -8,18 +8,11 @@ import (
 )
 
 // TestKnown_TypeScriptExtractsRepresentativeRegistrations proves
-// names.Known's TypeScript pass against a fixture tree covering every
-// shape real frontend/src/telemetryImpl.ts registrations use, plus the
-// one boundary case that is not a registration at all: a multi-line
-// options object whose unit sits beside a nested advice object (proves
-// the bracket-depth tracker survives nested {}/[] without ending the
-// call early), a unitless counter, a plain (non-interpolated) backtick
-// literal name, a receiver-less call (must not match at all - see
-// widget.tsx for the .tsx extension too), and an ObservableGauge (no
-// structural suffix). See TestKnown_TypeScriptInterpolatedTemplateErrors
-// for the template-interpolation error case, kept in its own fixture
-// tree because Known discards its whole return value on any scan
-// error.
+// names.Known's TypeScript pass against a fixture covering every real
+// registration shape (nested options object, unitless counter, backtick
+// literal, receiver-less call that must not match, ObservableGauge).
+// See TestKnown_TypeScriptInterpolatedTemplateErrors for the
+// interpolation error case, kept separate since Known discards its whole return on any scan error.
 func TestKnown_TypeScriptExtractsRepresentativeRegistrations(t *testing.T) {
 	known, err := lint.Known("testdata/names-ts-valid")
 	if err != nil {
@@ -50,52 +43,31 @@ func TestKnown_TypeScriptExtractsRepresentativeRegistrations(t *testing.T) {
 		}
 	}
 
-	// telemetry.ts's bare() helper calls createCounter with no receiver
-	// identifier at all (must not match, not even attempted); its
-	// "dynamic" registration has a receiver that does match but an
-	// identifier - not any string literal - as the name argument (must
-	// not resolve, the same silent skip a non-literal name gets on the
-	// Go side).
+	// bare() calls createCounter with no receiver (must not match); "dynamic"
+	// has a receiver but an identifier, not a literal, name (must not resolve).
 	for name := range known {
 		if strings.Contains(name, "bare") || strings.Contains(name, "dynamic") {
 			t.Errorf("Known() must not resolve a non-literal or receiver-less create call, found %q", name)
 		}
 	}
 
-	// telemetry.ts's concatQuote/concatBacktick registrations both
-	// concatenate a leading literal ('vg.widget.' and `vg.widget.`,
-	// quote and backtick form) with a "kind" variable via "+": the
-	// literal is only the left operand of a larger expression, not the
-	// call's whole first argument, so - like bare() and dynamic above -
-	// neither must resolve to anything. In particular neither may
-	// produce the phantom name "vg_widget__total" a scanner that read
-	// only the leading literal and never checked what followed it would
-	// otherwise record (both forms concatenate the identical literal
-	// text, so a scanner with that bug would collapse them into this
-	// one shared entry).
+	// concatQuote/concatBacktick concatenate a leading literal with a
+	// variable via "+"; the literal isn't the whole argument, so neither
+	// must resolve, and a scanner bug reading only the leading literal
+	// would collapse both into the phantom name "vg_widget__total".
 	if _, ok := known["vg_widget__total"]; ok {
 		t.Errorf("Known() resolved a concatenated first argument to phantom name %q; a concatenation must contribute nothing, silently", "vg_widget__total")
 	}
 
-	// Exact size: proves no extra names snuck in beyond the ones wanted
-	// above.
+	// exact size proves no extra names snuck in beyond want.
 	if len(known) != len(want) {
 		t.Errorf("len(Known()) = %d, want %d; got %v", len(known), len(want), known)
 	}
 }
 
-// TestKnown_TypeScriptMissingFrontendDirIsNotAnError proves a repoRoot
-// with a real services/libs/go tree but no frontend/src directory at
-// all scans cleanly - contributes zero TypeScript-derived names, not
-// an error - unlike a missing services/ or libs/go/ root (see
-// TestKnown_MissingTree), which does fail loud. frontend/src does not
-// get that same strictness: a repoRoot pointing at the wrong place
-// entirely is already caught by the services/libs/go checks (a real
-// vgkeep checkout always has both alongside frontend/src), so treating
-// frontend/src's own absence as fatal would only ever fire for a
-// fixture tree with no frontend content to model - exactly
-// testdata/names-valid's own shape (no frontend/src directory at all),
-// reused here as the proof.
+// TestKnown_TypeScriptMissingFrontendDirIsNotAnError proves a missing
+// frontend/src scans cleanly (zero names, not an error), unlike a
+// missing services/ or libs/go/ root (see TestKnown_MissingTree).
 func TestKnown_TypeScriptMissingFrontendDirIsNotAnError(t *testing.T) {
 	known, err := lint.Known("testdata/names-valid")
 	if err != nil {
@@ -108,11 +80,8 @@ func TestKnown_TypeScriptMissingFrontendDirIsNotAnError(t *testing.T) {
 	}
 }
 
-// TestKnown_TypeScriptInterpolatedTemplateErrors proves a template
-// literal name containing "${" fails loud (a scan error) rather than
-// silently contributing nothing, unlike an ordinary non-literal name
-// (an identifier, a concatenation) - see recordTSCall's doc comment
-// for why the two cases are treated differently.
+// TestKnown_TypeScriptInterpolatedTemplateErrors proves a "${"
+// template literal fails loud (scan error), unlike an ordinary non-literal name.
 func TestKnown_TypeScriptInterpolatedTemplateErrors(t *testing.T) {
 	_, err := lint.Known("testdata/names-ts-interpolated")
 	if err == nil {
@@ -126,27 +95,15 @@ func TestKnown_TypeScriptInterpolatedTemplateErrors(t *testing.T) {
 	}
 }
 
-// TestKnown_TypeScriptRealTree proves the TypeScript pass resolves the
+// TestKnown_TypeScriptRealTree proves the TypeScript pass resolves
 // real frontend/src/telemetryImpl.ts registrations against the actual
-// repository tree, not a fixture - a frontend metric rename becomes an
-// immediate failure here, not just a lint finding discovered later.
-// All nine names are cross-checked against
-// deploy/charts/platform/files/dashboards/frontend.json's own queries
-// (the ground truth the dashboard lint must satisfy): every distinct
-// vg_frontend_* token its exprs reference, extracted independently of
-// this package (not read back from telemetryImpl.ts or from Known's
-// own output) via
+// repo tree, not a fixture. The nine names are cross-checked against
+// frontend.json's own queries, extracted independently via
 //
 //	grep -o 'vg_frontend_[a-z_]*' deploy/charts/platform/files/dashboards/frontend.json | sort -u
 //
-// which returns exactly these nine: six unitless counters' _total
-// names, plus the _bucket name for each of the three "ms"/unitless
-// web-vitals histograms (frontend.json never queries the matching
-// _count/_sum series, so only _bucket is ground truth here - unlike
-// TestKnown_TypeScriptExtractsRepresentativeRegistrations's fixture
-// assertion, which does check _count/_sum too, since that fixture's
-// "want" list is authored directly from the registration, not
-// cross-checked against a dashboard).
+// Only _bucket is checked for the three histograms: frontend.json
+// never queries their _count/_sum series.
 func TestKnown_TypeScriptRealTree(t *testing.T) {
 	known, err := lint.Known("../../../..")
 	if err != nil {

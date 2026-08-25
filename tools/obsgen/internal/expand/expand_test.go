@@ -24,11 +24,8 @@ func TestSubstitute(t *testing.T) {
 	}
 }
 
-// TestBlocks proves the instantiation order (service, then that
-// service's block names, then panel order) and the two per-instance
-// substitutions Blocks owns: {service}/{Service} in the fragment text,
-// and pairing each instance with the y anchor its own service's
-// manifest declared for that block.
+// TestBlocks proves instantiation order (service, block, panel) and the
+// per-instance substitution plus anchor pairing Blocks owns.
 func TestBlocks(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -60,10 +57,8 @@ func TestBlocks(t *testing.T) {
 	}
 }
 
-// TestBlocks_SkipsServicesWithNoGoldenBlocks proves a service is never
-// required to instantiate a block: one with an empty (or nil)
-// GoldenBlocks map contributes nothing, and services around it are
-// otherwise unaffected.
+// TestBlocks_SkipsServicesWithNoGoldenBlocks proves a service with an
+// empty/nil GoldenBlocks map contributes nothing; other services are unaffected.
 func TestBlocks_SkipsServicesWithNoGoldenBlocks(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{

@@ -9,21 +9,16 @@ env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
   jwtIssuer: vgkeep-auth
   jwtAudience: vgkeep
-  # External MongoDB URL (creds-less, e.g. mongodb+srv://...); read only
-  # when mongo.enabled is false. Credentials still ride MONGO_USERNAME
-  # (mongo.username) + MONGO_PASSWORD (secret), composed service-side.
+  # External MongoDB URL (creds-less, e.g. mongodb+srv://...), read only when mongo.enabled is false;
+  # credentials still ride MONGO_USERNAME (mongo.username) + MONGO_PASSWORD (secret), composed service-side.
   mongoUrl: ""
   valkeyUrl: rediss://enrichment-valkey:6379/0
   searchCacheTtl: 24h
   productCacheTtl: 5m
   igdbRefreshAfter: 720h
 
-# Provider switches. stub serves the embedded fixture catalog
-# (credential-less dev/e2e); real requires the corresponding secret
-# store keys to exist - Tilt flips these only when the credentials are
-# present in .env, mirroring the auth provider flags. The fx switch is
-# credential-less either way, so real is the default; set fx.mode=stub
-# for deterministic/offline rates instead.
+# stub serves the embedded fixture catalog (credential-less dev/e2e); real requires secret store keys, which
+# Tilt sets only when present in .env. fx is credential-less either way and defaults to real; use fx.mode=stub for deterministic/offline rates.
 igdb:
   mode: stub
 pricecharting:
@@ -31,14 +26,8 @@ pricecharting:
 fx:
   mode: real
 
-# The daily catalog refresh: a CronJob exchanges the shared internal
-# secret for a short-lived service JWT at auth (POST
-# /internal/service-token), then POSTs the cluster-internal refresh
-# endpoint with that bearer - the service validates JWTs only (the
-# NetworkPolicy admits only this CronJob and the known service
-# callers, and the gateway never routes there).
-# Secret rotation happens at auth: see the auth chart's
-# previousTokenEnabled for the procedure.
+# CronJob exchanges the shared internal secret for a service JWT at auth (POST /internal/service-token),
+# then POSTs the internal refresh endpoint with that bearer; rotation is via the auth chart's previousTokenEnabled.
 refresh:
   schedule: "0 6 * * *"
   image: curlimages/curl:8.14.1
@@ -57,6 +46,9 @@ mongo:
   resources:
     requests: { cpu: 100m, memory: 256Mi }
     limits: { memory: 512Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
 valkey:
   enabled: true            # the prod-path seam: disable + point valkeyUrl at a managed cache
@@ -65,10 +57,12 @@ valkey:
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
 otel:
-  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
-  # disables export entirely (the service logs JSON to stdout only).
+  # OTLP gRPC endpoint for traces/metrics/logs; empty string disables export (JSON stdout logs only).
   exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
 
 secretStore:

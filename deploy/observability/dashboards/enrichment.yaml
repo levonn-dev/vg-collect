@@ -8,18 +8,19 @@ sections:
   Search and matching: 22
   Catalog refresh and sweeps: 47
   Mongo: 64
-  Valkey: 73
-  Runtime: 98
-  Pods: 107
-  Logs: 116
+  Valkey: 81
+  Runtime: 106
+  Pods: 115
+  Logs: 124
 golden_blocks:
   stat_row: 1
   http: 6
-  valkey: 74
-  fail_open: 90
-  runtime: 99
-  pod: 108
-  logs: 117
+  mongo: 73
+  valkey: 82
+  fail_open: 98
+  runtime: 107
+  pod: 116
+  logs: 125
 custom_panels:
   - |
     {

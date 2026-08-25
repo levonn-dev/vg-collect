@@ -44,9 +44,8 @@ def env_pairs():
 ENV = env_pairs()
 
 # .env var -> ESO remote key. Extend this map as services add secrets.
-# Empty values are excluded: the fake store webhook rejects them. The Helm
-# chart's providers.*.enabled flags gate the corresponding ExternalSecret
-# entries and deployment env vars so nothing tries to read absent keys.
+# Empty values are excluded (webhook rejects them); providers.*.enabled
+# flags then gate ExternalSecret/env entries against absent keys.
 SECRET_KEYS = {k: v for k, v in {
     'user/pg-password': ENV.get('PG_USER_PASSWORD', ''),
     'auth/pg-password': ENV.get('PG_AUTH_PASSWORD', ''),
@@ -101,10 +100,8 @@ docker_build(
     dockerfile='services/auth/Dockerfile',
     only=['libs/go', 'services/auth'],
 )
-# A provider needs BOTH halves of its credential pair (mirrors the auth
-# service's own enablement rule); enabling on a half-configured pair
-# would point the ExternalSecret at store keys the empty-value filter
-# above never published, wedging the sync.
+# A provider needs BOTH credential halves (mirrors auth's own enablement
+# rule); a half-configured pair would wedge the ExternalSecret sync.
 _auth_set = []
 if ENV.get('GOOGLE_CLIENT_ID', '') != '' and ENV.get('GOOGLE_CLIENT_SECRET', '') != '':
     _auth_set.append('providers.google.enabled=true')
@@ -149,10 +146,9 @@ local_resource(
 )
 
 # ----- bff service -----
-# Frontend site-identity build args. The two CSV lists mirror the
-# backend enablement blocks in this file: a provider shows up in
-# credits and legal text only when its backend half runs real.
-# Explicit VITE_SITE_* values in .env win over derivation.
+# Frontend site-identity build args: the two CSV lists mirror the backend
+# enablement blocks (a provider appears in credits/legal text only when
+# its backend half runs real). Explicit VITE_SITE_* values in .env win.
 _site_args = {k: v for k, v in ENV.items() if k.startswith('VITE_SITE_')}
 if 'VITE_SITE_DATA_SOURCES' not in ENV:
     _sources = []
@@ -171,8 +167,7 @@ if 'VITE_SITE_AUTH_PROVIDERS' not in ENV:
         _providers.append('twitch')
     _site_args['VITE_SITE_AUTH_PROVIDERS'] = ','.join(_providers)
 # VITE_BUILD_VERSION is explicit-only: Tilt never derives a git SHA, so
-# an unset value stays absent (the Dockerfile ARG then defaults empty,
-# same as every VITE_SITE_* arg above).
+# an unset value stays absent, same as every VITE_SITE_* arg above.
 if 'VITE_BUILD_VERSION' in ENV:
     _site_args['VITE_BUILD_VERSION'] = ENV['VITE_BUILD_VERSION']
 docker_build(
@@ -193,10 +188,8 @@ docker_build(
     dockerfile='services/enrichment/Dockerfile',
     only=['libs/go', 'services/enrichment'],
 )
-# Provider modes flip to real only when the full credential set is in
-# .env (mirrors the auth provider flags): enabling on a partial set
-# would point the ExternalSecret at store keys the empty-value filter
-# above never published, wedging the sync.
+# Provider modes flip to real only with the full credential set in .env
+# (mirrors auth's flags); a partial set would wedge the ExternalSecret sync.
 _enrichment_set = []
 if ENV.get('IGDB_CLIENT_ID', '') != '' and ENV.get('IGDB_CLIENT_SECRET', '') != '':
     _enrichment_set.append('igdb.mode=real')
@@ -221,6 +214,7 @@ k8s_resource('collection', port_forwards=['8085:8080'],
              labels=['services'])
 k8s_resource('collection-pg', port_forwards=['5435:5432'], labels=['datastores'])
 k8s_resource('collection-valkey', labels=['datastores'])
+k8s_resource('collection-rematch', resource_deps=['collection'], labels=['services'])
 
 # ----- social service -----
 docker_build(

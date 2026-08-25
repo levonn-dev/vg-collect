@@ -27,8 +27,7 @@ metadata:
   name: {{ .Chart.Name }}-pg
   labels: {{- include "vg-lib.labels" . | nindent 4 }}
 spec:
-  # Single replica: a voluntary drain blocks rather than silently
-  # dropping the only copy. Inert on one node, correct shape on many.
+  # Single replica: a voluntary drain blocks rather than dropping the only copy; a no-op until replicas > 1.
   minAvailable: 1
   selector:
     matchLabels:
@@ -93,11 +92,13 @@ spec:
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:
-        # postgres requires the TLS key to be 0600 and owned by postgres
-        # (uid 70 in alpine); secret mounts are read-only, so copy first.
+        # postgres requires the TLS key 0600 and owned by postgres (uid 70 alpine); secret mounts are read-only, so copy first.
         - name: tls-perms
           image: busybox:1.37
           command: ["sh", "-c", "cp /tls-src/* /tls/ && chmod 600 /tls/tls.key && chown 70:70 /tls/*"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
           volumeMounts:
             - { name: tls-src, mountPath: /tls-src, readOnly: true }
             - { name: tls, mountPath: /tls }
@@ -125,6 +126,12 @@ spec:
             exec:
               command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}]
             periodSeconds: 5
+          # Same check as readiness; wide thresholds so a slow query doesn't restart-loop the pod, only a wedged postmaster trips this.
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}]
+            periodSeconds: 30
+            failureThreshold: 10
           resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
           volumeMounts:
             - { name: tls, mountPath: /tls }
@@ -132,14 +139,13 @@ spec:
         - name: metrics
           image: {{ .Values.postgres.exporterImage | quote }}
           env:
-            # Pod-local loopback: the stock image's pg_hba trusts local
-            # connections, so no password crosses this hop; TLS guards
-            # cross-pod traffic, and this traffic never leaves the pod.
+            # Pod-local loopback: stock pg_hba trusts local connections (no password crosses); TLS only guards cross-pod traffic.
             - name: DATA_SOURCE_NAME
               value: "postgresql://{{ .Values.postgres.username }}@localhost:5432/{{ .Values.postgres.database }}?sslmode=disable"
           ports:
             - name: metrics
               containerPort: 9187
+          resources: {{- toYaml .Values.postgres.exporterResources | nindent 12 }}
       volumes:
         - name: tls-src
           secret: { secretName: {{ .Chart.Name }}-pg-tls }

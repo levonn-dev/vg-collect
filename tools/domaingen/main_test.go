@@ -10,31 +10,21 @@ import (
 	"testing"
 )
 
-// update regenerates testdata/domain.go.golden and domain.ts.golden
-// from the emitters' actual output instead of comparing against them:
-// `go test -run TestGenerate_MatchesGoldenFixtures -update`. Every use
-// requires re-reading the diff and reviewing it before committing -
-// this flag records verified-correct output, it does not decide
-// correctness.
+// update rewrites golden fixtures from actual output instead of
+// comparing against them; review the diff before committing.
 var update = flag.Bool("update", false, "write actual emitter output to the golden files instead of comparing")
 
-// readTestdata loads a fixture or golden file from testdata/; go test
-// runs with the package directory as its working directory, so the
-// relative path is stable regardless of the invoking directory.
+// readTestdata loads a fixture or golden file from testdata/ (go test's
+// working directory is always the package directory).
 func readTestdata(t *testing.T, name string) []byte {
 	t.Helper()
-	data, err := os.ReadFile("testdata/" + name) //nolint:gosec // G304: name is always a literal passed by this package's own tests, never external input.
+	data, err := os.ReadFile("testdata/" + name) //nolint:gosec // G304: name is a literal from this package's own tests, not external input.
 	if err != nil {
 		t.Fatalf("reading testdata/%s: %v", name, err)
 	}
 	return data
 }
 
-// TestGenerate_MatchesGoldenFixtures is the base case: parse a fixture
-// yaml, emit both languages, and compare byte-for-byte against golden
-// files checked into testdata/. This is the primary regression guard -
-// any change to either emitter's output (intentional or not) shows up
-// here as a diff against a reviewed golden.
 func TestGenerate_MatchesGoldenFixtures(t *testing.T) {
 	dom, err := parseDomain(readTestdata(t, "domain.yaml"))
 	if err != nil {
@@ -68,11 +58,6 @@ func TestGenerate_MatchesGoldenFixtures(t *testing.T) {
 	}
 }
 
-// TestGenerate_RowAdditionPropagatesToBothOutputs proves the single-
-// source-of-truth property the whole generator exists for: one added
-// yaml row (a korea region, with its own class and localization
-// chain) shows up in BOTH language outputs from the same generator
-// run, with no per-language hand edit.
 func TestGenerate_RowAdditionPropagatesToBothOutputs(t *testing.T) {
 	dom, err := parseDomain(readTestdata(t, "domain_extra_row.yaml"))
 	if err != nil {
@@ -98,12 +83,8 @@ func TestGenerate_RowAdditionPropagatesToBothOutputs(t *testing.T) {
 	}
 }
 
-// TestGenerate_ByteIdempotent locks down determinism: nothing in
-// either emitter may depend on map iteration order, wall-clock time,
-// or any other source of run-to-run variance. Repeated generation
-// from the same parsed domain, and repeated parsing of the same yaml
-// bytes, must produce byte-identical output every time - the property
-// `task gen` run twice in a row relies on for a clean drift check.
+// TestGenerate_ByteIdempotent locks down determinism: nothing may depend
+// on map order or wall-clock time (`task gen` twice relies on this).
 func TestGenerate_ByteIdempotent(t *testing.T) {
 	yamlData := readTestdata(t, "domain.yaml")
 
@@ -136,9 +117,7 @@ func TestGenerate_ByteIdempotent(t *testing.T) {
 		t.Errorf("generateTS is not byte-idempotent across repeated calls on the same *domain")
 	}
 
-	// Close the loop end to end: re-parsing the same source bytes and
-	// regenerating must match too, not just repeated calls sharing one
-	// already-parsed *domain value.
+	// re-parsing the same bytes must match too, not just repeated calls on one *domain.
 	dom2, err := parseDomain(yamlData)
 	if err != nil {
 		t.Fatalf("parseDomain (2nd parse): %v", err)
@@ -152,12 +131,8 @@ func TestGenerate_ByteIdempotent(t *testing.T) {
 	}
 }
 
-// TestRun_RoundTripWritesBothOutputsMatchingGoldens exercises run()
-// (and, through it, writeFile) end to end exactly as `task gen:domain`
-// invokes it: a real yaml path in, two real file paths out. The
-// output directory is a nested path that does not exist yet, so
-// writeFile's os.MkdirAll actually creates something rather than
-// no-op'ing against an already-present directory.
+// TestRun_RoundTripWritesBothOutputsMatchingGoldens exercises run() into a
+// nested dir that doesn't exist yet, so MkdirAll actually creates it.
 func TestRun_RoundTripWritesBothOutputsMatchingGoldens(t *testing.T) {
 	dir := t.TempDir()
 	goOut := filepath.Join(dir, "nested", "go", "tables_gen.go")
@@ -167,7 +142,7 @@ func TestRun_RoundTripWritesBothOutputsMatchingGoldens(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 
-	gotGo, err := os.ReadFile(goOut) //nolint:gosec // G304: goOut is a path this same test built with filepath.Join under t.TempDir(), never external input.
+	gotGo, err := os.ReadFile(goOut) //nolint:gosec // G304: goOut is a path this test built under t.TempDir(), not external input.
 	if err != nil {
 		t.Fatalf("reading run's Go output: %v", err)
 	}
@@ -175,7 +150,7 @@ func TestRun_RoundTripWritesBothOutputsMatchingGoldens(t *testing.T) {
 		t.Errorf("run's Go output does not match testdata/domain.go.golden\n--- got ---\n%s\n--- want ---\n%s", gotGo, want)
 	}
 
-	gotTS, err := os.ReadFile(tsOut) //nolint:gosec // G304: tsOut is a path this same test built with filepath.Join under t.TempDir(), never external input.
+	gotTS, err := os.ReadFile(tsOut) //nolint:gosec // G304: tsOut is a path this test built under t.TempDir(), not external input.
 	if err != nil {
 		t.Fatalf("reading run's TS output: %v", err)
 	}
@@ -184,9 +159,8 @@ func TestRun_RoundTripWritesBothOutputsMatchingGoldens(t *testing.T) {
 	}
 }
 
-// TestRun_MissingYamlFileReturnsError covers run's read-error branch
-// (the source yaml path does not exist) - the same branch main()
-// reports to stderr and turns into a nonzero exit.
+// TestRun_MissingYamlFileReturnsError covers run's read-error branch,
+// the same one main() turns into a nonzero exit.
 func TestRun_MissingYamlFileReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	err := run(filepath.Join(dir, "does-not-exist.yaml"), filepath.Join(dir, "out.go"), "regionkit", filepath.Join(dir, "out.ts"))
@@ -196,19 +170,15 @@ func TestRun_MissingYamlFileReturnsError(t *testing.T) {
 }
 
 // TestParseDomain_UnknownKeyInReleaseRegionsRejected pins KnownFields(true)
-// for the new release_regions section: a typo'd field name in one of its
-// rows must fail the parse, the same guarantee every other section already
-// has, rather than silently vanishing (parseDomain's whole reason to set
-// KnownFields at all).
+// for release_regions: a typo'd field must fail the parse.
 func TestParseDomain_UnknownKeyInReleaseRegionsRejected(t *testing.T) {
 	if _, err := parseDomain(readTestdata(t, "domain_unknown_key_release_regions.yaml")); err == nil {
 		t.Fatal("parseDomain: want an error for an unknown key in a release_regions row, got nil")
 	}
 }
 
-// TestParseDomain_UnknownKeyInRegionsRejected pins the same KnownFields(true)
-// rejection for a pre-existing section (regions), so the strict-parsing
-// guarantee is proven generally rather than only for release_regions above.
+// TestParseDomain_UnknownKeyInRegionsRejected mirrors the release_regions
+// case above for a pre-existing section (regions).
 func TestParseDomain_UnknownKeyInRegionsRejected(t *testing.T) {
 	if _, err := parseDomain(readTestdata(t, "domain_unknown_key_regions.yaml")); err == nil {
 		t.Fatal("parseDomain: want an error for an unknown key in a regions row, got nil")
@@ -217,25 +187,9 @@ func TestParseDomain_UnknownKeyInRegionsRejected(t *testing.T) {
 
 // --- facets: constraint values mirrored from a bundled OpenAPI document ----
 //
-// testdata/facets.bundled.yaml is a small fixture standing in for
-// api/bundled/bff.yaml, sized so a human reads the whole thing in one
-// screen: Widget carries a non-enum property (name), an untouched
-// nested $ref (tag), and an inline enum property (status) that must
-// lose its enum key but keep the rest of Widget's entry. Tag has no
-// enum at all (sanity: unaffected schemas emit byte-for-byte as
-// before). Kind is a pure enum vocabulary (only "type" and "enum") -
-// schema.ts already exports its values by name, so it earns no
-// schemas entry at all. components.parameters.sort pairs an enum with
-// a default (mirrors the real entriesSort parameter): the default
-// must survive even though the enum next to it drops. cursor has
-// neither (sanity: an unaffected case emits its facet unchanged, exactly
-// as it always has). listWidgets
-// mixes an inline numeric-only param (limit), an inline $ref'd-vocabulary
-// param (kind, resolved one level to Kind, which is pure enum - kind's
-// facet is empty after the drop), and two $ref'd component parameters
-// (cursor, sort) that never show up in operationParams at all.
-// createWidget has no parameters, so it is absent from operationParams
-// entirely.
+// testdata/facets.bundled.yaml is one small fixture, readable in a
+// screen, shared by every TestBuildFacets_* test below; each test's own
+// name states the fixture entity and behavior it covers.
 
 func loadFacetsFixture(t *testing.T) map[string]interface{} {
 	t.Helper()
@@ -258,9 +212,7 @@ func TestBuildFacets_SchemaDropsEnumButKeepsOtherContent(t *testing.T) {
 		"properties": map[string]interface{}{
 			"name": map[string]interface{}{"type": "string", "maxLength": 40},
 			"tag":  map[string]interface{}{"$ref": "#/components/schemas/Tag"},
-			// enum dropped; the bare "type" that remains is a NESTED
-			// property, not a top-level schemas entry, so it stays -
-			// only a top-level pure-enum schema is omitted entirely.
+			// nested pure-enum-shaped property stays; only a top-level pure-enum schema is omitted.
 			"status": map[string]interface{}{"type": "string"},
 		},
 	}
@@ -270,12 +222,8 @@ func TestBuildFacets_SchemaDropsEnumButKeepsOtherContent(t *testing.T) {
 }
 
 // TestBuildFacets_PropertyLiterallyNamedEnumKeepsItsNameAndOwnFacets proves
-// the enum strip is keyword-position-aware, not a blind key-name match: a
-// property whose FIELD NAME happens to be "enum" is not itself a JSON-Schema
-// enum keyword, so it must survive under its own name inside "properties" -
-// only that property's OWN schema (one level further in) has a real enum
-// keyword to strip, and only that keyword goes; the property's other facet
-// (maxLength) stays right alongside it.
+// the strip is keyword-position-aware: a field named "enum" is not the
+// enum keyword and survives; only its own schema's real enum keyword goes.
 func TestBuildFacets_PropertyLiterallyNamedEnumKeepsItsNameAndOwnFacets(t *testing.T) {
 	doc := map[string]interface{}{
 		"paths": map[string]interface{}{},
@@ -335,9 +283,7 @@ func TestBuildFacets_PureEnumVocabularySchemaOmittedEntirely(t *testing.T) {
 	if _, present := f.Schemas["Kind"]; present {
 		t.Errorf("Schemas[Kind] = %#v, want no entry at all (schema.ts already exports its values)", f.Schemas["Kind"])
 	}
-	// total emission is unaffected by the omission: every OTHER
-	// components.schemas entry still gets a facet, no curation beyond
-	// the pure-enum-vocabulary rule.
+	// every OTHER schema still gets a facet; no curation beyond the pure-enum rule.
 	wantNames := []string{"Tag", "Widget"}
 	gotNames := make([]string, 0, len(f.Schemas))
 	for name := range f.Schemas {
@@ -379,11 +325,8 @@ func TestBuildFacets_InlineOperationParamLocalRefResolvesEmptyAfterEnumDrop(t *t
 		t.Fatalf("buildFacets: %v", err)
 	}
 
-	// kind's schema is a bare $ref to Kind, a pure enum vocabulary,
-	// resolved one level; Kind carries nothing besides its now-dropped
-	// enum, so kind's own facet is empty - not absent, empty: the
-	// operation still has other inline params, so listWidgets itself
-	// keeps its operationParams entry.
+	// kind resolves to Kind (pure enum), so its own facet is empty ({}), not
+	// absent; listWidgets keeps its entry because other inline params remain.
 	want := map[string]interface{}{
 		"limit": map[string]interface{}{"minimum": 1, "maximum": 500, "default": 200},
 		"kind":  map[string]interface{}{},
@@ -399,10 +342,8 @@ func TestBuildFacets_OperationWithNoInlineParamsAbsentFromOperationParams(t *tes
 		t.Fatalf("buildFacets: %v", err)
 	}
 
-	// createWidget has no parameters at all; cursor and sort on
-	// listWidgets are $ref'd component parameters, not inline, so
-	// neither operation contributes them here (buildParameterFacets
-	// covers cursor/sort separately, proven above).
+	// cursor/sort on listWidgets are $ref'd component params, not inline, so
+	// neither shows up here (buildParameterFacets covers them separately).
 	if _, present := f.OperationParams["createWidget"]; present {
 		t.Errorf("OperationParams[createWidget] = %#v, want no entry (no parameters at all)", f.OperationParams["createWidget"])
 	}
@@ -523,10 +464,6 @@ func TestBuildFacets_InlineOperationParamCrossFileRefThrows(t *testing.T) {
 	}
 }
 
-// TestGenerateFacetsTS_MatchesGoldenFixture is the facets emitter's base
-// case, mirroring TestGenerate_MatchesGoldenFixtures above: build facets
-// from the fixture, emit TypeScript, and compare byte-for-byte against a
-// golden file reviewed once and checked into testdata/.
 func TestGenerateFacetsTS_MatchesGoldenFixture(t *testing.T) {
 	f, err := buildFacets(loadFacetsFixture(t))
 	if err != nil {
@@ -550,10 +487,7 @@ func TestGenerateFacetsTS_MatchesGoldenFixture(t *testing.T) {
 }
 
 // TestGenerateFacetsTS_ByteIdempotent mirrors TestGenerate_ByteIdempotent:
-// nothing in the facets walk or its TypeScript serialization may depend on
-// Go's randomized map iteration order or any other source of run-to-run
-// variance - the property `task gen` run twice in a row relies on for a
-// clean drift check.
+// the facets walk and TS serialization must not depend on Go's map order.
 func TestGenerateFacetsTS_ByteIdempotent(t *testing.T) {
 	yamlData := readTestdata(t, "facets.bundled.yaml")
 
@@ -588,9 +522,8 @@ func TestGenerateFacetsTS_ByteIdempotent(t *testing.T) {
 	}
 }
 
-// TestRunFacets_RoundTripWritesOutputMatchingGolden exercises runFacets end
-// to end exactly as `task gen` invokes it: a real bundle path in, a real
-// output file path out, into a nested directory that does not exist yet.
+// TestRunFacets_RoundTripWritesOutputMatchingGolden exercises runFacets
+// into a nested dir that doesn't exist yet (forces writeFile's MkdirAll).
 func TestRunFacets_RoundTripWritesOutputMatchingGolden(t *testing.T) {
 	dir := t.TempDir()
 	facetsOut := filepath.Join(dir, "nested", "ts", "facets.ts")
@@ -599,7 +532,7 @@ func TestRunFacets_RoundTripWritesOutputMatchingGolden(t *testing.T) {
 		t.Fatalf("runFacets: %v", err)
 	}
 
-	got, err := os.ReadFile(facetsOut) //nolint:gosec // G304: facetsOut is a path this same test built with filepath.Join under t.TempDir(), never external input.
+	got, err := os.ReadFile(facetsOut) //nolint:gosec // G304: facetsOut is a path this test built under t.TempDir(), not external input.
 	if err != nil {
 		t.Fatalf("reading runFacets output: %v", err)
 	}
@@ -609,8 +542,7 @@ func TestRunFacets_RoundTripWritesOutputMatchingGolden(t *testing.T) {
 }
 
 // TestRunFacets_MissingBundleFileReturnsError covers runFacets' read-error
-// branch, the same branch main() reports to stderr and turns into a
-// nonzero exit.
+// branch, the same one main() turns into a nonzero exit.
 func TestRunFacets_MissingBundleFileReturnsError(t *testing.T) {
 	dir := t.TempDir()
 	err := runFacets(filepath.Join(dir, "does-not-exist.yaml"), filepath.Join(dir, "facets.ts"))

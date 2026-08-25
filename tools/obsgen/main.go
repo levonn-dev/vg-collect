@@ -1,8 +1,6 @@
-// Command obsgen turns the manifests under deploy/observability into the
-// Grafana alert provisioning file and per-service dashboards, and lints
-// that same tree (plus the repo content it references: runbook anchors,
-// registered metric names) for the drift class that motivated it - see
-// internal/lint's package doc.
+// Command obsgen turns deploy/observability manifests into Grafana alert
+// rules and per-service dashboards, and lints the tree (and the runbook
+// anchors and metric names it references) for drift.
 package main
 
 import (
@@ -57,28 +55,19 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  lint <manifest-dir> <repo-root>  load manifests, report every lint finding against repo-root")
 }
 
-// rulesRelPath and dashboardsRelDir are deploy/observability/'s two
-// generated destinations, fixed paths relative to out-root regardless
-// of where the manifest tree itself lives - the real deploy/charts/
-// platform files in production, a scratch directory in a test.
+// rulesRelPath and dashboardsRelDir are fixed paths relative to out-root
+// (deploy/charts/platform in production, a scratch dir in tests).
 const (
 	rulesRelPath     = "deploy/charts/platform/files/alerting/vg-rules.yaml"
 	dashboardsRelDir = "deploy/charts/platform/files/dashboards"
 )
 
-// rulesHeader is vg-rules.yaml's leading comment line - plain YAML's
-// only comment placement that does not disturb the document. It
-// carries the exact same sentence dashboards.GeneratedHeader embeds in
-// each dashboard's own description field (JSON has no comment syntax),
-// so the two generated output kinds say the identical thing without
-// that sentence being copied by hand into a second place.
+// rulesHeader shares dashboards.GeneratedHeader's sentence, so
+// vg-rules.yaml and every dashboard say the identical generated-by line.
 var rulesHeader = "# " + dashboards.GeneratedHeader + "\n"
 
-// runGen loads the manifest tree at manifestDir, assembles the
-// dashboards and rules, and writes both to their canonical locations
-// under outRoot. outRoot is a parameter, not a hardcoded ".", so a test
-// can point it at a scratch directory instead of a real checkout - see
-// TestRunGen_WritesOutputs.
+// runGen loads manifestDir, assembles dashboards and rules, and writes
+// both under outRoot (a parameter so tests can use a scratch dir).
 func runGen(manifestDir, outRoot string) error {
 	m, err := manifest.Load(manifestDir)
 	if err != nil {
@@ -101,22 +90,11 @@ func runGen(manifestDir, outRoot string) error {
 	return nil
 }
 
-// writeOutputs writes vg-rules.yaml (with its leading generated-by
-// comment prepended) and every dashboard json file (each already
-// carrying its own generated-by description field) under outRoot,
-// creating whatever directories do not exist yet. File mode 0o600
-// matches every golden-file write already in this module (see e.g.
-// internal/dashboards/assemble_test.go's own -update path) - these are
-// files the local user regenerates and reviews before committing, not
-// ones any other local account needs to read.
+// writeOutputs writes vg-rules.yaml and every dashboard json under
+// outRoot, creating directories as needed (mode 0o600: local, reviewed files).
 func writeOutputs(outRoot string, rulesYAML []byte, dashFiles map[string][]byte) error {
-	// G703 (gosec) flags every path below as tainted, since each traces
-	// back through filepath.Join to outRoot - main's own <out-root> CLI
-	// argument, never external input; dashFiles' keys are internal/
-	// dashboards.Assemble's own "<service>.json" output, likewise never
-	// external. Same trust boundary internal/manifest/load.go's
-	// decodeFile already documents (there tagged G304) for its own file
-	// reads.
+	// G703 flags every path below as tainted; outRoot is a CLI argument and
+	// dashFiles' keys are internal output, neither is external input.
 	rulesPath := filepath.Join(outRoot, rulesRelPath)
 	if err := os.MkdirAll(filepath.Dir(rulesPath), 0o750); err != nil { //nolint:gosec // G703: see above.
 		return err
@@ -143,12 +121,8 @@ func writeOutputs(outRoot string, rulesYAML []byte, dashFiles map[string][]byte)
 	return nil
 }
 
-// runLint loads the manifest tree at manifestDir and reports every
-// lint.Run finding against repoRoot to stdout, one per line, before
-// returning a plain error (triggering main's nonzero exit) if there
-// were any. A load failure short-circuits before lint ever runs, same
-// as runGen: a tree that does not even parse has nothing for lint to
-// meaningfully check.
+// runLint reports every lint.Run finding to stdout, then errors if any
+// were found; a load failure short-circuits first, same as runGen.
 func runLint(manifestDir, repoRoot string) error {
 	m, err := manifest.Load(manifestDir)
 	if err != nil {

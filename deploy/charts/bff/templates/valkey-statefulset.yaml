@@ -1,4 +1,2 @@
-# Cache semantics: no persistence. Denylist entries live at most
-# accessTokenTtl + leeway, so losing them on a restart is the
-# accepted fail-open posture, not data loss.
+# Cache semantics: no persistence; denylist entries live at most accessTokenTtl+leeway, so a restart is accepted fail-open, not data loss.
 {{- include "vg-lib.valkey.statefulset" . }}

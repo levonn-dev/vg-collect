@@ -12,8 +12,7 @@ spec:
     - {{ .Chart.Name }}-valkey
     - {{ .Chart.Name }}-valkey.{{ .Release.Namespace }}.svc
     - {{ .Chart.Name }}-valkey.{{ .Release.Namespace }}.svc.cluster.local
-    # The metrics sidecar dials over pod-local loopback with full
-    # verification; the serving cert must therefore name localhost.
+    # The metrics sidecar dials over pod-local loopback with full verification; the cert must name localhost.
     - localhost
   issuerRef:
     name: vg-ca
@@ -30,8 +29,7 @@ metadata:
   name: {{ .Chart.Name }}-valkey
   labels: {{- include "vg-lib.labels" . | nindent 4 }}
 spec:
-  # Single replica: a voluntary drain blocks rather than silently
-  # dropping the only copy. Inert on one node, correct shape on many.
+  # Single replica: a voluntary drain blocks rather than dropping the only copy; a no-op until replicas > 1.
   minAvailable: 1
   selector:
     matchLabels:
@@ -96,13 +94,14 @@ spec:
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:
-        # Secret mounts are read-only and root-owned; copy and chown so
-        # the valkey user (uid 999, gid 1000 in valkey/valkey alpine
-        # images) owns its key material. Valkey does not enforce key
-        # permissions the way postgres does; tight modes by choice.
+        # Secret mounts are read-only and root-owned; copied and chowned to the valkey user (999:1000 in the
+        # alpine image). Valkey does not enforce key permissions like postgres; tight modes by choice.
         - name: tls-perms
           image: busybox:1.37
           command: ["sh", "-c", "cp /tls-src/* /tls/ && chmod 600 /tls/tls.key && chown 999:1000 /tls/*"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
           volumeMounts:
             - { name: tls-src, mountPath: /tls-src, readOnly: true }
             - { name: tls, mountPath: /tls }
@@ -110,8 +109,7 @@ spec:
         - name: valkey
           image: {{ .Values.valkey.image | quote }}
           args:
-            # TLS-only listener; client cert auth off (the CA gates
-            # server identity, NetworkPolicy gates callers).
+            # TLS-only listener; client cert auth off (the CA gates server identity, NetworkPolicy gates callers).
             - --tls-port
             - "6379"
             - --port
@@ -134,6 +132,12 @@ spec:
             exec:
               command: ["valkey-cli", "--tls", "--cacert", "/tls/ca.crt", "-p", "6379", "ping"]
             periodSeconds: 5
+          # Same check as readiness; wide thresholds so a slow command doesn't restart-loop the pod, only a wedged valkey trips this.
+          livenessProbe:
+            exec:
+              command: ["valkey-cli", "--tls", "--cacert", "/tls/ca.crt", "-p", "6379", "ping"]
+            periodSeconds: 30
+            failureThreshold: 10
           resources: {{- toYaml .Values.valkey.resources | nindent 12 }}
           volumeMounts:
             - { name: tls, mountPath: /tls }
@@ -148,6 +152,7 @@ spec:
           ports:
             - name: metrics
               containerPort: 9121
+          resources: {{- toYaml .Values.valkey.exporterResources | nindent 12 }}
           volumeMounts:
             - name: metrics-ca
               mountPath: /metrics-ca

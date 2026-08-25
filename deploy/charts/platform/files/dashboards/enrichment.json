@@ -768,27 +768,146 @@
       ]
     },
     {
+      "id": 24,
+      "type": "timeseries",
+      "title": "Mongo pool connections",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 73
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vg_mongokit_pool_connections{service_name=\"enrichment\"}",
+          "legendFormat": "open",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vg_mongokit_pool_connections_idle{service_name=\"enrichment\"}",
+          "legendFormat": "idle",
+          "exemplar": false
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "vg_mongokit_pool_connections_max{service_name=\"enrichment\"}",
+          "legendFormat": "max",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "Mongo pool acquire rate",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 73
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "rate(vg_mongokit_pool_acquires_total{service_name=\"enrichment\"}[$__rate_interval])",
+          "legendFormat": "acquires",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "Mongo pool cleared events",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 73
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(vg_mongokit_pool_cleared_total{service_name=\"enrichment\"}[5m])",
+          "legendFormat": "cleared",
+          "exemplar": false
+        }
+      ]
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 73
+        "y": 81
       },
-      "id": 24,
+      "id": 27,
       "panels": [],
       "title": "Valkey",
       "type": "row"
     },
     {
-      "id": 25,
+      "id": 28,
       "type": "timeseries",
       "title": "Valkey pool connections",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 74
+        "y": 82
       },
       "datasource": {
         "type": "prometheus",
@@ -824,14 +943,14 @@
       ]
     },
     {
-      "id": 26,
+      "id": 29,
       "type": "timeseries",
       "title": "Valkey pool acquire outcomes",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 74
+        "y": 82
       },
       "datasource": {
         "type": "prometheus",
@@ -877,14 +996,14 @@
       ]
     },
     {
-      "id": 27,
+      "id": 30,
       "type": "timeseries",
       "title": "Valkey pool reuse ratio",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 74
+        "y": 82
       },
       "datasource": {
         "type": "prometheus",
@@ -910,14 +1029,14 @@
       ]
     },
     {
-      "id": 28,
+      "id": 31,
       "type": "timeseries",
       "title": "Valkey server memory",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 82
+        "y": 90
       },
       "datasource": {
         "type": "prometheus",
@@ -943,14 +1062,14 @@
       ]
     },
     {
-      "id": 29,
+      "id": 32,
       "type": "timeseries",
       "title": "Valkey evictions and clients",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 82
+        "y": 90
       },
       "datasource": {
         "type": "prometheus",
@@ -986,14 +1105,14 @@
       ]
     },
     {
-      "id": 30,
+      "id": 33,
       "type": "timeseries",
       "title": "Valkey keyspace hit ratio",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 82
+        "y": 90
       },
       "datasource": {
         "type": "prometheus",
@@ -1019,14 +1138,14 @@
       ]
     },
     {
-      "id": 31,
+      "id": 34,
       "type": "timeseries",
       "title": "Valkey fail-open events by op",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 90
+        "y": 98
       },
       "datasource": {
         "type": "prometheus",
@@ -1057,22 +1176,22 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 98
+        "y": 106
       },
-      "id": 32,
+      "id": 35,
       "panels": [],
       "title": "Runtime",
       "type": "row"
     },
     {
-      "id": 33,
+      "id": 36,
       "type": "timeseries",
       "title": "Goroutines",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 107
       },
       "datasource": {
         "type": "prometheus",
@@ -1098,14 +1217,14 @@
       ]
     },
     {
-      "id": 34,
+      "id": 37,
       "type": "timeseries",
       "title": "Heap used",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 107
       },
       "datasource": {
         "type": "prometheus",
@@ -1136,22 +1255,22 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 115
       },
-      "id": 35,
+      "id": 38,
       "panels": [],
       "title": "Pods",
       "type": "row"
     },
     {
-      "id": 36,
+      "id": 39,
       "type": "timeseries",
       "title": "CPU by pod",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 108
+        "y": 116
       },
       "datasource": {
         "type": "prometheus",
@@ -1177,14 +1296,14 @@
       ]
     },
     {
-      "id": 37,
+      "id": 40,
       "type": "timeseries",
       "title": "Working-set memory by pod",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 108
+        "y": 116
       },
       "datasource": {
         "type": "prometheus",
@@ -1210,14 +1329,14 @@
       ]
     },
     {
-      "id": 38,
+      "id": 41,
       "type": "timeseries",
       "title": "Restarts and OOM kills by pod (15m)",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 108
+        "y": 116
       },
       "datasource": {
         "type": "prometheus",
@@ -1258,22 +1377,22 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 116
+        "y": 124
       },
-      "id": 39,
+      "id": 42,
       "panels": [],
       "title": "Logs",
       "type": "row"
     },
     {
-      "id": 40,
+      "id": 43,
       "type": "logs",
       "title": "Recent error and warn logs",
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 117
+        "y": 125
       },
       "datasource": {
         "type": "loki",

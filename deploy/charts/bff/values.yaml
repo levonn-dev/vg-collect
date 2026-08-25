@@ -12,8 +12,7 @@ env:
   collectionServiceUrl: http://collection:8080
   socialServiceUrl: http://social:8080
   valkeyUrl: rediss://bff-valkey:6379/0
-  # Browser-visible origins allowed to send mutating requests: the
-  # gateway port-forward and the Vite dev server.
+  # Browser-visible origins allowed to send mutating requests: gateway port-forward and Vite dev server.
   publicOrigins: "http://localhost:8090,http://localhost:5173"
   # Browsers treat http://localhost as trustworthy, so Secure works in dev.
   cookieSecure: true
@@ -35,18 +34,12 @@ valkey:
   resources:
     requests: { cpu: 50m, memory: 64Mi }
     limits: { memory: 128Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
-# Per-minute, per-client-IP budgets enforced at the gateway: tight on
-# the credential-adjacent auth surface, looser on the rest of the API,
-# none on static assets. Dev budgets are sized against the busiest
-# legitimate client this stack has - the parallel browser-test suite,
-# whose full run measures about 900 /api/* requests and 85 auth
-# requests in under a minute from one address, and whose runs land
-# back to back inside one fixed window when a developer iterates - so
-# legitimate traffic clears the limits with room while the failure
-# modes they exist for (hot client request loops at thousands per
-# minute, credential stuffing at hundreds) still trip them. Production
-# traffic is human-shaped and keeps far tighter budgets.
+# Per-minute, per-client-IP budgets enforced at the gateway: tight on the auth surface, looser on the rest
+# of the API, none on static assets. Dev values are sized against the parallel browser-test suite's peak load so legitimate runs clear while abuse patterns (request loops, credential stuffing) still trip them.
 rateLimit:
   authPerMinute: 240       # the prod-path seam: production stays far tighter (20/min); see the auth runbook for the recommendation
   apiPerMinute: 1800       # the prod-path seam: production stays far tighter (300/min); see the bff runbook for the recommendation
@@ -56,11 +49,9 @@ gateway:
   namespace: vg-platform
 
 otel:
-  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
-  # disables export entirely (the service logs JSON to stdout only).
+  # OTLP gRPC endpoint for traces/metrics/logs; empty string disables export (JSON stdout logs only).
   exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
-  # OTLP/HTTP base URL the bff relays browser telemetry to. Empty
-  # disables the relay (payloads accepted and dropped).
+  # OTLP/HTTP base URL the bff relays browser telemetry to; empty disables the relay (payloads accepted and dropped).
   proxyUrl: http://otel-agent.vg-platform.svc.cluster.local:4318
 
 secretStore:

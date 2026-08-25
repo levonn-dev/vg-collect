@@ -12,11 +12,16 @@ spec:
     metadata:
       labels: {{- include "bff.labels" . | nindent 8 }}
       annotations:
-        # Re-rolls pods when the secret *shape* changes; live value
-        # rotation re-rolls via Tilt re-apply in dev.
+        # Re-rolls pods when the secret shape changes; value rotation re-rolls via Tilt re-apply in dev.
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        runAsNonRoot: true
+        # Numeric uid so the kubelet can verify runAsNonRoot (distroless nonroot = 65532).
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
       # No init container: the bff has no database and no migrations.
       containers:
         - name: {{ .Chart.Name }}
@@ -24,6 +29,10 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - { name: http, containerPort: 8080 }
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
           env:
             - name: COOKIE_KEY
               valueFrom:
@@ -58,8 +67,7 @@ spec:
               value: {{ .Values.env.recsCacheTtl | quote }}
             - name: SERVE_STATIC
               value: {{ .Values.env.serveStatic | quote }}
-            # Stamped onto telemetry as service.version; the image tag
-            # is the truth of what is running.
+            # Stamped onto telemetry as service.version; the image tag is the truth of what's running.
             - name: SERVICE_VERSION
               value: {{ .Values.image.tag | quote }}
             {{- if .Values.otel.exporterEndpoint }}

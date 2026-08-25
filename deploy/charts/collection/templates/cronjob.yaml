@@ -5,8 +5,7 @@ metadata:
   labels: {{- include "collection.labels" . | nindent 4 }}
 spec:
   schedule: {{ .Values.rematch.schedule | quote }}
-  # The service holds its own in-flight guard (409); Forbid keeps k8s
-  # from even starting an overlapping trigger.
+  # The service holds its own in-flight guard (409); Forbid keeps k8s from starting an overlapping trigger.
   concurrencyPolicy: Forbid
   startingDeadlineSeconds: 3600
   successfulJobsHistoryLimit: 3
@@ -22,22 +21,29 @@ spec:
             app.kubernetes.io/part-of: vgkeep
         spec:
           restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            # Numeric uid so the kubelet can verify runAsNonRoot (curlimages/curl = 100:101).
+            runAsUser: 100
+            runAsGroup: 101
+            seccompProfile: { type: RuntimeDefault }
           containers:
             - name: trigger
               image: {{ .Values.rematch.image | quote }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: { drop: [ALL] }
+                readOnlyRootFilesystem: true
               env:
                 - name: INTERNAL_SERVICE_TOKEN
                   valueFrom:
                     secretKeyRef: { name: collection-secrets, key: internal-service-token }
               command: ["/bin/sh", "-c"]
-              # Exchange-then-trigger, then the nightly maintenance
-              # chain in dependency order: platform canonicalization,
-              # region promotion (display re-picks ride it), then the
-              # entry rematch so a just-promoted region's pricing class
-              # corrects in the same run. && keeps failures visible;
-              # the normalize sweeps answer synchronous counts.
+              # Dependency-ordered chain: normalize-platforms, then normalize-regions (display re-picks ride
+              # it), then rematch-entries, so a just-promoted region's pricing class corrects in the same run. && surfaces failures; all three answer synchronous counts.
               args:
                 - >-
+                  set -e -o pipefail;
                   TOKEN=$(curl -fsS -X POST --max-time 30
                   -H "X-Internal-Token: $INTERNAL_SERVICE_TOKEN"
                   -H "Content-Type: application/json"

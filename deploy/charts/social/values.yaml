@@ -29,10 +29,12 @@ postgres:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 256Mi }
+  exporterResources:
+    requests: { cpu: 10m, memory: 16Mi }
+    limits: { memory: 32Mi }
 
 otel:
-  # OTLP gRPC endpoint for traces, metrics and logs. Empty string
-  # disables export entirely (the service logs JSON to stdout only).
+  # OTLP gRPC endpoint for traces/metrics/logs; empty string disables export (JSON stdout logs only).
   exporterEndpoint: http://otel-agent.vg-platform.svc.cluster.local:4317
 
 secretStore:

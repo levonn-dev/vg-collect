@@ -8,26 +8,15 @@ import (
 )
 
 // fixtureKnown and fixturePrefixes are the known-metric set and
-// external prefixes shared by every case in
-// TestCheckDashboardFiles_Fixtures: none of testdata/files/*.json's
-// panels reference a name that should resolve as known, and the
-// prefixes list is a representative subset of the repo's external
-// prefixes, sufficient for these test cases.
+// external prefixes shared by every TestCheckDashboardFiles_Fixtures case.
 var (
 	fixtureKnown    = map[string]struct{}{}
 	fixturePrefixes = []string{"kube_", "node_", "up"}
 )
 
-// findingsForFile filters findings to the ones whose Path names file
-// (e.g. "overlap.json") and, when rule is non-empty, whose Rule also
-// matches - mirroring lint_test.go's own findingsWithRule helper. The
-// rule filter matters once a single fixture legitimately produces more
-// than one finding (dup-id-empty-title.json triggers both
-// empty-panel-title and duplicate-panel-id - the first panel's blank
-// title is its own real, separate problem): filtering on file alone
-// would leave which finding is "the" one under test to slice order. An
-// empty rule matches every finding in the file, for the one case
-// (infra.json) asserting there are none at all, of any rule.
+// findingsForFile filters findings to Path == file and, if rule is
+// non-empty, Rule == rule; an empty rule matches every finding (for
+// asserting zero findings of any rule).
 func findingsForFile(findings []Finding, file, rule string) []Finding {
 	want := "files/dashboards/" + file
 	var out []Finding
@@ -43,19 +32,9 @@ func findingsForFile(findings []Finding, file, rule string) []Finding {
 	return out
 }
 
-// TestCheckDashboardFiles_Fixtures tables every structural and expr/
-// metric check checkDashboardFiles owns, against fixtures under
-// testdata/files/ (all walked together in a single call, proving the
-// directory walk itself as well as each individual check -
-// checkDashboardFile resets its id/title/rect tracking per file, so the
-// fixtures cannot interfere with each other's counts). Most fixtures
-// carry one case each - exactly one (file, rule) finding, matched on a
-// message substring - except dup-id-empty-title.json, which carries two
-// (the id collision and the earlier panel's own blank title both fire,
-// independently - see that case's own comment), and infra.json, which
-// asserts zero findings of any rule, proving the vg_ jurisdiction and
-// the datasource routing both stay quiet on real, legitimately-external
-// content.
+// TestCheckDashboardFiles_Fixtures tables every check checkDashboardFiles
+// owns, against testdata/files/ fixtures walked together in one call
+// (per-file tracking resets, so fixtures can't interfere).
 func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 	p := parser.NewParser(parser.Options{})
 	findings := checkDashboardFiles("testdata/files", p, fixtureKnown, fixturePrefixes)
@@ -89,9 +68,7 @@ func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 			wantSubstr: `panel 1 "Second" reuses id 1 of panel 0 "First"`,
 		},
 		{
-			// The earlier (colliding) panel's title is empty - proves the
-			// duplicate-panel-id message still locates it, by index, when
-			// its title alone could not (see files.go's idOccurrence).
+			// the earlier panel's title is empty, proving the message still locates it by index.
 			name:       "an id collision where the earlier panel has an empty title is still locatable by index",
 			file:       "dup-id-empty-title.json",
 			wantRule:   "duplicate-panel-id",
@@ -99,9 +76,7 @@ func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 			wantSubstr: `panel 1 "Second" reuses id 1 of panel 0 ""`,
 		},
 		{
-			// Same file as above: the earlier panel's blank title is also
-			// its own, separate, independently-firing finding - proving
-			// the two checks coexist rather than one masking the other.
+			// same file: the earlier panel's blank title is its own separate finding, proving the two checks coexist.
 			name:       "that same earlier panel's own blank title is still its own separate finding",
 			file:       "dup-id-empty-title.json",
 			wantRule:   "empty-panel-title",
@@ -135,12 +110,8 @@ func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 			wantCount: 0,
 		},
 		{
-			// The generator only ever emits "collapsed": false (see
-			// internal/dashboards' row emission); a hand-edited
-			// "collapsed": true on a row with no nested panels array at
-			// all - the same "expanded" shape expanded-row.json above
-			// proves is otherwise clean - renders as a stub collapsed
-			// header in the Grafana UI with nothing behind it to expand.
+			// the generator only emits "collapsed": false; this row (otherwise
+			// the clean "expanded" shape) is hand-edited true, a stub header with nothing behind it.
 			name:       "a hand-edited collapsed row with no children is a stub collapsed header",
 			file:       "collapsed-row.json",
 			wantRule:   "collapsed-row",
@@ -190,11 +161,8 @@ func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 			wantSubstr: `vg_nonexistent_series_total" is not a known registration or external prefix`,
 		},
 		{
-			// Also carries a second, empty-expr target on the same panel
-			// (real dashboards never emit one, but a target's expr is
-			// still optional per the decode shape) proving that branch is
-			// silently skipped rather than fed to either check path. No
-			// wantRule: zero findings of any rule at all.
+			// also carries a second, empty-expr target on the same panel,
+			// proving that branch is silently skipped rather than checked.
 			name:      "a non-vg_ prometheus name and a loki-datasourced LogQL panel both stay clean",
 			file:      "infra.json",
 			wantCount: 0,
@@ -224,11 +192,8 @@ func TestCheckDashboardFiles_Fixtures(t *testing.T) {
 	}
 }
 
-// TestCheckDashboardFiles_MissingDirectory proves a dir that does not
-// exist is itself one dashboard-file-scan-error finding rather than a
-// silent skip - the shipped dashboard tree is expected to always carry
-// this directory, so its absence is exactly as real a problem as a bad
-// panel inside one of its files.
+// TestCheckDashboardFiles_MissingDirectory proves a missing dir is
+// itself one dashboard-file-scan-error finding, not a silent skip.
 func TestCheckDashboardFiles_MissingDirectory(t *testing.T) {
 	const dir = "testdata/files-does-not-exist"
 	p := parser.NewParser(parser.Options{})
@@ -243,18 +208,11 @@ func TestCheckDashboardFiles_MissingDirectory(t *testing.T) {
 	if got := findings[0].Path; got != dir {
 		t.Errorf("Path = %q, want %q", got, dir)
 	}
-	// The message itself is os.ReadDir's own platform-dependent error
-	// text (e.g. "no such file or directory") - not this package's own
-	// wording, so only Rule and Path are asserted, same discipline
-	// lint_test.go's own "runbook file does not exist" case already
-	// documents for os.ReadFile.
+	// the message is os.ReadDir's own platform-dependent text, so only Rule and Path are asserted.
 }
 
-// TestCheckDashboardFiles_EmptyDirectory proves a real, existing
-// directory with no *.json files in it (as opposed to a missing one) is
-// simply zero findings, not an error - the distinction
-// TestCheckDashboardFiles_MissingDirectory exists to prove the other
-// side of.
+// TestCheckDashboardFiles_EmptyDirectory proves an existing directory
+// with no *.json files is zero findings, not an error.
 func TestCheckDashboardFiles_EmptyDirectory(t *testing.T) {
 	p := parser.NewParser(parser.Options{})
 

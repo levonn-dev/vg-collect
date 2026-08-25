@@ -12,18 +12,26 @@ spec:
     metadata:
       labels: {{- include "enrichment.labels" . | nindent 8 }}
       annotations:
-        # Re-rolls pods when the secret *shape* changes; live value
-        # rotation re-rolls via Tilt re-apply in dev.
+        # Re-rolls pods when the secret shape changes; value rotation re-rolls via Tilt re-apply in dev.
         checksum/externalsecret: {{ include (print $.Template.BasePath "/externalsecret.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ .Chart.Name }}
+      securityContext:
+        runAsNonRoot: true
+        # Numeric uid so the kubelet can verify runAsNonRoot (distroless nonroot = 65532).
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
-        # The migrate subcommand loads the full config before branching,
-        # so the init container gets the same env anchor as the app.
+        # migrate loads the full config before branching, so the init container reuses the app's env anchor.
         - name: migrate
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args: ["migrate"]
+          securityContext: &appSecCtx
+            allowPrivilegeEscalation: false
+            capabilities: { drop: [ALL] }
+            readOnlyRootFilesystem: true
           env: &appEnv
             - name: MONGO_USERNAME
               value: {{ .Values.mongo.username | quote }}
@@ -75,9 +83,7 @@ spec:
               value: {{ .Values.env.productCacheTtl | quote }}
             - name: IGDB_REFRESH_AFTER
               value: {{ .Values.env.igdbRefreshAfter | quote }}
-            # Stamped onto telemetry as service.version; the image tag
-            # is the truth of what is running ("dev" locally, a release
-            # tag wherever a pipeline sets one).
+            # Stamped onto telemetry as service.version; the image tag is the truth of what's running ("dev" locally, a release tag in pipelines).
             - name: SERVICE_VERSION
               value: {{ .Values.image.tag | quote }}
             {{- if .Values.otel.exporterEndpoint }}
@@ -103,6 +109,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - { name: http, containerPort: 8080 }
+          securityContext: *appSecCtx
           env: *appEnv
           {{- if or .Values.mongo.enabled .Values.valkey.enabled }}
           volumeMounts: *caMounts

@@ -1,6 +1,5 @@
-# The CA pair lives in the cert-manager controller's namespace because the CA
-# ClusterIssuer below can only read its secret from the cluster-resource-namespace
-# (which defaults to the cert-manager install namespace, i.e. .Release.Namespace).
+# The CA pair lives in the cert-manager controller's namespace: the CA ClusterIssuer below can only read
+# its secret from cluster-resource-namespace (defaults to the cert-manager install namespace, .Release.Namespace).
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

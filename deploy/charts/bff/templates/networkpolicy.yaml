@@ -11,9 +11,7 @@ spec:
   policyTypes: [Ingress]
   ingress:
     - from:
-        # Namespace AND pod selector together: only the APISIX data
-        # plane in the gateway namespace, not any pod that happens to
-        # run there.
+        # Namespace AND pod selector together: only the APISIX data plane in the gateway namespace, not any pod there.
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: {{ .Values.gateway.namespace }}

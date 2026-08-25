@@ -6,10 +6,8 @@ metadata:
 spec:
   ingressClassName: apisix
   http:
-    # /healthz and /readyz are pod-probe surfaces, not public API:
-    # kubelet probes hit the pod directly, so the gateway answers 404
-    # here instead of proxying (fault-injection aborts pre-proxy; the
-    # backend entry is CRD-required boilerplate).
+    # kubelet probes hit the pod directly; this route exists only to 404 external calls instead of proxying
+    # (fault-injection aborts pre-proxy; backends is CRD-required boilerplate, unused).
     - name: internal-probes
       priority: 20
       match:

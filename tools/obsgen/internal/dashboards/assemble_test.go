@@ -13,18 +13,12 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// update regenerates testdata/*.json.golden from Assemble's actual output
-// instead of comparing against them: `go test -run TestAssemble_TwoServiceFixture -update`.
-// Every use requires re-reading the diff and reviewing it before
-// committing - this flag records verified-correct output, it does not
-// decide correctness.
+// update rewrites the golden fixtures from actual output instead of
+// comparing against them; review the diff before committing.
 var update = flag.Bool("update", false, "write actual Assemble output to the golden files instead of comparing")
 
-// thresholdStep mirrors one entry of a panel's
-// fieldConfig.defaults.thresholds.steps. Value is a pointer because
-// Grafana's own convention (already visible in any hand-authored
-// dashboard's stat-panel thresholds) uses a null-value base step; a bare
-// float64 could not represent that.
+// thresholdStep mirrors one thresholds.steps entry; Value is a pointer
+// since Grafana's base step uses a null value a bare float64 can't represent.
 type thresholdStep struct {
 	Color string   `json:"color"`
 	Value *float64 `json:"value"`
@@ -32,10 +26,8 @@ type thresholdStep struct {
 
 func f64(v float64) *float64 { return &v }
 
-// panelProbe decodes just enough of one emitted panel to check
-// assembly's behavior structurally. Assertions below use this instead of
-// matching substrings against the final indented JSON, whose exact
-// spacing is a detail of the last marshal step, not of assembly itself.
+// panelProbe decodes just enough of one panel to check assembly
+// structurally, instead of matching substrings against indented JSON.
 type panelProbe struct {
 	ID          int               `json:"id"`
 	Type        string            `json:"type"`
@@ -91,10 +83,8 @@ func findPanel(t *testing.T, d dashboardProbe, title string) panelProbe {
 	return panelProbe{}
 }
 
-// findRawPanel returns the raw JSON bytes of the one panel in data whose
-// decoded title matches title - the only way to check exact key order,
-// since unmarshaling into panelProbe (or any Go struct) does not
-// preserve the source order of the fields that were actually emitted.
+// findRawPanel returns raw JSON bytes for the panel titled title, the
+// only way to check key order (unmarshaling into a struct loses it).
 func findRawPanel(t *testing.T, data []byte, title string) json.RawMessage {
 	t.Helper()
 	var doc struct {
@@ -149,36 +139,11 @@ func jsonObjectKeyOrder(t *testing.T, raw json.RawMessage) []string {
 	return keys
 }
 
-// fixtureModel builds a small two-service (alpha, bravo) manifest model
-// directly - Assemble takes an in-memory *manifest.Model, so its tests
-// construct one straight from the public model types rather than
-// round-tripping through manifest.Load and a yaml fixture tree, which
-// would just be re-testing the loader. The "shared" golden block has 3
-// panels (proving id sequencing past a single entry), instantiated at
-// anchor 0 for both services - so their block-relative gridPos.y (0, 0,
-// 8) is already each panel's final absolute position, keeping this
-// fixture's ordering/id assertions independent of the anchor-offset
-// behavior covered separately by TestAssemble_BlockPanelAnchoredAbsoluteY
-// - with substitution exercised two ways: "{Service} request rate"
-// (title placeholder) and the Availability panel's pod selector (expr
-// placeholder; its title is left constant on purpose, so panel_ref
-// resolution needs no {Service} substitution of its own). alpha's custom
-// panel starts with a pre-existing threshold step, to prove injection
-// appends rather than replacing. bravo has a second custom panel,
-// deliberately titled so it sorts alphabetically BEFORE its first
-// ("Bravo error rate" < "Bravo refresh duration"): its id still has to
-// come out after, proving id continuation follows position (gridPos.y,
-// then gridPos.x) and not, say, title order. alpha has a second alert -
-// a custom rule, not another golden instantiation - pointed at the same
-// panel_ref as its golden availability alert, so alpha's Availability
-// panel ends up with two projected steps in a checkable order (golden
-// instantiations expand before a service's own custom rules); bravo's
-// Availability panel keeps just the one, from its golden instantiation
-// alone. bravo also has a custom page-severity alert (this repo's
-// paging/most-severe level, distinct from warn and crit) pointed at its
-// own request-rate golden panel, proving thresholdColor's page->red
-// mapping on a fresh injection, separately from crit's existing coverage
-// on alpha's golden instantiation.
+// fixtureModel builds a small two-service (alpha, bravo) manifest
+// directly (not via manifest.Load, to avoid re-testing the loader). The
+// "shared" golden block has 3 panels at anchor 0 for both services; see
+// TestAssemble_TwoServiceFixture's own assertions for what each panel
+// and alert proves.
 func fixtureModel() *manifest.Model {
 	blocks := map[string]manifest.Block{
 		"shared": {Panels: []string{
@@ -298,13 +263,9 @@ func fixtureModel() *manifest.Model {
 	}
 }
 
-// TestAssemble_TwoServiceFixture is the base case: build both dashboards
-// from fixtureModel and check every behavior the assembler owns - panel
-// id assignment, {service}/{Service} substitution, threshold projection
-// (both a fresh injection and an append onto an existing threshold
-// step), the panel index, and byte-for-byte determinism across repeated
-// calls - before finally comparing the emitted bytes against the
-// committed golden files.
+// TestAssemble_TwoServiceFixture is the base case: checks id assignment,
+// substitution, threshold projection, and determinism before comparing
+// against golden files.
 func TestAssemble_TwoServiceFixture(t *testing.T) {
 	m := fixtureModel()
 
@@ -351,12 +312,8 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		t.Fatalf("len(panels) = %d/%d, want 4/5", len(alpha.Panels), len(bravo.Panels))
 	}
 
-	// Deterministic ids: golden block ids fixed by position (1-3, same
-	// for every service since the block is identical), custom ids
-	// continue in manifest order. bravo's second custom panel is titled
-	// so it sorts alphabetically BEFORE its first ("Bravo error rate" <
-	// "Bravo refresh duration") and must still land on id 5, not 4 -
-	// proving the order is the manifest's own, not a resorted one.
+	// deterministic ids: golden block ids fixed by position; custom ids
+	// continue in manifest order, not alphabetical ("Bravo error rate" still lands on id 5, not 4).
 	for _, tc := range []struct {
 		d     dashboardProbe
 		title string
@@ -370,8 +327,7 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		}
 	}
 
-	// {service}/{Service} substitution: title (the "request rate" golden
-	// panel) and an expr selector (the Availability panel's pod regex).
+	// {service}/{Service} substitution: golden panel title and an expr selector.
 	if got := findPanel(t, alpha, "Alpha request rate").Title; got != "Alpha request rate" {
 		t.Errorf("golden panel title substitution failed for alpha: %q", got)
 	}
@@ -385,21 +341,9 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		t.Errorf("bravo Availability expr = %q, want the pod selector substituted for bravo", got)
 	}
 
-	// Threshold projection, fresh case plus multiple alerts on one panel:
-	// alpha's Availability panel is targeted by two alerts in this same
-	// Assemble call - its golden availability instantiation (template
-	// default severity crit -> red, condition "lt 1" -> value 1) and a
-	// second, custom "availability-extra" rule (severity warn -> orange,
-	// condition "lt 2" -> value 2) - and must end up with three steps,
-	// in this order: Grafana's own base step (green, null - see
-	// appendStep's baseThresholdColor), added once because thresholds
-	// started out entirely absent on this panel, then the two projected
-	// steps in golden-before-custom order (golden template
-	// instantiations expand before a service's own custom rules).
-	// bravo's Availability alert overrides severity to warn -> orange,
-	// proving the override (not just the template default) drives the
-	// color, and bravo has only the one alert pointed at it (so its
-	// panel gets the base step plus that one projected step).
+	// alpha's Availability panel gets two projected steps (golden before
+	// custom) atop the base step; bravo's override (crit -> warn) proves
+	// the override, not the template default, drives step color.
 	alphaAvail := findPanel(t, alpha, "Availability")
 	if alphaAvail.FieldConfig.Defaults.Thresholds == nil {
 		t.Fatal("alpha Availability: thresholds not injected")
@@ -422,11 +366,8 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		t.Errorf("bravo Availability thresholds.steps = %+v, want %+v (base step first, then severity override crit->warn)", bravoAvail.FieldConfig.Defaults.Thresholds.Steps, want)
 	}
 
-	// Threshold projection, page severity: this repo's paging (most
-	// severe) level takes the same red line as crit, on a panel with no
-	// prior thresholds - proving thresholdColor's page->red mapping is
-	// wired, not just crit->red - alongside the same fresh-thresholds
-	// base step.
+	// page severity maps to red too (same as crit), proving
+	// thresholdColor's page->red mapping is wired, not just crit's.
 	bravoRate := findPanel(t, bravo, "Bravo request rate")
 	if bravoRate.FieldConfig.Defaults.Thresholds == nil {
 		t.Fatal("bravo request rate: thresholds not injected")
@@ -435,15 +376,8 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		t.Errorf("bravo request rate thresholds.steps = %+v, want %+v (base step first, then severity page -> red)", bravoRate.FieldConfig.Defaults.Thresholds.Steps, want)
 	}
 
-	// Threshold projection, append case: alpha's custom queue-backlog
-	// alert (severity warn, condition "gt 25") appends an orange step at
-	// value 25 onto the queue-depth panel's pre-existing green/null step
-	// rather than replacing it. That green/null step is hand-authored in
-	// this panel's own fragment (fixtureModel above), not generator-
-	// injected - it looks identical to the fresh cases' new base step
-	// above but proves the opposite thing: an already-populated
-	// thresholds object gets no SECOND base step added on top of its
-	// own.
+	// append case: alpha's queue-depth panel already has a hand-authored
+	// green/null step; injection appends onto it rather than adding a second base step.
 	alphaQueue := findPanel(t, alpha, "Alpha queue depth")
 	if alphaQueue.FieldConfig.Defaults.Thresholds == nil {
 		t.Fatal("alpha queue depth: thresholds missing entirely")
@@ -453,9 +387,8 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 		t.Errorf("alpha queue depth thresholds.steps = %+v, want %+v (pre-existing step kept, new step appended)", alphaQueue.FieldConfig.Defaults.Thresholds.Steps, wantQueueSteps)
 	}
 
-	// Untouched control: bravo's custom panel has no alert pointed at
-	// it, so it must come through with no thresholds/custom field added
-	// at all - proving injection only ever touches a panel_ref'd panel.
+	// untouched control: bravo's panel with no alert must gain no
+	// thresholds/custom field, proving injection only touches panel_ref'd panels.
 	bravoRefresh := findPanel(t, bravo, "Bravo refresh duration")
 	if bravoRefresh.FieldConfig.Defaults.Thresholds != nil || bravoRefresh.FieldConfig.Defaults.Custom != nil {
 		t.Errorf("bravo refresh duration panel gained thresholds/custom with no alert pointing at it: %+v", bravoRefresh.FieldConfig.Defaults)
@@ -474,7 +407,7 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 			}
 			continue
 		}
-		want, err := os.ReadFile("testdata/" + name) //nolint:gosec // G304: name is built from a literal []string{"alpha","bravo"} in this same loop, never external input.
+		want, err := os.ReadFile("testdata/" + name) //nolint:gosec // G304: name is built from a literal []string{"alpha","bravo"} in this same loop, not external input.
 		if err != nil {
 			t.Fatalf("reading testdata/%s: %v", name, err)
 		}
@@ -488,9 +421,7 @@ func TestAssemble_TwoServiceFixture(t *testing.T) {
 }
 
 // TestAssemble_AlertErrors tables every way an alert's panel_ref or
-// threshold-relevant fields can fail to resolve, each isolated to one
-// deliberate change from the otherwise-valid fixtureModel baseline so a
-// failure is unambiguous about which behavior broke.
+// threshold fields can fail, each isolated to one change from fixtureModel.
 func TestAssemble_AlertErrors(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -530,10 +461,7 @@ func TestAssemble_AlertErrors(t *testing.T) {
 			mutate: func(m *manifest.Model) {
 				m.Alerts.Services[0].Alerts[0].Condition = "gt abc"
 			},
-			// "abc" (not just the rule uid) confirms this hit
-			// strconv.ParseFloat's failure branch specifically, not the
-			// separate wrong-token-count guard above - ParseFloat's own
-			// wrapped error is what names the offending token.
+			// "abc" confirms this hits ParseFloat's failure branch, not the wrong-token-count guard above.
 			want: []string{"vg-alpha-queue-backlog", "abc"},
 		},
 		{
@@ -564,17 +492,9 @@ func TestAssemble_AlertErrors(t *testing.T) {
 	}
 }
 
-// TestAssemble_PanelBuildErrors covers the panel-build phase: unlike
-// golden fragments (which manifest.Load already rejects if malformed),
-// a service's custom_panels are never json-validated at load time, so a
-// syntax error there is real input Assemble must fail on cleanly rather
-// than panic on. A golden fragment is included too, since Assemble's
-// signature takes an in-memory *manifest.Model rather than requiring one
-// built by manifest.Load, so the same defect is reachable on either
-// side of a hand-built model. The duplicate-title cases share one code
-// path (stage's dup check in buildAllPanels) but are asserted for
-// every shape that path has to handle: golden vs. custom, golden vs.
-// golden, and custom vs. custom within the same service.
+// TestAssemble_PanelBuildErrors covers the panel-build phase: custom
+// panels are never json-validated at load time (unlike golden
+// fragments), so a syntax error there is real input Assemble must handle.
 func TestAssemble_PanelBuildErrors(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -619,8 +539,7 @@ func TestAssemble_PanelBuildErrors(t *testing.T) {
 		{
 			name: "two custom panels in the same service share a title",
 			mutate: func(m *manifest.Model) {
-				// bravo's second custom panel ("Bravo error rate")
-				// collides with its first ("Bravo refresh duration").
+				// bravo's second custom panel ("Bravo error rate") collides with its first.
 				m.Dashboards.Services[1].CustomPanels[1] = json.RawMessage(`{"title": "Bravo refresh duration", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}, "targets": [{"expr": "vg_bravo_errors_ratio"}]}`)
 			},
 			want: `duplicate panel title "Bravo refresh duration"`,
@@ -644,11 +563,8 @@ func TestAssemble_PanelBuildErrors(t *testing.T) {
 }
 
 // TestAssemble_EmptyCustomPanels proves a service with no custom panels
-// at all comes out as exactly the golden block and nothing more -
-// fixtureModel's own two services never exercise this directly (alpha
-// and bravo both declare at least one custom panel), so this uses a
-// separate, minimal single-service model instead of piling a third
-// service onto the shared byte-golden fixture.
+// comes out as exactly the golden block; fixtureModel's services don't
+// exercise this directly.
 func TestAssemble_EmptyCustomPanels(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -664,8 +580,7 @@ func TestAssemble_EmptyCustomPanels(t *testing.T) {
 					UID:          "vg-charlie",
 					Title:        "Charlie",
 					GoldenBlocks: map[string]int{"shared": 0},
-					// CustomPanels deliberately left nil - the zero value
-					// a service with no custom_panels: entries decodes to.
+					// CustomPanels left nil, the zero value a missing custom_panels: decodes to.
 				},
 			},
 		},
@@ -689,17 +604,9 @@ func TestAssemble_EmptyCustomPanels(t *testing.T) {
 	}
 }
 
-// TestAssemble_ServiceDisplayNameAcronym pins the acronym exception
-// to capitalize's plain first-letter-uppercase fallback: "bff" is an
-// acronym, so its {Service} form must render "BFF", not "Bff" - "auth"
-// stands in for the general case, which still gets plain capitalize
-// ("Auth"). Reuses fixtureModel's own golden block shape (a "{Service}
-// request rate" title placeholder alongside the Availability panel's
-// {service} pod-selector expr), applied to a fresh two-service, no-
-// custom-panel, no-alerts model so this test stays isolated from
-// fixtureModel's own alpha/bravo assertions - checking the lowercase
-// expr substitution in the same pass proves the acronym exception is
-// scoped to {Service} only.
+// TestAssemble_ServiceDisplayNameAcronym pins the acronym exception:
+// "bff" renders "BFF" in {Service} form, not "Bff"; "auth" is the
+// general-case control ("Auth"). Also checks {service} lowercase substitution is unaffected.
 func TestAssemble_ServiceDisplayNameAcronym(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -738,10 +645,8 @@ func TestAssemble_ServiceDisplayNameAcronym(t *testing.T) {
 	}
 }
 
-// TestAssemble_BlockPanelAnchoredAbsoluteY proves a block panel's final
-// gridPos.y is its own block-relative offset (3) plus the anchor
-// charlie's manifest declares for the block (50) - 53 - while x/w/h pass
-// through untouched, since only y ever moves.
+// TestAssemble_BlockPanelAnchoredAbsoluteY proves gridPos.y is the
+// block-relative offset (3) plus the block's anchor (50) = 53; x/w/h pass through untouched.
 func TestAssemble_BlockPanelAnchoredAbsoluteY(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -773,13 +678,9 @@ func TestAssemble_BlockPanelAnchoredAbsoluteY(t *testing.T) {
 	}
 }
 
-// TestAssemble_CombinedOrderingByYThenX proves the emitted panel array
-// (and so id assignment, which follows the same order) is sorted by
-// (gridPos.y, gridPos.x) over the combined block-plus-custom set, not by
-// manifest declaration order: "Custom low" is declared before "Custom
-// top" but its y (20) sorts after; the block panel's anchor (20) plus
-// its own block-relative y (0) ties "Custom low" at y 20, so x (12 vs 0)
-// breaks that tie.
+// TestAssemble_CombinedOrderingByYThenX proves panels sort by
+// (gridPos.y, gridPos.x), not manifest order: "Custom low" (declared
+// first) sorts after "Custom top" by y, and ties with the block panel's y, broken by x.
 func TestAssemble_CombinedOrderingByYThenX(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -825,11 +726,8 @@ func TestAssemble_CombinedOrderingByYThenX(t *testing.T) {
 	}
 }
 
-// TestAssemble_OverlapErrors proves a service whose panels overlap on
-// the grid fails Assemble with both panels' titles named in the error -
-// internal/grid.Check's own wiring, exercised through two custom panels
-// so the fixture stays minimal (block instantiation is not what this
-// test is about).
+// TestAssemble_OverlapErrors proves overlapping panels fail Assemble
+// with both titles named in the error (internal/grid.Check's wiring).
 func TestAssemble_OverlapErrors(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -859,12 +757,9 @@ func TestAssemble_OverlapErrors(t *testing.T) {
 	}
 }
 
-// TestAssemble_SectionRowEmittedAtAnchor proves a service's sections
-// entry emits a row panel at the literal anchor, with the exact field
-// set and key order a Grafana row panel carries: collapsed, gridPos,
-// id, panels, title, type - alphabetical, distinct from every other
-// emitted panel (which lists id first - see orderedMap.prepend and the
-// package's own row-shape doc).
+// TestAssemble_SectionRowEmittedAtAnchor proves a section emits a row
+// panel at its literal anchor, with Grafana's alphabetical row key
+// order (collapsed, gridPos, id, panels, title, type).
 func TestAssemble_SectionRowEmittedAtAnchor(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -873,11 +768,8 @@ func TestAssemble_SectionRowEmittedAtAnchor(t *testing.T) {
 					Service: "charlie",
 					UID:     "vg-charlie",
 					Title:   "Charlie",
-					// The section sits directly under the custom panel
-					// (which ends at y8) so the row itself is stable: with
-					// Sections non-empty, Assemble also checks compaction
-					// stability, and a row with empty space above it would
-					// be a genuine floater like any other panel.
+					// the section sits directly under the custom panel (ends at
+					// y8) so the row itself is stable - a floating row would fail the stability check too.
 					Sections: map[string]int{"Ops": 8},
 					CustomPanels: []json.RawMessage{
 						json.RawMessage(`{"title": "Custom", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "vg_custom"}]}`),
@@ -908,10 +800,8 @@ func TestAssemble_SectionRowEmittedAtAnchor(t *testing.T) {
 		t.Errorf("row GridPos = %+v, want %+v", row.GridPos, wantGridPos)
 	}
 
-	// row.Panels (decoded above as empty, via panelProbe) plus this key
-	// list together prove "panels" is present at its correct position and
-	// holds a literal empty array, not merely absent (which would also
-	// decode to a zero-length slice and so pass a length check alone).
+	// this key-order check plus row.Panels together prove "panels" is a
+	// literal empty array present in the JSON, not merely absent.
 	raw := findRawPanel(t, files["charlie.json"], "Ops")
 	wantKeys := []string{"collapsed", "gridPos", "id", "panels", "title", "type"}
 	if got := jsonObjectKeyOrder(t, raw); !reflect.DeepEqual(got, wantKeys) {
@@ -919,12 +809,8 @@ func TestAssemble_SectionRowEmittedAtAnchor(t *testing.T) {
 	}
 }
 
-// TestAssemble_SectionRowIDInSequence proves a row's generator-assigned
-// id follows the same (gridPos.y, gridPos.x) sequence as every other
-// panel - not a separate numbering space - by placing a section between
-// two custom panels and checking all three ids in order, and that the
-// row's own title never enters the panel index panel_ref resolves
-// against.
+// TestAssemble_SectionRowIDInSequence proves a row's id follows the
+// same sequence as every other panel, and its title never enters the panel index.
 func TestAssemble_SectionRowIDInSequence(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -966,11 +852,8 @@ func TestAssemble_SectionRowIDInSequence(t *testing.T) {
 	}
 }
 
-// TestAssemble_SectionStabilityViolationFailsAssemble proves a service
-// that has opted into sections gets its combined rects checked for
-// compaction stability, not just overlap: a panel that could float up
-// into an unoccupied hole fails Assemble, naming that panel - the same
-// error shape the overlap case already uses.
+// TestAssemble_SectionStabilityViolationFailsAssemble proves a sections-
+// opted-in service is checked for compaction stability: a floatable panel fails, named in the error.
 func TestAssemble_SectionStabilityViolationFailsAssemble(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -1002,13 +885,8 @@ func TestAssemble_SectionStabilityViolationFailsAssemble(t *testing.T) {
 	}
 }
 
-// TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate proves a service
-// that declares no sections is not checked for compaction stability -
-// only bounds and overlap, same as before this package knew about
-// sections at all. This is the transition behavior existing (not yet
-// migrated) dashboards depend on: a service whose current layout
-// already contains an unfilled hole a later panel could float into must
-// keep generating successfully until it opts in by declaring a section.
+// TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate proves a no-sections
+// service skips the stability check, the transition behavior pre-migration dashboards depend on.
 func TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{
@@ -1017,8 +895,7 @@ func TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate(t *testing.T) {
 					Service: "charlie",
 					UID:     "vg-charlie",
 					Title:   "Charlie",
-					// No Sections entry: the pre-sections dashboards this
-					// gate must not break.
+					// No Sections entry: the pre-sections dashboards this gate must not break.
 					CustomPanels: []json.RawMessage{
 						json.RawMessage(`{"title": "Left", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}, "targets": [{"expr": "vg_left"}]}`),
 						json.RawMessage(`{"title": "Right", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}, "targets": [{"expr": "vg_right"}]}`),
@@ -1035,10 +912,8 @@ func TestAssemble_NoSectionsKeepsLenientOverlapOnlyGate(t *testing.T) {
 	}
 }
 
-// TestAssemble_PanelRefNeverResolvesToARow proves panel_ref addresses
-// content panels only: an alert pointed at a section's own title fails
-// to resolve exactly as if no panel by that name existed, rather than
-// injecting a threshold onto the row.
+// TestAssemble_PanelRefNeverResolvesToARow proves an alert pointed at a
+// row's own title fails to resolve, rather than injecting a threshold onto it.
 func TestAssemble_PanelRefNeverResolvesToARow(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -1082,10 +957,7 @@ func TestAssemble_PanelRefNeverResolvesToARow(t *testing.T) {
 }
 
 // TestAssemble_SectionsBlocksAndCustomsCompose proves golden blocks,
-// custom panels, and section rows combine into one correctly sorted,
-// stable layout: a block panel at anchor 0, a section row pinning a
-// custom region below it, and the custom panels themselves packed under
-// that row.
+// custom panels, and section rows combine into one correctly sorted, stable layout.
 func TestAssemble_SectionsBlocksAndCustomsCompose(t *testing.T) {
 	m := &manifest.Model{
 		Dashboards: manifest.DashTree{

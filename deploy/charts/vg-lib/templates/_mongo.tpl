@@ -12,8 +12,7 @@ spec:
     - {{ .Chart.Name }}-mongo
     - {{ .Chart.Name }}-mongo.{{ .Release.Namespace }}.svc
     - {{ .Chart.Name }}-mongo.{{ .Release.Namespace }}.svc.cluster.local
-    # The metrics sidecar dials over pod-local loopback with full
-    # verification; the serving cert must therefore name localhost.
+    # The metrics sidecar dials over pod-local loopback with full verification; the cert must name localhost.
     - localhost
   issuerRef:
     name: vg-ca
@@ -30,8 +29,7 @@ metadata:
   name: {{ .Chart.Name }}-mongo
   labels: {{- include "vg-lib.labels" . | nindent 4 }}
 spec:
-  # Single replica: a voluntary drain blocks rather than silently
-  # dropping the only copy. Inert on one node, correct shape on many.
+  # Single replica: a voluntary drain blocks rather than dropping the only copy; a no-op until replicas > 1.
   minAvailable: 1
   selector:
     matchLabels:
@@ -96,36 +94,33 @@ spec:
         app.kubernetes.io/part-of: vgkeep
     spec:
       initContainers:
-        # mongod wants ONE combined PEM (cert + key), unlike postgres
-        # and valkey; assemble it from the cert-manager secret and hand
-        # it to the mongodb user (uid:gid 999:999 in the official
-        # image). Secret mounts are read-only, hence the copy.
+        # mongod wants ONE combined PEM (cert+key), unlike postgres/valkey; assembled here and chowned to
+        # the mongodb user (999:999) since secret mounts are read-only.
         - name: tls-perms
           image: busybox:1.37
           command: ["sh", "-c", "cat /tls-src/tls.crt /tls-src/tls.key > /tls/mongod.pem && cp /tls-src/ca.crt /tls/ca.crt && chmod 600 /tls/mongod.pem && chown -R 999:999 /tls"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 32Mi }
           volumeMounts:
             - { name: tls-src, mountPath: /tls-src, readOnly: true }
             - { name: tls, mountPath: /tls }
       containers:
         - name: mongo
           image: {{ .Values.mongo.image | quote }}
-          # Dash-prefixed args: the image entrypoint prepends mongod.
-          # The entrypoint's init phase (root user creation) detects
-          # requireTLS and connects with TLS itself.
+          # Dash-prefixed args: the entrypoint prepends mongod; its root-user init phase detects requireTLS
+          # and connects with TLS itself.
           args:
             - --tlsMode
             - requireTLS
             - --tlsCertificateKeyFile
             - /tls/mongod.pem
-            # Server-side chain of trust mongod now mandates even for a
-            # standalone node (SERVER-72839); the init container copies
-            # the same CA the readiness probe already verifies against.
+            # mongod mandates server-side chain-of-trust even standalone (SERVER-72839); the init container
+            # copies the same CA the readiness probe verifies against.
             - --tlsCAFile
             - /tls/ca.crt
-            # Auth is SCRAM (root username/password below), not mutual
-            # TLS: neither the app driver nor the probe ever presents a
-            # client certificate, so the server must accept the
-            # cert-less handshake or reject every caller outright.
+            # Auth is SCRAM, not mutual TLS: neither the app driver nor the probe presents a client cert, so
+            # the server must accept cert-less handshakes or reject every caller.
             - --tlsAllowConnectionsWithoutCertificates
             - --bind_ip_all
           env:
@@ -138,15 +133,18 @@ spec:
             - { name: mongo, containerPort: 27017 }
           readinessProbe:
             exec:
-              # The hostname skip is what lets the probe pass while
-              # chain verification against the CA stays in force:
-              # mongosh with no host argument dials the default
-              # 127.0.0.1, and the cert's SANs are all dnsNames (no IP
-              # SAN), so the name check would otherwise fail every
-              # time.
+              # mongosh with no host arg dials 127.0.0.1, but the cert's SANs are all dnsNames (no IP SAN), so
+              # the hostname check would fail; --tlsAllowInvalidHostnames skips only that check, chain verification against the CA stays in force.
               command: ["mongosh", "--tls", "--tlsCAFile", "/tls/ca.crt", "--tlsAllowInvalidHostnames", "--quiet", "--eval", "db.adminCommand('ping').ok"]
             periodSeconds: 5
             timeoutSeconds: 5
+          # Same check as readiness; wide thresholds so a slow query doesn't restart-loop the pod, only a wedged mongod trips this.
+          livenessProbe:
+            exec:
+              command: ["mongosh", "--tls", "--tlsCAFile", "/tls/ca.crt", "--tlsAllowInvalidHostnames", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 10
           resources: {{- toYaml .Values.mongo.resources | nindent 12 }}
           volumeMounts:
             - { name: tls, mountPath: /tls }
@@ -167,6 +165,7 @@ spec:
           ports:
             - name: metrics
               containerPort: 9216
+          resources: {{- toYaml .Values.mongo.exporterResources | nindent 12 }}
           volumeMounts:
             - name: metrics-ca
               mountPath: /metrics-ca

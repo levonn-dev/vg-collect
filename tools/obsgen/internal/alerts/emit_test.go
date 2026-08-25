@@ -12,21 +12,13 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// update regenerates testdata/comprehensive.yaml.golden from Emit's
-// actual output instead of comparing against it:
-// `go test -run TestEmit_ComprehensiveFixture -update`. Every use
-// requires re-reading the diff and reviewing it before committing - this
-// flag records verified-correct output, it does not decide correctness.
+// update rewrites the golden fixture from actual output instead of
+// comparing against it; review the diff before committing.
 var update = flag.Bool("update", false, "write actual Emit output to the golden files instead of comparing")
 
-// TestEmit_RealRuleByteFixture proves byte-exact fidelity against a real
-// rule: a manifest.Rule built from vg-service-5xx's real fields (copied
-// verbatim from today's deploy/charts/platform/files/alerting/vg-rules.yaml,
-// lines 1-35) must produce output byte-identical to that same slice of
-// the real file -
-// one group, one rule, no retired entries so no deleteRules stanza. This
-// is the one place a hand-authored file, not Emit's own prior output, is
-// the source of truth.
+// TestEmit_RealRuleByteFixture proves byte-exact fidelity against
+// vg-service-5xx's real fields, the one place a hand-authored file (not
+// Emit's own prior output) is the source of truth.
 func TestEmit_RealRuleByteFixture(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -65,19 +57,9 @@ func TestEmit_RealRuleByteFixture(t *testing.T) {
 	}
 }
 
-// TestEmit_ServiceDisplayNameAcronym pins the acronym exception to
-// capitalize's plain first-letter-uppercase fallback: "bff" is an
-// acronym, so its {Service} form must render "BFF", not "Bff" - "auth"
-// stands in for the general case, which still gets plain capitalize
-// ("Auth"). Reuses templates()' real pdb_budget entry (title:
-// "{Service} disruption budget exhausted", the exact field the
-// exception applies to) rather than a one-off fixture; pdb_budget
-// carries no panel_ref (see templates()' own comment), so this model
-// needs no dashboards/PanelIndex setup at all. pdb_budget's expr field
-// carries the {service} lowercase form too (the poddisruptionbudget
-// selector), checked here in the same pass to prove the acronym
-// exception is scoped to {Service} only - substitute's lowercase
-// ReplaceAll is untouched by this change.
+// TestEmit_ServiceDisplayNameAcronym pins the acronym exception: "bff"
+// renders "BFF" in {Service} form, not "Bff"; "auth" is the general-case
+// control ("Auth"). Also checks {service} lowercase substitution is unaffected.
 func TestEmit_ServiceDisplayNameAcronym(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -110,10 +92,7 @@ func TestEmit_ServiceDisplayNameAcronym(t *testing.T) {
 }
 
 // templates returns the two golden templates ("availability",
-// "pdb_budget") with field values that mirror social's real
-// vg-social-down rule and each service's real disruption-budget guard,
-// reused as-is rather than invented, so the fixture's golden-path
-// behavior tracks the real templates' actual field shape.
+// "pdb_budget") with field values mirroring the real rules they model.
 func templates() map[string]manifest.Template {
 	return map[string]manifest.Template{
 		"availability": {
@@ -142,47 +121,14 @@ func templates() map[string]manifest.Template {
 			Severity:     "warn",
 			Summary:      "{service} (or one of its datastores) cannot tolerate any pod disruption",
 			Runbook:      "stack.md#pdb-exhausted",
-			// no PanelRef: proves a golden-template instantiation with no
-			// panel_ref gains no dashboard-link annotations, same as a
-			// custom rule.
+			// no PanelRef: proves a golden instantiation with no panel_ref gains no dashboard-link annotations.
 		},
 	}
 }
 
-// fixtureModel builds a two-service (alpha, bravo), two-cluster-rule
-// manifest exercising every ordering and dashboard-link rule Emit owns:
-//   - cluster rules before any service, in their own manifest order
-//     (vg-pod-churn then vg-node-pressure - reversed from alphabetical,
-//     so an accidental alpha-sort would be caught).
-//   - services in roster order (alpha, bravo - already alphabetical,
-//     matching the real six-service roster's own order, per the
-//     resolution that Emit trusts manifest/roster order rather than
-//     re-sorting, consistent with dashboards.Assemble's own precedent).
-//   - within alpha, both golden templates (sorted by template name:
-//     "availability" before "pdb_budget" even though alpha's own Golden
-//     map is written pdb_budget-first below, proving the sort is real)
-//     expand before alpha's two custom rules, which keep their own
-//     manifest order (queue-backlog before error-rate).
-//   - override coverage split across services: alpha's pdb_budget
-//     overrides only For (1h -> 2h); bravo's availability overrides
-//     Condition/Severity/Summary (lt 1 -> lt 2, crit -> warn, template
-//     summary -> a distinct override summary) but leaves For at the
-//     template default (5m) - between the two services every one of the
-//     four permitted override fields is exercised at least once, and at
-//     least one field per case is deliberately left at the template
-//     default to prove overrides are field-by-field, not all-or-nothing.
-//   - the dashboard-link annotations appear both ways, on both rule
-//     origins: alpha's availability instantiation and alpha's
-//     queue-backlog custom rule both carry a panel_ref (golden-derived
-//     and custom-derived positive cases); alpha's pdb_budget
-//     instantiation and alpha's error-rate custom rule both omit one
-//     (golden-derived and custom-derived negative cases). bravo's
-//     availability instantiation is a second positive case on a second
-//     service, proving dashboardUid varies per service rather than
-//     being hardcoded.
-//   - two retired uids in a deliberately non-alphabetical order
-//     (old-thing-2 before old-thing-1), proving deleteRules preserves
-//     manifest order rather than sorting.
+// fixtureModel builds a two-service, two-cluster-rule manifest exercising
+// every ordering, override, and dashboard-link rule Emit owns; see
+// TestEmit_ComprehensiveFixture's own assertions for what each part proves.
 func fixtureModel() *manifest.Model {
 	return &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -275,10 +221,8 @@ func fixtureModel() *manifest.Model {
 	}
 }
 
-// fixtureIndex is the PanelIndex fixtureModel's panel_refs resolve
-// against, built by hand (not via dashboards.Assemble) so this test
-// stays isolated to Emit's own behavior - TestEmit_WithRealAssemble
-// covers the real cross-package handoff separately.
+// fixtureIndex is fixtureModel's PanelIndex, built by hand so this test
+// stays isolated to Emit (TestEmit_WithRealAssemble covers the real handoff).
 func fixtureIndex() dashboards.PanelIndex {
 	return dashboards.PanelIndex{
 		"alpha": {"Availability": 1, "Alpha queue depth": 2},
@@ -286,10 +230,8 @@ func fixtureIndex() dashboards.PanelIndex {
 	}
 }
 
-// TestEmit_ComprehensiveFixture builds both dashboards from fixtureModel
-// and checks every ordering/override/dashboard-link-annotation/
-// deleteRules behavior Emit owns structurally before comparing the
-// emitted bytes against the committed golden file.
+// TestEmit_ComprehensiveFixture checks every ordering/override/
+// dashboard-link/deleteRules behavior before comparing against the golden file.
 func TestEmit_ComprehensiveFixture(t *testing.T) {
 	m := fixtureModel()
 	idx := fixtureIndex()
@@ -332,8 +274,7 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 		lastIdx = i
 	}
 
-	// {service}/{Service} substitution in a golden instantiation's uid,
-	// title and expr.
+	// {service}/{Service} substitution in a golden instantiation's uid, title, expr.
 	if !strings.Contains(doc, "title: Alpha service down") {
 		t.Errorf("golden title substitution failed for alpha:\n%s", doc)
 	}
@@ -373,10 +314,8 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 		t.Errorf("bravo availability: summary override not applied/substituted:\n%s", bravoBlock)
 	}
 
-	// Positive cases for the dashboard-link annotations: golden-derived
-	// (alpha-down) and custom-derived (alpha-queue-backlog) both carry
-	// panel_ref and must gain both annotations, on the exact ids/uids
-	// fixtureIndex assigns.
+	// Positive dashboard-link cases: golden-derived (alpha-down) and
+	// custom-derived (queue-backlog) both carry panel_ref and must gain both annotations.
 	alphaDown := ruleBlock(t, doc, "vg-alpha-down")
 	if !strings.Contains(alphaDown, "__dashboardUid__: vg-alpha") || !strings.Contains(alphaDown, `__panelId__: "1"`) {
 		t.Errorf("alpha-down: missing/wrong dashboard-link annotations:\n%s", alphaDown)
@@ -390,9 +329,8 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 		t.Errorf("bravo-down: missing/wrong dashboard-link annotations (dashboardUid must vary per service):\n%s", bravoDown)
 	}
 
-	// Negative cases for the dashboard-link annotations: no panel_ref
-	// means neither annotation appears at all, golden-derived
-	// (pdb-exhausted) and custom-derived (error-rate).
+	// Negative dashboard-link cases: no panel_ref means neither annotation
+	// appears, golden-derived (pdb-exhausted) and custom-derived (error-rate).
 	if strings.Contains(pdbBlock, "__dashboardUid__") || strings.Contains(pdbBlock, "__panelId__") {
 		t.Errorf("alpha-pdb-exhausted has no panel_ref; must gain no dashboard-link annotations:\n%s", pdbBlock)
 	}
@@ -430,7 +368,7 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 		}
 		t.Skip("golden file updated; re-run without -update to verify")
 	}
-	want, err := os.ReadFile(goldenName) //nolint:gosec // G304: goldenName is a package-local literal constant, never external input.
+	want, err := os.ReadFile(goldenName) //nolint:gosec // G304: goldenName is a package-local literal constant, not external input.
 	if err != nil {
 		t.Fatalf("reading %s: %v", goldenName, err)
 	}
@@ -439,12 +377,8 @@ func TestEmit_ComprehensiveFixture(t *testing.T) {
 	}
 }
 
-// ruleBlock isolates one rule's own text (from its "uid: <uid>" marker up
-// to the next "      - uid:" sibling marker, or end of string for the
-// last rule), so an assertion about one rule's fields cannot accidentally
-// match another rule's - e.g. "for: 5m" appears on more than one rule in
-// fixtureModel, so a bare strings.Contains(doc, ...) would not prove
-// which rule it belongs to.
+// ruleBlock isolates one rule's text (uid marker to the next sibling
+// marker), so an assertion cannot accidentally match another rule's field.
 func ruleBlock(t *testing.T, doc, uid string) string {
 	t.Helper()
 	start := strings.Index(doc, "uid: "+uid)
@@ -463,13 +397,8 @@ func ruleBlock(t *testing.T, doc, uid string) string {
 	return rest[:end+1]
 }
 
-// TestEmit_WithRealAssemble proves the real cross-package handoff for
-// the dashboard-link annotations: dashboards.Assemble's own PanelIndex
-// (not a hand-typed one) feeds alerts.Emit, so the panel id and
-// dashboard uid an alert's annotations carry are exactly what the same
-// manifest's dashboard assembly actually produced, from the same pass -
-// the property PanelIndex's own doc comment ("the two can never drift
-// apart") depends on.
+// TestEmit_WithRealAssemble proves dashboards.Assemble's own PanelIndex
+// feeds alerts.Emit, so annotations match what the same pass produced.
 func TestEmit_WithRealAssemble(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -517,18 +446,9 @@ func TestEmit_WithRealAssemble(t *testing.T) {
 	}
 }
 
-// TestEmit_PerRuleDatasourceResolution proves Rule.Datasource resolves
-// correctly: a rule that sets it renders that value on refId A's
-// datasourceUid (refId C's own datasourceUid always stays __expr__
-// regardless - it names Grafana's server-side expression engine, never a
-// real data source); a rule that leaves it unset falls back to the
-// tree-level Alerts.Datasource. Uses vg-loki-errors' and
-// vg-pg-saturation's real fields (copied verbatim from today's
-// deploy/charts/platform/files/alerting/vg-rules.yaml) so the override
-// case is checked against real content, not an invented one - today's
-// file has exactly one rule whose datasourceUid differs from every
-// other rule's (vg-loki-errors, on loki; every other rule, including
-// vg-pg-saturation, on prometheus).
+// TestEmit_PerRuleDatasourceResolution proves Rule.Datasource resolves:
+// a set value renders on refId A (refId C always stays __expr__); unset
+// falls back to Alerts.Datasource. Uses vg-loki-errors/vg-pg-saturation's real fields.
 func TestEmit_PerRuleDatasourceResolution(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -593,12 +513,8 @@ func TestEmit_PerRuleDatasourceResolution(t *testing.T) {
 	}
 }
 
-// TestEmit_ServiceWithNoRules proves a service with an empty Golden map
-// and an empty Alerts slice (no golden instantiations, no custom rules -
-// the zero value of ServiceAlerts beyond its own Service field)
-// contributes nothing to the output and produces no error, rather than,
-// say, an empty rules entry or a spurious failure from ranging a nil map
-// or nil slice.
+// TestEmit_ServiceWithNoRules proves a service with empty Golden/Alerts
+// (nil map/slice) contributes nothing and produces no error.
 func TestEmit_ServiceWithNoRules(t *testing.T) {
 	m := &manifest.Model{
 		Alerts: manifest.AlertTree{
@@ -635,15 +551,9 @@ func TestEmit_ServiceWithNoRules(t *testing.T) {
 	}
 }
 
-// TestEmit_Errors tables every way an expanded rule can fail to resolve:
-// malformed/non-numeric conditions, a custom rule missing its required
-// range, and every panel_ref resolution failure (malformed shape,
-// service missing from the index entirely, title missing from an
-// indexed service, and a service present in the index but absent from
-// the model's own dashboard list - a hand-built idx/model mismatch that
-// could not arise from a real Assemble call on this same model, but
-// which Emit must still refuse rather than emit a dashboardUid-less
-// annotation).
+// TestEmit_Errors tables every way an expanded rule can fail to
+// resolve; the last case (idx entry with no matching model dashboard)
+// cannot arise from a real Assemble call but Emit must still refuse it.
 func TestEmit_Errors(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -665,11 +575,8 @@ func TestEmit_Errors(t *testing.T) {
 			want: []string{"vg-pod-churn", "abc"},
 		},
 		{
-			// Distinct from the two cases above: those mutate a cluster
-			// rule, exercising expandRules' cluster loop. A service's own
-			// custom rule (svc.Alerts) is a separate loop in expandRules
-			// with its own error-collection call site, so it needs its
-			// own case to be covered rather than assumed identical.
+			// distinct from the cases above: svc.Alerts is a separate loop
+			// in expandRules, with its own error-collection call site.
 			name: "a service's own custom rule has an unparseable condition",
 			mutate: func(m *manifest.Model, _ dashboards.PanelIndex) {
 				m.Alerts.Services[0].Alerts[0].Condition = "not-a-number"
@@ -677,11 +584,7 @@ func TestEmit_Errors(t *testing.T) {
 			want: []string{"vg-alpha-queue-backlog"},
 		},
 		{
-			// Distinct again: a golden template instantiation's
-			// (post-override) condition failing to parse exercises
-			// expandGoldenInstance's own error return and expandRules'
-			// per-service golden loop, neither reached by any
-			// cluster-rule or custom-rule case above.
+			// exercises expandGoldenInstance's own error return, not reached by any case above.
 			name: "a service's golden instantiation has an unparseable condition after override",
 			mutate: func(m *manifest.Model, _ dashboards.PanelIndex) {
 				m.Alerts.Services[0].Golden["availability"] = manifest.Overrides{Condition: "not-a-number"}

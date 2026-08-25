@@ -1,34 +1,17 @@
-// Package lint validates a loaded observability manifest (and the repo
-// content it references - runbook anchors, the runbook index,
-// registered metric names) beyond what internal/manifest.Load's strict
-// decode already enforces.
-// Run never mutates anything and never touches deploy/charts/platform;
-// it only reports what it finds, leaving main.go to decide the process
-// exit code. It deliberately does not re-check anything Load already
-// enforces (e.g. the alerts/golden.yaml services roster's alphabetical
-// order); its own uid-uniqueness and retired/live-overlap checks are
-// not a duplicate of Load's despite the similar name - Load's own
-// checkUIDs explicitly excludes golden-template uids (they still carry
-// an unexpanded {service} placeholder at load time), so a collision
-// that only exists after {service} substitution - the exact form every
-// generated rule actually ships in - is a gap only this package closes
-// (see checkUIDs below).
+// Package lint validates a loaded manifest (and referenced repo content:
+// runbook anchors, the runbook index, registered metric names) beyond
+// internal/manifest.Load's decode. Run never mutates anything.
 //
-// The unknown-metric check's jurisdiction is deliberately narrow: it
-// only ever flags a vg_-prefixed selector name (see vgJurisdictionPrefix).
-// Its purpose is catching a vg_-owned metric rename - a rule or panel
-// still citing a name nothing registers anymore, the walk->step
-// incident that motivated this whole package - not policing every
-// exporter/runtime/kube series (http_server_..., kube_..., node_...,
-// up, otelcol_...) this repo emits or scrapes but never registers by
-// hand. external_metric_prefixes is still consulted for anything it
-// matches regardless of that name's own prefix; only a name outside
-// both known/prefixes AND the vg_ family is silently out of scope
-// rather than a finding.
+// checkUIDs differs from Load's own: Load excludes golden-template uids
+// at load time (unique per template key, not per literal string); this
+// package catches a post-substitution literal-uid collision instead.
 //
-// Placeholder checks scan whole fragments, not only titles; Grafana
-// legendFormat variables ({{label}}) are stripped before the scan so
-// they never read as unsubstituted placeholders.
+// unresolvedMetric only flags a vg_-prefixed name absent from known/
+// prefixes - catching a vg_-owned metric rename, not policing every
+// series this repo emits but never registers by hand.
+//
+// Placeholder checks scan whole fragments; Grafana's {{label}} legend
+// vars are stripped first so they aren't mistaken for placeholders.
 package lint
 
 import (
@@ -48,32 +31,19 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// Finding is one problem Run found. Path locates it: a manifest source
-// file (by the fixed deploy/observability/ layout every manifest
-// package in this module already assumes, e.g. "alerts/cluster.yaml")
-// for a model-level check, or a real repo-relative file (e.g.
-// "docs/runbooks/stack.md") for a check that reads one directly. Rule
-// is a short kebab-case id naming which check fired (e.g.
-// "unknown-metric"), stable across runs so tooling could filter on it.
-// Message is the human-readable detail.
+// Finding is one problem Run found. Path is a manifest source file
+// (e.g. "alerts/cluster.yaml") or a real repo-relative file; Rule is a
+// stable kebab-case id (e.g. "unknown-metric"); Message is human-readable.
 type Finding struct {
 	Path    string
 	Rule    string
 	Message string
 }
 
-// Run checks m against every rule this package owns, plus repoRoot-
-// relative content the manifest references (runbook anchors, every
-// registered metric name via Known, and the shipped dashboard files
-// under repoRoot's deploy/charts/platform/files/dashboards). Query/
-// metric-name checks (checkRuleQuery, checkPanelQuery, checkRunbookDocs,
-// checkDashboardFiles) are skipped - after one metric-scan-error
-// Finding - if Known itself fails: with no real known set, every one of
-// those checks would otherwise report every legitimate metric as
-// unknown, drowning the one real problem (the scan failure) in a flood
-// of false positives. Every other check (uid uniqueness, unresolved
-// placeholders, panel_ref resolution, runbook anchor existence) does
-// not depend on Known and still runs.
+// Run checks m plus repoRoot-relative content (runbook anchors, Known
+// metric names, shipped dashboard files). If Known itself fails,
+// query/metric-name checks are skipped after one metric-scan-error
+// finding, to avoid flooding false positives; every other check still runs.
 func Run(m *manifest.Model, repoRoot string) []Finding {
 	var findings []Finding
 
@@ -86,10 +56,8 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 	panels := collectPanels(m)
 
 	headingCache := map[string]map[string]bool{}
-	// Loaded once, outside the per-item loop, the same reasoning as
-	// Known below: if the index itself cannot be read, reporting that
-	// once and skipping checkRunbookIndexRow is more useful than
-	// flooding the output with a "missing row" finding for every rule.
+	// loaded once, outside the loop: if the index can't be read, reporting
+	// that once beats flooding a "missing row" finding per rule.
 	indexUIDs, indexErr := runbookIndexUIDs(repoRoot)
 	if indexErr != nil {
 		findings = append(findings, Finding{
@@ -105,11 +73,8 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 			findings = append(findings, checkRunbookIndexRow(it, indexUIDs)...)
 		}
 	}
-	// Every panel is scanned by its whole substituted (golden) or
-	// as-authored (custom) fragment text, not just its parsed title: a
-	// typo'd placeholder can just as easily hide inside a quoted label
-	// selector (e.g. pod=~"{servce}-.*") as inside a title, and the
-	// title-only check used to walk straight past that.
+	// every panel is scanned by its whole fragment text, not just title: a
+	// typo'd placeholder can hide inside a label selector too (e.g. pod=~"{servce}-.*").
 	for _, sd := range m.Dashboards.Services {
 		for _, panel := range panels[sd.Service] {
 			context := fmt.Sprintf("panel %s/%s", sd.Service, panel.title)
@@ -143,13 +108,8 @@ func Run(m *manifest.Model, repoRoot string) []Finding {
 
 // --- expansion: one entry per live rule instance -----------------------
 
-// expandedItem is one live rule instance, fully resolved: {service}/
-// {Service} substituted (for a golden template instantiation) or taken
-// as authored (for a cluster or per-service custom rule), and
-// datasource resolved against the tree default. sourcePath is the
-// manifest file the rule lives in, by the fixed convention
-// internal/manifest.Load itself reads from (this package does not
-// carry that path on the model).
+// expandedItem is one live rule instance, fully resolved (substituted or
+// authored) with datasource resolved against the tree default.
 type expandedItem struct {
 	uid        string
 	title      string
@@ -161,15 +121,10 @@ type expandedItem struct {
 	sourcePath string
 }
 
-// expandItems walks every alert the manifest declares - cluster rules,
-// then each service's golden template instantiations (sorted by
-// template name - ServiceAlerts.Golden is a Go map) followed by its
-// custom rules - mirroring internal/alerts.expandRules' and internal/
-// dashboards.expandAlerts' own walk order. A golden key naming an
-// unknown template is skipped here (checkGoldenTemplates reports it
-// separately) rather than expanding a zero-value Template, which would
-// produce a confusing empty-string uid/expr finding instead of the one
-// real problem.
+// expandItems walks cluster rules, then each service's golden
+// instantiations (sorted; Golden is a Go map) then custom rules. An
+// unknown golden key is skipped here (checkGoldenTemplates reports it),
+// not expanded as a zero-value Template.
 func expandItems(m *manifest.Model) []expandedItem {
 	var out []expandedItem
 	treeDatasource := m.Alerts.Datasource
@@ -205,23 +160,10 @@ func ruleItem(r manifest.Rule, treeDatasource, path string) expandedItem {
 	}
 }
 
-// goldenItem mirrors internal/alerts.expandGoldenInstance's override
-// resolution (a zero-value override field means "use the template's
-// own value", across all four permitted fields: for, condition,
-// severity, summary) but, like internal/dashboards.expandAlerts,
-// applies only the overrides relevant to what this package's own
-// expandedItem tracks - here that is summary alone. An overridden
-// summary is the one override that can carry a {service}/{Service}
-// placeholder into the generated rule (summary is one of the five
-// fields expand.Substitute ever touches; for/condition/severity are
-// never touched by expand.Substitute in expandGoldenInstance either),
-// so building the linted item from the template's own default summary
-// instead of the override actually in effect would let a typo'd
-// override placeholder (e.g. "{servce} down") reach the generated
-// vg-rules.yaml with checkPlaceholders none the wiser. for/condition/
-// severity get no equivalent treatment: an override on any of them
-// can never introduce a placeholder, and no other check in this
-// package reads them.
+// goldenItem applies only the summary override (of the four permitted
+// override fields): summary is the only one expand.Substitute touches,
+// so it's the only one that could carry a typo'd placeholder past
+// checkPlaceholders if the template default were used instead.
 func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeDatasource, path string) expandedItem {
 	summary := tmpl.Summary
 	if ov.Summary != "" {
@@ -234,10 +176,7 @@ func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeData
 		expr:     expand.Substitute(tmpl.Expr, service),
 		summary:  expand.Substitute(summary, service),
 		panelRef: expand.Substitute(tmpl.PanelRef, service),
-		// Never substituted: a runbook anchor is the same literal string
-		// for every service instantiating the template (see internal/
-		// alerts.expandGoldenInstance, which resolves runbookShort the
-		// same un-substituted way).
+		// runbook is never substituted: the same literal string for every service instantiating the template.
 		runbook:    tmpl.Runbook,
 		datasource: treeDatasource,
 		sourcePath: path,
@@ -246,11 +185,9 @@ func goldenItem(tmpl manifest.Template, ov manifest.Overrides, service, treeData
 
 // --- uid uniqueness / retired overlap / unknown golden template --------
 
-// checkGoldenTemplates flags a service's golden: map naming a template
-// key alerts/golden.yaml never defines - an authoring typo that
-// internal/alerts.Emit and internal/dashboards.Assemble both currently
-// mishandle (Emit errors with a blank-uid message; Assemble silently
-// skips the key), rather than reporting the typo itself.
+// checkGoldenTemplates flags a golden: key naming a template that
+// doesn't exist - a typo internal/alerts.Emit and internal/
+// dashboards.Assemble both mishandle without naming it.
 func checkGoldenTemplates(m *manifest.Model) []Finding {
 	var findings []Finding
 	for _, svc := range m.Alerts.Services {
@@ -267,13 +204,8 @@ func checkGoldenTemplates(m *manifest.Model) []Finding {
 	return findings
 }
 
-// checkGoldenBlocks flags a dashboards/golden.yaml block that no
-// service's golden_blocks ever instantiates - authored content (or
-// content every last instantiating service has since dropped) that no
-// generated dashboard actually renders. It mirrors checkGoldenTemplates
-// from the opposite direction: that check flags a service naming a
-// template that does not exist, this one flags a block that exists but
-// nothing names.
+// checkGoldenBlocks flags a block no service's golden_blocks
+// instantiates, the opposite direction of checkGoldenTemplates.
 func checkGoldenBlocks(m *manifest.Model) []Finding {
 	used := make(map[string]bool, len(m.Dashboards.Blocks))
 	for _, sd := range m.Dashboards.Services {
@@ -296,15 +228,9 @@ func checkGoldenBlocks(m *manifest.Model) []Finding {
 }
 
 // checkUIDs finds every uid collision across the fully expanded (post-
-// substitution) live rule set, plus every retired uid that still
-// resolves to one of those live uids. This walks a strictly larger set
-// than internal/manifest.Load's own checkUIDs, which knowingly excludes
-// golden-template uids (they are unique per template key at load time,
-// not per literal string - see that function's own doc comment); once
-// {service} is substituted, two different template keys - or a
-// template instantiation and a hand-authored custom rule - can produce
-// the identical literal uid, and that is exactly the collision this
-// function exists to catch.
+// substitution) live set, plus any retired uid still resolving to a
+// live one - a strictly larger set than Load's own checkUIDs, which
+// excludes golden-template uids pre-substitution.
 func checkUIDs(items []expandedItem, retired []manifest.RetiredUID) []Finding {
 	var findings []Finding
 	live := make(map[string]string, len(items))
@@ -335,34 +261,17 @@ func checkUIDs(items []expandedItem, retired []manifest.RetiredUID) []Finding {
 
 // --- unresolved placeholders --------------------------------------------
 
-// placeholderRE matches a leftover {word} token: expand.Substitute
-// only ever replaces the two exact spellings "{service}"/"{Service}"
-// via strings.ReplaceAll, which is exhaustive - so if either canonical
-// spelling could still be found post-substitution, this check would
-// find nothing, ever. The real failure mode is a *misspelled* template
-// placeholder (e.g. "{Svc}", "{srv}"): expand.Substitute never touches
-// it, so it survives verbatim into the generated output. A bare {word} is
-// safe to flag broadly here because it does not collide with a PromQL
-// label matcher's braces (they always hold an operator, e.g.
-// "{namespace=...}", never a lone word) or, once
-// grafanaLegendFormatRE has stripped it first (see placeholderFinding),
-// with Grafana's own double-brace legend syntax either.
+// placeholderRE matches a leftover {word} token: the real failure mode
+// is a *misspelled* placeholder (e.g. "{Svc}"), since expand.Substitute
+// only replaces the two canonical spellings exhaustively. Safe to flag
+// broadly: PromQL label-matcher braces always hold an operator, never a
+// lone word, and Grafana's {{legend}} syntax is stripped first.
 var placeholderRE = regexp.MustCompile(`\{[A-Za-z]+\}`)
 
-// grafanaLegendFormatRE matches Grafana's own {{label}} legend-format
-// template syntax: a completely different mechanism from this
-// generator's {service}/{Service} substitution (Grafana expands it
-// client-side against each query result's own labels;
-// expand.Substitute never touches it), which real dashboards put on
-// nearly every timeseries panel target (e.g. "legendFormat": "{{pod}}",
-// "legendFormat": "{{http_route}} {{http_response_status_code}}") -
-// and which nests a single-brace-shaped span inside it, since "{{pod}}"
-// contains the exact substring "{pod}". Scanning a whole panel fragment
-// (see the Run loop that calls placeholderFinding on panel.fragment)
-// would otherwise mistake every one of those for a leftover {word}
-// placeholder; placeholderFinding blanks every {{...}} span out before
-// running placeholderRE so a legitimate legend format is never
-// mistaken for one.
+// grafanaLegendFormatRE matches Grafana's own {{label}} legend syntax
+// (a separate mechanism from {service}/{Service} substitution).
+// "{{pod}}" contains the substring "{pod}", which would false-positive
+// placeholderRE, so placeholderFinding strips it first.
 var grafanaLegendFormatRE = regexp.MustCompile(`\{\{[^{}]*\}\}`)
 
 func placeholderFinding(path, context, field, value string) *Finding {
@@ -394,14 +303,9 @@ func checkPlaceholders(it expandedItem) []Finding {
 
 // --- panels: collection + panel_ref resolution --------------------------
 
-// panelSpec is the minimal shape lint reads out of one assembled
-// panel: its title (the identifier panel_ref resolves against) and
-// every query its targets carry. source is the manifest file it came
-// from, for Finding.Path. fragment is the panel's whole fragment text
-// - substituted for a golden panel, as-authored for a custom one -
-// kept alongside the parsed fields so checkPlaceholders' whole-fragment
-// scan (see the Run loop that reads it) has the exact same text
-// parsePanelSpec itself decoded, not a re-serialization of it.
+// panelSpec is the minimal shape lint reads from one assembled panel.
+// fragment keeps the whole source text (not a re-serialization) so the
+// placeholder scan reads exactly what was decoded.
 type panelSpec struct {
 	title    string
 	targets  []panelTarget
@@ -409,20 +313,15 @@ type panelSpec struct {
 	fragment string
 }
 
-// panelTarget is one query on a panel, with the datasource it will
-// actually run against already resolved (see resolvePanelDatasource) -
-// the same routing input checkRuleQuery reads off an expandedItem.
+// panelTarget is one query on a panel with its datasource already
+// resolved (see resolvePanelDatasource), the same routing input checkRuleQuery uses.
 type panelTarget struct {
 	expr       string
 	datasource string
 }
 
-// panelJSON decodes just enough of a verbatim Grafana panel fragment to
-// build a panelSpec. Grafana carries a datasource on the panel and,
-// independently, on each of its targets (real dashboards under
-// deploy/charts/platform/files/dashboards/ set both, to the same value
-// on a Prometheus panel and to loki on the logs panel every service
-// dashboard ends with); a target that names one overrides its panel.
+// panelJSON decodes just enough of a panel fragment to build a
+// panelSpec. A target's own datasource, when set, overrides its panel's.
 type panelJSON struct {
 	Title      string        `json:"title"`
 	Datasource datasourceRef `json:"datasource"`
@@ -433,14 +332,8 @@ type panelJSON struct {
 }
 
 // datasourceRef is a Grafana datasource reference reduced to its type
-// name. It decodes tolerantly on purpose: today's dashboards all use
-// the object form ({"type": "prometheus", "uid": "prometheus"}), but
-// Grafana also accepts a bare string naming a datasource or variable,
-// and a strict decode would reject that whole panel fragment - taking
-// its title (and so every panel_ref pointing at it) down with it over
-// one field this package reads for routing only. Anything else,
-// including null, leaves the type empty, which resolves to the
-// inherited/default datasource.
+// name, decoded tolerantly (object or bare string) so a strict decode
+// never rejects a whole panel fragment over one routing-only field.
 type datasourceRef struct {
 	typ string
 }
@@ -460,15 +353,10 @@ func (d *datasourceRef) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// collectPanels builds every service's panel set: every golden block it
-// instantiates (substituted per service, via expand.Blocks - mirroring
-// internal/dashboards' buildAllPanels) plus that service's own custom
-// panels (already concrete). A fragment that fails to parse as JSON is
-// silently skipped here - internal/dashboards.Assemble already reports a
-// malformed fragment clearly (with the offending service and panel
-// context) the moment anyone actually runs gen, and this package's own
-// job is query/anchor/uid hygiene on panels it CAN read, not JSON
-// validity.
+// collectPanels builds every service's panel set: golden blocks (via
+// expand.Blocks) plus custom panels. A fragment that fails to parse as
+// JSON is silently skipped: Assemble already reports that at gen time;
+// this package checks panels it CAN read.
 func collectPanels(m *manifest.Model) map[string][]panelSpec {
 	out := make(map[string][]panelSpec, len(m.Dashboards.Services))
 	for _, sd := range m.Dashboards.Services {
@@ -510,12 +398,8 @@ func parsePanelSpec(raw, source string) (panelSpec, bool) {
 	return panelSpec{title: pj.Title, targets: targets, source: source, fragment: raw}, true
 }
 
-// resolvePanelDatasource picks the datasource one target's query
-// actually runs against: its own, else the panel's, else Prometheus.
-// The default matches how Grafana itself treats a panel that names no
-// datasource (it inherits the dashboard's, which is Prometheus for
-// every dashboard this repo generates) and how a rule with no
-// datasource of its own falls back to the alert tree's.
+// resolvePanelDatasource picks a target's actual datasource: its own,
+// else the panel's, else Prometheus (Grafana's own inheritance default).
 func resolvePanelDatasource(target, panel string) string {
 	if target != "" {
 		return target
@@ -560,23 +444,17 @@ func checkPanelRef(it expandedItem, panels map[string][]panelSpec) []Finding {
 
 // --- query validity and names ---------------------------------------------
 
-// metricTokenRE is the fallback scan for content that is not PromQL: a
-// LogQL rule expr, or a runbook line quoting a query inside a shell
-// command. It looks for anything metric-shaped rather than trying to
-// parse the surrounding syntax at all.
+// metricTokenRE is the fallback scan for non-PromQL content (LogQL,
+// shell-quoted queries): metric-shaped text, no syntax parsing.
 var metricTokenRE = regexp.MustCompile(`vg_[a-z0-9_]+`)
 
 func tokenScanNames(text string) []string {
 	return metricTokenRE.FindAllString(text, -1)
 }
 
-// selectorNames walks expr's AST and returns every vector selector's
-// metric name. A selector named only via a __name__ regex or negated
-// matcher (e.g. {__name__=~"otelcol_exporter_.*"}, used by the real
-// vg-collector-drops rule) has an empty Name - PromQL's parser only
-// populates Name for a bare identifier or an exact __name__ match, both
-// literal - and is skipped: it does not name one specific metric, so
-// there is nothing to check it against.
+// selectorNames walks expr's AST for every vector selector's metric
+// name. A selector named only via a __name__ regex/negated matcher
+// (e.g. {__name__=~"otelcol_.*"}) has an empty Name and is skipped.
 func selectorNames(expr parser.Expr) []string {
 	var names []string
 	parser.Inspect(expr, func(node parser.Node, _ []parser.Node) error {
@@ -601,16 +479,11 @@ func isKnownMetric(name string, known map[string]struct{}, prefixes []string) bo
 }
 
 // vgJurisdictionPrefix is the only metric-name family unresolvedMetric
-// ever flags - see the package doc comment for why (in short: this
-// check exists to catch a vg_-owned metric rename, not to police every
-// series this repo's dependencies happen to emit).
+// ever flags (catches a vg_-owned rename, not every series a dependency emits).
 const vgJurisdictionPrefix = "vg_"
 
-// unresolvedMetric reports whether name is a genuine unknown-metric
-// finding: absent from known/prefixes (isKnownMetric) AND inside this
-// lint's own vg_ jurisdiction. A name outside that jurisdiction is
-// skipped regardless of whether it is known - it was never eligible to
-// be flagged in the first place.
+// unresolvedMetric reports whether name is absent from known/prefixes
+// AND inside the vg_ jurisdiction; outside that jurisdiction is never eligible, known or not.
 func unresolvedMetric(name string, known map[string]struct{}, prefixes []string) bool {
 	if isKnownMetric(name, known, prefixes) {
 		return false
@@ -618,11 +491,8 @@ func unresolvedMetric(name string, known map[string]struct{}, prefixes []string)
 	return strings.HasPrefix(name, vgJurisdictionPrefix)
 }
 
-// selectorFindings reports every named vector selector in an already-
-// parsed query that unresolvedMetric flags (absent from known/prefixes
-// AND vg_-prefixed) - a non-vg_ selector (http_server_..., kube_...,
-// up, ...) is outside this check's jurisdiction and is silently
-// skipped, known or not.
+// selectorFindings reports every named selector unresolvedMetric flags;
+// a non-vg_ selector is outside jurisdiction and silently skipped.
 func selectorFindings(parsed parser.Expr, path, context string, known map[string]struct{}, prefixes []string) []Finding {
 	var findings []Finding
 	for _, name := range selectorNames(parsed) {
@@ -636,13 +506,8 @@ func selectorFindings(parsed parser.Expr, path, context string, known map[string
 	return findings
 }
 
-// checkQueryExpr AST-parses expr as PromQL exactly as authored: a parse
-// failure is itself the finding (expr-parse-error); on success, every
-// selector selectorFindings flags is its own unknown-metric finding.
-// Used for a rule expr resolved to the "prometheus" datasource -
-// deliberately with no Grafana-variable tolerance, since a Grafana
-// alert rule's query reaches the datasource as authored (see
-// substituteGrafanaVars).
+// checkQueryExpr AST-parses expr as authored PromQL; a parse failure is
+// itself the finding. No Grafana-variable tolerance, unlike checkPanelExpr.
 func checkQueryExpr(p parser.Parser, expr, path, context string, known map[string]struct{}, prefixes []string) []Finding {
 	parsed, err := p.ParseExpr(expr)
 	if err != nil {
@@ -651,12 +516,9 @@ func checkQueryExpr(p parser.Parser, expr, path, context string, known map[strin
 	return selectorFindings(parsed, path, context, known, prefixes)
 }
 
-// checkPanelExpr is checkQueryExpr's dashboard-panel sibling: it parses
-// a Grafana-variable-substituted copy of expr, while every finding
-// still quotes the expr as authored - the parser only ever sees the
-// substituted text, and the substitution shifts the column numbers a
-// parse error reports, so the authored expr is spelled out in the
-// message rather than left for the reader to guess at.
+// checkPanelExpr parses a Grafana-variable-substituted copy of expr,
+// but every finding quotes the expr as authored (substitution shifts
+// the column numbers a parse error reports).
 func checkPanelExpr(p parser.Parser, expr, path, context string, known map[string]struct{}, prefixes []string) []Finding {
 	parsed, err := p.ParseExpr(substituteGrafanaVars(expr))
 	if err != nil {
@@ -668,32 +530,19 @@ func checkPanelExpr(p parser.Parser, expr, path, context string, known map[strin
 	return selectorFindings(parsed, path, context, known, prefixes)
 }
 
-// Grafana expands its own template variables client-side before a panel
-// query ever reaches Prometheus, so a panel expr is not standalone
-// PromQL and promql/parser rejects the raw $-tokens on sight. These two
-// patterns rewrite those tokens into syntactically valid stand-ins
-// purely so the surrounding query can be parsed and its metric names
-// walked; the substituted text is never reported and never written
-// anywhere.
+// Grafana expands template variables client-side before a panel query
+// reaches Prometheus, so promql/parser rejects the raw $-tokens; these
+// patterns substitute valid stand-ins purely so the query can be parsed
+// and walked - substituted text is never reported or written anywhere.
 //
-// Substitution table (the forms real dashboards under
-// deploy/charts/platform/files/dashboards/ actually carry):
-//
-//	$__rate_interval / $__interval / $__range   -> 5m           (also their ${...} spelling)
+//	$__rate_interval / $__interval / $__range   -> 5m           (also ${...})
 //	any other $var, ${var} or ${var:format}     -> grafana_var
 //
-// The first group is exactly the macros whose value is a duration, and
-// they only ever stand where PromQL demands one (a range selector's
-// [...]); 5m is an arbitrary valid duration. A macro spelled with a
-// trailing _ms/_s carries a number rather than a duration, and the
-// trailing word boundary keeps it out of that group. Everything else
-// becomes a bare identifier, the one stand-in that stays valid in every
-// position real dashboards put a variable in: a quoted label-matcher
-// value (namespace="$namespace", pod=~"$pod") accepts any literal, and
-// an identifier also keeps a bare selector or a grouping label
-// parseable. The identifier is deliberately not vg_-prefixed, so it can
-// never be mistaken for a metric of this repo's own (see
-// unresolvedMetric).
+// The duration group only ever stands where PromQL demands one (a range
+// selector's [...]); 5m is an arbitrary valid duration. Everything else
+// becomes a bare identifier (valid as a quoted literal, selector, or
+// label), deliberately not vg_-prefixed so it can't be mistaken for a
+// real metric.
 var (
 	grafanaDurationMacroRE = regexp.MustCompile(`\$(?:__rate_interval|__interval|__range)\b|\$\{(?:__rate_interval|__interval|__range)\}`)
 	grafanaVarRE           = regexp.MustCompile(`\$\{[^{}]*\}|\$[A-Za-z_][A-Za-z0-9_]*`)
@@ -709,17 +558,9 @@ func substituteGrafanaVars(expr string) string {
 	return grafanaVarRE.ReplaceAllString(expr, macroIdentifier)
 }
 
-// checkQueryTokens is checkQueryExpr's non-PromQL sibling: no parse
-// step, no parse-error finding - just a token scan, with every
-// unresolvedMetric-flagged token its own unknown-metric finding
-// (tokenScanNames' own vg_[a-z0-9_]+ regex already only ever finds
-// vg_-prefixed tokens, so the jurisdiction half of unresolvedMetric is
-// a no-op here in practice; using the same function as checkQueryExpr
-// regardless keeps both paths gated identically rather than relying on
-// that regex never changing). Used for a rule expr or a panel target
-// resolved to any datasource other than "prometheus" and, via
-// checkRunbookBlock, for any runbook fenced block that does not parse
-// as PromQL at all.
+// checkQueryTokens is checkQueryExpr's non-PromQL sibling: a token
+// scan, no parse step. Uses unresolvedMetric (not just tokenScanNames'
+// vg_ regex) so both paths stay gated identically if that regex ever changes.
 func checkQueryTokens(text, path, context string, known map[string]struct{}, prefixes []string) []Finding {
 	var findings []Finding
 	for _, name := range tokenScanNames(text) {
@@ -737,10 +578,8 @@ func checkQueryTokens(text, path, context string, known map[string]struct{}, pre
 // the only one either check below routes to the AST path.
 const promDatasource = "prometheus"
 
-// checkRuleQuery routes one rule's expr per its resolved datasource:
-// PromQL AST treatment when it resolves to "prometheus" (rule-level
-// override, or the tree default), token-scan fallback otherwise (today
-// that means exactly one rule, vg-loki-errors, whose expr is LogQL).
+// checkRuleQuery routes expr by resolved datasource: AST for
+// "prometheus", token-scan otherwise (today, only vg-loki-errors' LogQL).
 func checkRuleQuery(p parser.Parser, it expandedItem, known map[string]struct{}, prefixes []string) []Finding {
 	context := "rule " + it.uid
 	if it.datasource == promDatasource {
@@ -749,13 +588,8 @@ func checkRuleQuery(p parser.Parser, it expandedItem, known map[string]struct{},
 	return checkQueryTokens(it.expr, it.sourcePath, context+" (datasource "+it.datasource+", token-scanned)", known, prefixes)
 }
 
-// checkPanelQuery routes each of one panel's target queries the same
-// way checkRuleQuery routes a rule's, by the datasource that target
-// resolves to: PromQL AST treatment (with Grafana-variable tolerance -
-// see checkPanelExpr) for Prometheus, token-scan fallback for anything
-// else. Every real dashboard ends with a Loki-datasourced logs panel
-// whose expr is LogQL, and a target may name a datasource its panel
-// does not.
+// checkPanelQuery routes each target like checkRuleQuery: AST (with
+// Grafana-variable tolerance) for Prometheus, token-scan otherwise (e.g. a Loki logs panel).
 func checkPanelQuery(p parser.Parser, panel panelSpec, service string, known map[string]struct{}, prefixes []string) []Finding {
 	var findings []Finding
 	context := fmt.Sprintf("panel %s/%s", service, panel.title)
@@ -771,11 +605,8 @@ func checkPanelQuery(p parser.Parser, panel panelSpec, service string, known map
 
 // --- runbook anchors ------------------------------------------------------
 
-// headingLineRE matches one ATX heading line ("#" through "######",
-// then whitespace, then the heading text) - applied line by line by
-// parseMarkdown, which tracks fenced-block state so a "#"-led line
-// inside a fenced block (a shell comment, say) is never mistaken for a
-// heading.
+// headingLineRE matches one ATX heading line; parseMarkdown tracks
+// fenced-block state so a "#"-led line inside a fence isn't mistaken for one.
 var headingLineRE = regexp.MustCompile(`^#{1,6}\s+(.+?)\s*$`)
 
 // parseMarkdown extracts every heading's GitHub slug and every fenced
@@ -808,13 +639,9 @@ func parseMarkdown(markdown string) (headings map[string]bool, blocks []string) 
 	return headings, blocks
 }
 
-// slugDrop matches every character a GitHub anchor slug removes
-// outright (no separator takes its place - "don't" becomes "dont", not
-// "don-t"); slugSpace matches the whitespace run replaced by one
-// hyphen. Verified against every runbook_url anchor already live in
-// deploy/charts/platform/files/alerting/vg-rules.yaml (e.g. "1.
-// Service 5xx ratio above 5 percent" -> "1-service-5xx-ratio-above-5-
-// percent": the period is dropped, not replaced).
+// slugDrop matches characters GitHub's slug drops outright (no
+// separator: "don't" -> "dont", not "don-t"); slugSpace is the
+// whitespace run replaced by one hyphen (e.g. "1. Service down" -> "1-service-down").
 var (
 	slugDrop  = regexp.MustCompile(`[^a-z0-9 _-]+`)
 	slugSpace = regexp.MustCompile(`\s+`)
@@ -828,14 +655,13 @@ func githubSlug(heading string) string {
 }
 
 // headingsFor reads and slugs repoRoot/docs/runbooks/file, caching the
-// result: a runbook like stack.md is cited by many rules, and re-
-// reading/re-parsing it once per citing rule would be wasted work.
+// result since a runbook like stack.md is cited by many rules.
 func headingsFor(repoRoot, file string, cache map[string]map[string]bool) (map[string]bool, error) {
 	if got, ok := cache[file]; ok {
 		return got, nil
 	}
 	path := filepath.Join(repoRoot, "docs", "runbooks", file)
-	data, err := os.ReadFile(path) //nolint:gosec // G304: file is the manifest's own trusted, repo-authored runbook field, the same threat model internal/manifest.decodeFile already documents for its own file reads.
+	data, err := os.ReadFile(path) //nolint:gosec // G304: file is the manifest's own trusted, repo-authored runbook field.
 	if err != nil {
 		return nil, err
 	}
@@ -844,10 +670,8 @@ func headingsFor(repoRoot, file string, cache map[string]map[string]bool) (map[s
 	return headings, nil
 }
 
-// checkRunbookAnchor reports a rule whose runbook value has no
-// "#anchor" suffix, names a docs/runbooks file that does not exist or
-// cannot be read, or names a file with no heading slugging to that
-// anchor.
+// checkRunbookAnchor reports a runbook value with no "#anchor" suffix,
+// naming a file that doesn't exist/can't be read, or with no heading slugging to that anchor.
 func checkRunbookAnchor(repoRoot string, it expandedItem, cache map[string]map[string]bool) []Finding {
 	file, anchor, ok := strings.Cut(it.runbook, "#")
 	if !ok {
@@ -874,20 +698,15 @@ func checkRunbookAnchor(repoRoot string, it expandedItem, cache map[string]map[s
 
 // --- runbook index row ---------------------------------------------------
 
-// runbookIndexRowRE matches one data row of docs/runbooks/README.md's
-// hand-maintained alert table by its Rule cell, which is always
-// "<uid> - <title>" (e.g. "vg-service-5xx - Service 5xx ratio above 5
-// percent"). The captured group requires the literal "vg-" prefix
-// every real uid carries, so neither the header row ("| Rule | ... |")
-// nor the "|---|...|" separator row - neither of which starts a cell
-// with "vg-" - is ever mistaken for a data row.
+// runbookIndexRowRE matches one alert-table data row by its Rule cell
+// ("<uid> - <title>"); requiring the "vg-" prefix keeps the header and separator rows from matching.
 var runbookIndexRowRE = regexp.MustCompile(`(?m)^\|\s*(vg-[a-z0-9-]+)\s+-\s+`)
 
 // runbookIndexUIDs reads repoRoot/docs/runbooks/README.md and returns
 // the set of rule uids its alert table carries a row for.
 func runbookIndexUIDs(repoRoot string) (map[string]bool, error) {
 	path := filepath.Join(repoRoot, "docs", "runbooks", "README.md")
-	data, err := os.ReadFile(path) //nolint:gosec // G304: repoRoot is main's own trusted <repo-root> CLI argument (see runLint), the same threat model this package's other repoRoot-rooted reads already document (e.g. headingsFor, checkRunbookDocs).
+	data, err := os.ReadFile(path) //nolint:gosec // G304: repoRoot is main's own trusted <repo-root> CLI argument.
 	if err != nil {
 		return nil, err
 	}
@@ -898,10 +717,8 @@ func runbookIndexUIDs(repoRoot string) (map[string]bool, error) {
 	return uids, nil
 }
 
-// checkRunbookIndexRow reports an expanded rule with no row in
-// docs/runbooks/README.md's alert table - the index a reader lands on
-// from Grafana before diving into a service runbook. Nothing else
-// notices that table going stale when a rule is added.
+// checkRunbookIndexRow reports a rule missing from README.md's alert
+// table; nothing else notices that table going stale.
 func checkRunbookIndexRow(it expandedItem, indexUIDs map[string]bool) []Finding {
 	if indexUIDs[it.uid] {
 		return nil
@@ -912,16 +729,9 @@ func checkRunbookIndexRow(it expandedItem, indexUIDs map[string]bool) []Finding 
 	}}
 }
 
-// checkRunbookBlock is checkRunbookDocs' per-block treatment: AST
-// treatment when block happens to parse as PromQL, token-scan fallback
-// otherwise (a shell line quoting a query, or simply prose/bash/
-// mermaid content that is not a query at all). Unlike checkQueryExpr,
-// a parse failure here is never itself a finding - most fenced blocks
-// in a runbook are not PromQL and that is expected, not an error; only
-// an unresolvedMetric-flagged name/token (vg_-prefixed and unknown),
-// found either way, is reported - same jurisdiction as checkQueryExpr/
-// checkQueryTokens, so a runbook example quoting a real but non-vg_
-// series (up, kube_..., http_server_...) never fires here either.
+// checkRunbookBlock tries AST parsing first, token-scan fallback
+// otherwise; unlike checkQueryExpr, a parse failure is never itself a
+// finding - most fenced blocks aren't PromQL, and that's expected.
 func checkRunbookBlock(p parser.Parser, block, path string, known map[string]struct{}, prefixes []string) []Finding {
 	if parsed, err := p.ParseExpr(block); err == nil {
 		return selectorFindings(parsed, path, "fenced query", known, prefixes)
@@ -929,11 +739,8 @@ func checkRunbookBlock(p parser.Parser, block, path string, known map[string]str
 	return checkQueryTokens(block, path, "fenced query (not valid PromQL, token-scanned)", known, prefixes)
 }
 
-// checkRunbookDocs scans every docs/runbooks/*.md file's fenced code
-// blocks, independent of which rules cite that file - the walk->step
-// rename incident this whole check exists to catch would have shown up
-// as a runbook query citing a metric name nothing registers anymore,
-// whether or not any live rule still pointed at that file/anchor.
+// checkRunbookDocs scans every runbook's fenced code blocks,
+// independent of which rules cite that file (a stale metric name can hide in an uncited doc too).
 func checkRunbookDocs(p parser.Parser, repoRoot string, known map[string]struct{}, prefixes []string) []Finding {
 	paths, err := filepath.Glob(filepath.Join(repoRoot, "docs", "runbooks", "*.md"))
 	if err != nil || len(paths) == 0 {
@@ -943,7 +750,7 @@ func checkRunbookDocs(p parser.Parser, repoRoot string, known map[string]struct{
 
 	var findings []Finding
 	for _, path := range paths {
-		data, err := os.ReadFile(path) //nolint:gosec // G304: path comes from filepath.Glob over a fixed, repo-relative pattern, never external input.
+		data, err := os.ReadFile(path) //nolint:gosec // G304: path comes from filepath.Glob over a fixed, repo-relative pattern, not external input.
 		if err != nil {
 			continue
 		}

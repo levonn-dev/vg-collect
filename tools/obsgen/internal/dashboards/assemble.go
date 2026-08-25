@@ -1,20 +1,11 @@
-// Package dashboards assembles the per-service Grafana dashboard JSON
-// files from a loaded observability manifest: every golden block a
-// service instantiates (each panel's y offset by that service's own
-// anchor), its own custom panels, and one full-width row panel per
-// section it declares (pinned at a literal y anchor, titled from the
-// manifest with no substitution, carrying no children) - laid out in
-// (gridPos.y, gridPos.x) order with generator-assigned panel ids and
-// alert-threshold projection onto panel_ref'd panels. A row's title
-// never enters the panel index or the panel_ref-resolution map: rows
-// are grid items for layout purposes only, never addressable content
-// (see stagedPanel.isRow). Writing the result to its destination path is
-// a later concern; this package only builds the bytes and the panel
-// index alert emission needs to derive its own dashboard-link
-// annotations from the same pass.
+// Package dashboards assembles per-service Grafana dashboard JSON from a
+// loaded manifest: golden blocks, custom panels, and section rows, laid
+// out by (gridPos.y, gridPos.x) with generator-assigned ids, plus
+// alert-threshold projection onto panel_ref'd panels. Row titles are
+// layout-only, never addressable; this package builds bytes and
+// PanelIndex only.
 //
-// Projected threshold steps always start with Grafana's implicit null
-// base step so hand-set and generated thresholds render identically.
+// Projected threshold steps start with Grafana's implicit null base step.
 package dashboards
 
 import (
@@ -33,12 +24,8 @@ import (
 	"github.com/levonn-dev/vgkeep/tools/obsgen/internal/manifest"
 )
 
-// PanelIndex maps service -> panel title (post-substitution) -> the
-// generator-assigned panel id, for every panel in every emitted
-// dashboard. Alert emission consumes this to link a panel_ref'd rule
-// back to the exact panel threshold projection just wrote a step onto,
-// from the same assembly pass that built the dashboards, so the two can
-// never drift apart.
+// PanelIndex maps service -> panel title -> generator-assigned panel id;
+// alert emission uses this from the same pass so the two can never drift apart.
 type PanelIndex map[string]map[string]int
 
 func (idx PanelIndex) set(service, title string, id int) {
@@ -48,24 +35,13 @@ func (idx PanelIndex) set(service, title string, id int) {
 	idx[service][title] = id
 }
 
-// GeneratedHeader is the sentence every generated output carries so a
-// reader landing on the file knows to edit deploy/observability/
-// instead: this package's own dashboards embed it in their JSON
-// envelope's description field (JSON has no comment syntax); the
-// sibling alerts package's vg-rules.yaml is plain YAML and carries an
-// equivalent leading "# "-prefixed comment line instead, added by
-// main.go's writer. Exported so both outputs say exactly the same
-// thing without the sentence being copied by hand into a second file.
+// GeneratedHeader is the sentence every generated output carries (this
+// package's description field; alerts' vg-rules.yaml gets an equivalent "# " line).
 const GeneratedHeader = "Generated from deploy/observability/. Do not edit by hand."
 
-// dashboardEnvelope is the fixed Grafana dashboard shape every emitted
-// file shares - schema/behavior settings no manifest field controls
-// (only uid, title, and panels vary per service). Field declaration
-// order is the emitted JSON key order (encoding/json preserves it),
-// matching the key order every hand-authored dashboard under
-// deploy/charts/platform/files/dashboards already uses; Description
-// sits right after Title, matching how Grafana itself serializes a
-// dashboard's own description field.
+// dashboardEnvelope is the fixed Grafana dashboard shape every file
+// shares (only uid, title, panels vary per service). Field order is the
+// emitted JSON key order (encoding/json preserves it), matching Grafana's own.
 type dashboardEnvelope struct {
 	UID           string              `json:"uid"`
 	Title         string              `json:"title"`
@@ -89,27 +65,17 @@ type dashboardTemplating struct {
 	List []json.RawMessage `json:"list"`
 }
 
-// built is Assemble's working state between its three phases: every
-// service's panels, still mutable (orderedMap, not yet marshaled) so
-// threshold injection can modify one before the final pass, plus the
-// (gridPos.y, gridPos.x) assembly order each service's panels landed in
-// (content and row panels alike, in final marshal order) and the index
-// every assigned id landed in.
+// built is Assemble's working state between its three phases: mutable
+// per-service panels, their marshal order, and the assigned-id index.
 type built struct {
 	panels map[string]map[string]*orderedMap // service -> title -> panel; a row's title never enters this map, so panel_ref can never resolve to one
 	order  map[string][]stagedPanel          // service -> panels (content + rows) in final marshal order
 	idx    PanelIndex                        // content panels only; a row never gets a PanelIndex entry
 }
 
-// Assemble builds one dashboard JSON file per service in m.Dashboards,
-// keyed "<service>.json", plus the panel index recording every panel's
-// generator-assigned id. It runs in three phases - build every panel and
-// assign ids, project alert thresholds onto panel_ref'd panels, marshal
-// the finished dashboards - stopping at the first phase that finds any
-// problem (a later phase's logic assumes the previous one fully
-// succeeded, e.g. threshold injection needs every service's panel set
-// already built), but collecting every problem within a phase via
-// errors.Join rather than stopping at that phase's first one.
+// Assemble builds one dashboard JSON file per service, keyed
+// "<service>.json", plus PanelIndex, in three phases (build+assign ids,
+// project thresholds, marshal) that stop at the first phase with any problem.
 func Assemble(m *manifest.Model) (map[string][]byte, PanelIndex, error) {
 	b, errs := buildAllPanels(m)
 	if len(errs) > 0 {
@@ -128,16 +94,10 @@ func Assemble(m *manifest.Model) (map[string][]byte, PanelIndex, error) {
 	return files, b.idx, nil
 }
 
-// stagedPanel is one service's panel mid-layout: parsed into a mutable
-// orderedMap, with its title and final (already anchor-offset, for a
-// block panel) gridPos already known, but not yet assigned a generator
-// id - that happens only after every one of a service's panels is
-// staged and sorted, see buildAllPanels. isRow marks a section row
-// panel: it goes through the same (gridPos.y, gridPos.x) sort and id
-// assignment as any other staged panel, but its title is never recorded
-// in the panel index or the panel_ref-resolution map (see
-// buildAllPanels' post-sort loop) - a row is a layout element, not
-// addressable content.
+// stagedPanel is one service's panel mid-layout: parsed, gridPos
+// resolved, but not yet id-assigned (see buildAllPanels). isRow marks a
+// section row: sorted and id-assigned like any panel, but never entered
+// into the panel index.
 type stagedPanel struct {
 	om    *orderedMap
 	title string
@@ -145,16 +105,10 @@ type stagedPanel struct {
 	isRow bool
 }
 
-// sectionRow is a section row panel's fixed field set, marshaled in the
-// exact key order Grafana itself uses for a row panel: alphabetical -
-// collapsed, gridPos, id, panels, title, type - distinct from every
-// other emitted panel, which lists id first because id is prepended
-// onto an author-provided fragment that never carries one of its own
-// (see orderedMap.prepend). ID here starts as a placeholder (Go's zero
-// value); the same (gridPos.y, gridPos.x)-ordered id-assignment pass
-// every other staged panel goes through overwrites it in place once the
-// combined sort is known, since prepend updates an already-present key's
-// value without moving its position.
+// sectionRow is a section row panel's fixed field set, marshaled
+// alphabetically (Grafana's own row-panel key order), unlike other
+// panels which list id first. ID starts as a placeholder, overwritten
+// once id-assignment runs.
 type sectionRow struct {
 	Collapsed bool              `json:"collapsed"`
 	GridPos   manifest.GridPos  `json:"gridPos"`
@@ -164,11 +118,8 @@ type sectionRow struct {
 	Type      string            `json:"type"`
 }
 
-// buildSectionRow constructs one section's row panel: full-width, one
-// grid row tall, no children, at the manifest's literal anchor. title is
-// never substituted - the {service}/{Service} substitution rule applies
-// to golden block content, not to section titles, which are authored
-// per service already concrete.
+// buildSectionRow constructs one section's row panel: full-width, one row
+// tall, at the manifest's literal anchor; title is never substituted.
 func buildSectionRow(title string, anchor int) (*orderedMap, error) {
 	raw, err := json.Marshal(sectionRow{
 		GridPos: manifest.GridPos{H: 1, W: 24, X: 0, Y: anchor},
@@ -182,21 +133,11 @@ func buildSectionRow(title string, anchor int) (*orderedMap, error) {
 	return parseOrderedMap(raw)
 }
 
-// buildAllPanels parses every service's golden-block instances (with
-// {service}/{Service} substituted and each panel's block-relative
-// gridPos.y offset by that block's anchor for this service), custom
-// panels, and section row panels (one per sections entry, see
-// buildSectionRow) into mutable orderedMaps, then lays each service's
-// combined panel set out by (gridPos.y, gridPos.x), stable - the order
-// both the emitted panel array and generator-assigned ids (1, 2, 3, ...
-// per service, in that laid-out order) follow; a row's id is assigned
-// the same way, but its title never enters the panel index or the
-// panel_ref-resolution map (see stagedPanel.isRow). After layout, every
-// panel's rect is checked for grid violations (out-of-bounds or
-// overlapping) via internal/grid, since that is the first point every
-// service's full, final geometry is known; a service with at least one
-// section also gets its rects checked for compaction stability (see the
-// len(sd.Sections) gate below).
+// buildAllPanels parses golden-block, custom, and section-row panels
+// into orderedMaps, lays each service's set out by (gridPos.y, gridPos.x)
+// stable, and assigns ids 1, 2, 3... in that order (rows included, but
+// never indexed). Checks every rect for grid violations; a service with
+// at least one section also gets compaction-stability checks.
 func buildAllPanels(m *manifest.Model) (*built, []error) {
 	b := &built{
 		panels: make(map[string]map[string]*orderedMap),
@@ -226,13 +167,9 @@ func buildAllPanels(m *manifest.Model) (*built, []error) {
 				return
 			}
 			if _, dup := byTitle[title]; dup {
-				// A silent overwrite here would leave staged carrying the
-				// title twice while byTitle keeps only the later panel:
-				// the emitted array would contain that one panel object
-				// twice under two different ids, and the earlier panel's
-				// content would simply vanish. Titles are the stable
-				// identifier panel_ref and PanelIndex both key on, so a
-				// collision fails loudly instead.
+				// a silent overwrite would duplicate the panel in the emitted
+				// array and drop the earlier one's content; titles are
+				// panel_ref's and PanelIndex's key, so a collision fails loudly.
 				errs = append(errs, fmt.Errorf("%s: %s: duplicate panel title %q", sd.Service, context, title))
 				return
 			}
@@ -288,13 +225,9 @@ func buildAllPanels(m *manifest.Model) (*built, []error) {
 		for _, v := range grid.Check(rects) {
 			errs = append(errs, fmt.Errorf("%s: %s: %s", sd.Service, v.Kind, v.Detail))
 		}
-		// Stability enforcement is opt-in per dashboard: a service that
-		// has not yet adopted section rows keeps the original
-		// overlap/bounds-only gate, so its existing custom-panel
-		// arrangement is not suddenly rejected by a check that postdates
-		// it. A service that declares at least one section has opted in,
-		// and every one of its panels - block, custom, and row alike -
-		// must be compaction-stable.
+		// stability enforcement is opt-in: a service with no sections keeps
+		// the original overlap/bounds-only gate, so pre-existing
+		// arrangements aren't rejected by a check that postdates them.
 		if len(sd.Sections) > 0 {
 			for _, v := range grid.CheckStability(rects) {
 				errs = append(errs, fmt.Errorf("%s: %s: %s", sd.Service, v.Kind, v.Detail))
@@ -308,15 +241,9 @@ func buildAllPanels(m *manifest.Model) (*built, []error) {
 	return b, errs
 }
 
-// resolveGridPos reads a panel's gridPos (h, w, x, y) out of its
-// orderedMap-decoded fragment. anchor is non-nil only for a golden block
-// panel: its gridPos.y is block-relative on entry, so resolveGridPos
-// adds *anchor to it and writes the new value back into om's own
-// gridPos.y key - through the same read-modify-write-back pattern
-// appendThresholdStep already uses for fieldConfig, so every other key
-// (and its own position) inside gridPos survives untouched. A custom
-// panel's gridPos (anchor nil) is read only, never rewritten: it is
-// already the absolute position the manifest authored.
+// resolveGridPos reads a panel's gridPos; anchor (non-nil only for a
+// golden block panel) is added to gridPos.y and written back, leaving
+// every other key untouched. A custom panel (anchor nil) is read only.
 func resolveGridPos(om *orderedMap, anchor *int) (manifest.GridPos, error) {
 	gp, err := om.child("gridPos")
 	if err != nil {
@@ -358,12 +285,8 @@ func panelTitle(om *orderedMap) (string, error) {
 	return title, nil
 }
 
-// expandedAlert is the minimal shape threshold projection needs from any
-// alert - a golden template instantiation or a fully custom rule - once
-// {service}/{Service} substitution and golden override application have
-// both happened. Building the full emitted rule envelope (labels,
-// annotations, the query/condition node pair) is a separate concern;
-// this type carries only what projection reads.
+// expandedAlert is the minimal, fully-substituted shape threshold
+// projection needs from any alert, golden or custom.
 type expandedAlert struct {
 	uid       string
 	panelRef  string
@@ -371,14 +294,9 @@ type expandedAlert struct {
 	severity  string
 }
 
-// expandAlerts walks every alert the manifest declares - cluster rules,
-// then each service's golden template instantiations followed by its
-// custom rules - substituting {service}/{Service} and applying golden
-// overrides so every result is concrete. A service's golden template
-// names are sorted before iteration: ServiceAlerts.Golden is a Go map,
-// and ranging it directly would make step-append order (and so output
-// bytes) depend on map iteration, which Go deliberately randomizes per
-// range statement.
+// expandAlerts walks cluster rules, then each service's golden
+// instantiations (sorted by template name; Golden is a Go map) then its
+// custom rules, substituting {service}/{Service} and applying overrides.
 func expandAlerts(m *manifest.Model) []expandedAlert {
 	var out []expandedAlert
 
@@ -416,12 +334,8 @@ func expandAlerts(m *manifest.Model) []expandedAlert {
 	return out
 }
 
-// injectAllThresholds walks every expanded alert with a non-empty
-// panel_ref and appends a threshold step to the panel it names,
-// collecting every problem found (an unresolvable ref, an unparseable
-// condition, an unrecognized severity) rather than stopping at the
-// first, matching the manifest loader's own collect-everything
-// convention.
+// injectAllThresholds appends a threshold step to every panel_ref'd
+// alert's panel, collecting every problem instead of stopping at the first.
 func injectAllThresholds(m *manifest.Model, b *built) []error {
 	var errs []error
 
@@ -474,13 +388,9 @@ func splitPanelRef(ref string) (service, title string, err error) {
 	return ref[:i], ref[i+1:], nil
 }
 
-// parseConditionValue extracts the numeric bound from a condition string
-// (e.g. "lt 1", "gt 25"): an operator token and a number, whitespace
-// separated. The operator itself is not validated or used - a threshold
-// step only records a value and a color, not a direction - so any
-// two-token condition with a numeric second token parses, keeping this
-// forward-compatible with operators beyond the two seen in the manifests
-// today.
+// parseConditionValue extracts the numeric bound from "lt 1"/"gt 25";
+// the operator itself is not validated (a threshold step records only
+// value and color, not direction).
 func parseConditionValue(condition string) (float64, error) {
 	fields := strings.Fields(condition)
 	if len(fields) != 2 {
@@ -493,13 +403,9 @@ func parseConditionValue(condition string) (float64, error) {
 	return v, nil
 }
 
-// thresholdColor maps an alert's severity to its threshold step color:
-// warn is orange; crit and page both take the same red line (page is
-// this repo's paging - most severe - level, so it shares crit's color
-// rather than getting a third one). warn, crit, and page are the only
-// severities any golden template or migrated rule uses; anything else
-// has no defined color, so it fails loudly here rather than silently
-// drawing a blank or wrongly-colored line.
+// thresholdColor maps severity to color: warn orange, crit/page red
+// (page is the most severe level, sharing crit's color). Any other
+// severity fails loudly rather than drawing a blank line.
 func thresholdColor(severity string) (string, error) {
 	switch severity {
 	case "warn":
@@ -511,17 +417,9 @@ func thresholdColor(severity string) (string, error) {
 	}
 }
 
-// appendThresholdStep injects a {color, value} step into panel's
-// fieldConfig.defaults.thresholds.steps (defaulting an absent mode to
-// "absolute"; a wholly new thresholds object also gets Grafana's own
-// base step ahead of the projected one, see appendStep; appending to
-// steps that already existed - the base step among them or not -
-// rather than replacing them) and sets
-// fieldConfig.defaults.custom.thresholdsStyle.mode to "line", creating
-// whichever of fieldConfig/defaults/custom/thresholds is missing along
-// the way. Every level is read-modify-written back through
-// orderedMap.set so a level that already existed keeps its other keys
-// and its own key order untouched.
+// appendThresholdStep injects a {color, value} step into
+// fieldConfig.defaults.thresholds.steps (appending, not replacing; see
+// appendStep) and sets thresholdsStyle.mode to "line", creating any missing level.
 func appendThresholdStep(panel *orderedMap, color string, value float64) error {
 	fieldConfig, err := panel.child("fieldConfig")
 	if err != nil {
@@ -554,25 +452,16 @@ func appendThresholdStep(panel *orderedMap, color string, value float64) error {
 	return nil
 }
 
-// thresholdStep is one entry of fieldConfig.defaults.thresholds.steps.
-// Value is a pointer only so baseThresholdColor's own step can marshal
-// a JSON null: every real projected step (appendStep's color/value
-// parameters) always carries a concrete value.
+// thresholdStep is one entry of thresholds.steps; Value is a pointer
+// only so the base step (see baseThresholdColor) can marshal JSON null.
 type thresholdStep struct {
 	Color string   `json:"color"`
 	Value *float64 `json:"value"`
 }
 
-// baseThresholdColor is the color Grafana itself writes, at value null,
-// as the first step of every thresholds object a human draws in its
-// panel editor - "green (fine) until the first real boundary below."
-// appendStep reproduces that same convention when it is the one
-// creating the thresholds object from nothing, so a generated panel's
-// steps array looks like any Grafana-drawn one instead of starting
-// straight at its first real boundary. A panel fragment that already
-// authored its own thresholds object (see appendStep's hadThresholds)
-// keeps whatever it authored, base step or not - this generator never
-// adds a second one.
+// baseThresholdColor (green, value null) is the first step Grafana
+// itself writes for a hand-drawn thresholds object; appendStep
+// reproduces it only when creating thresholds from nothing, never adding a second one.
 const baseThresholdColor = "green"
 
 func appendStep(defaults *orderedMap, color string, value float64) error {
@@ -583,11 +472,8 @@ func appendStep(defaults *orderedMap, color string, value float64) error {
 		return fmt.Errorf("thresholds: %w", err)
 	}
 
-	// mode and steps are checked for presence independently: a panel's
-	// existing thresholds might in principle carry a mode with no steps
-	// yet (or vice versa), and either one already being set must survive
-	// untouched - only a wholly fresh thresholds object gets "absolute"
-	// as its default mode.
+	// mode and steps are checked independently: either already being set
+	// must survive untouched; only a fresh thresholds object defaults to "absolute".
 	if _, ok := thresholds.get("mode"); !ok {
 		thresholds.set("mode", json.RawMessage(`"absolute"`))
 	}
@@ -651,10 +537,8 @@ func setThresholdsStyleLine(defaults *orderedMap) error {
 	return nil
 }
 
-// marshalAll renders each service's finished panel set into a complete
-// dashboard JSON document, in the id-assignment order buildAllPanels
-// recorded (never by ranging b.panels[service], a Go map, which also
-// would not carry a row - see built.order's own doc comment).
+// marshalAll renders each service's panel set in the id-assignment
+// order buildAllPanels recorded (never by ranging b.panels, a Go map).
 func marshalAll(m *manifest.Model, b *built) (map[string][]byte, []error) {
 	files := make(map[string][]byte)
 	var errs []error
@@ -699,14 +583,9 @@ func marshalAll(m *manifest.Model, b *built) (map[string][]byte, []error) {
 	return files, nil
 }
 
-// orderedMap is a JSON object decoded and re-encoded through an explicit
-// key list, never a Go map's iteration order (which a bare range
-// randomizes, and which encoding/json would otherwise resolve by sorting
-// keys alphabetically - either way, silently reordering the manifest
-// author's own field order). assemble.go uses it to modify one or two
-// fields inside a verbatim panel fragment (the generator-assigned id,
-// injected threshold steps) while leaving every other key - and its
-// position - exactly as written.
+// orderedMap is a JSON object decoded/re-encoded via an explicit key
+// list, never Go map iteration order (randomized) or encoding/json's
+// alphabetical sort - either would reorder the manifest author's fields.
 type orderedMap struct {
 	keys   []string
 	values map[string]json.RawMessage
@@ -730,11 +609,8 @@ func (om *orderedMap) set(key string, value json.RawMessage) {
 	om.values[key] = value
 }
 
-// prepend assigns key's value as the first key if key is new (an
-// existing key is updated in place instead, same as set - a key can
-// only occupy one position). Used only for "id": Grafana's own panel
-// JSON always lists id first, and no manifest panel fragment carries one
-// (ids are generator-assigned).
+// prepend assigns key's value as the first key if new (existing keys
+// update in place, like set). Used only for "id" (fragments never carry one).
 func (om *orderedMap) prepend(key string, value json.RawMessage) {
 	if _, ok := om.values[key]; ok {
 		om.values[key] = value
@@ -745,8 +621,7 @@ func (om *orderedMap) prepend(key string, value json.RawMessage) {
 }
 
 // child returns key's value reparsed as its own orderedMap, or a fresh
-// empty one if key is absent - the get-or-create step every nested
-// fieldConfig/defaults/thresholds/custom/thresholdsStyle lookup uses.
+// empty one if key is absent (get-or-create for nested lookups).
 func (om *orderedMap) child(key string) (*orderedMap, error) {
 	raw, ok := om.get(key)
 	if !ok {
@@ -755,10 +630,8 @@ func (om *orderedMap) child(key string) (*orderedMap, error) {
 	return parseOrderedMap(raw)
 }
 
-// marshal writes om back to compact JSON bytes in exactly om.keys'
-// order. The final dashboard is marshaled through json.MarshalIndent,
-// which re-indents this compact output along with everything else in
-// one pass, so marshal never needs to reason about indentation.
+// marshal writes om back to compact JSON in exactly om.keys' order;
+// json.MarshalIndent re-indents it later, so this never needs to.
 func (om *orderedMap) marshal() (json.RawMessage, error) {
 	var buf bytes.Buffer
 	buf.WriteByte('{')
@@ -778,10 +651,8 @@ func (om *orderedMap) marshal() (json.RawMessage, error) {
 	return buf.Bytes(), nil
 }
 
-// parseOrderedMap decodes raw's top-level object into an orderedMap,
-// preserving its key order via json.Decoder's token stream instead of
-// json.Unmarshal into a Go map (which does not preserve source order at
-// all).
+// parseOrderedMap decodes raw into an orderedMap, preserving key order
+// via json.Decoder's token stream (json.Unmarshal into a map would not).
 func parseOrderedMap(raw json.RawMessage) (*orderedMap, error) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 

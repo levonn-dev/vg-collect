@@ -1,12 +1,6 @@
 service: social
-# social's availability instantiation reproduces vg-social-down exactly
-# (uid, title, expr, for, noDataState, severity): see alerts/golden.yaml
-# for why those values match. summary is the one field this service
-# overrides rather than takes from the template: the template's summary
-# is datastore-neutral (bff and enrichment instantiate it too, and
-# neither runs Postgres), so this override restores social's own
-# original wording verbatim. social carries no alerts of its own, so
-# its two golden instantiations are its whole rule set.
+# summary overrides golden's datastore-neutral wording with social's own original text (see alerts/golden.yaml
+# for why); these two golden instantiations are social's whole rule set.
 golden:
   availability:
     summary: "social is down or its postgres exporter cannot reach it"
