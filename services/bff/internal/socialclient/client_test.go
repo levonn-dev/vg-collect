@@ -25,11 +25,8 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	})
 }
 
-// TestRelayMethods_RouteBearerStatusAndBody drives every Result-returning
-// method against a stub that answers the status the test asks for and
-// echoes a canned body, proving each method reaches the right verb+path,
-// forwards the caller's own bearer, and relays the upstream status,
-// content type, and body verbatim on its primary success status.
+// TestRelayMethods_RouteBearerStatusAndBody checks verb, path, bearer, and
+// relay fidelity across every Result-returning method.
 func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	var status int
@@ -97,13 +94,9 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 	}
 }
 
-// TestRelayMethods_WhitelistPerMethod proves each method's own declared
-// allow-list, not just the shared relay() gate in the abstract: every
-// status in a method's whitelist is relayed (the 400/403/404/429
-// passthroughs), and a status one method does not declare - even one a
-// sibling method does (Like excludes 400 though Follow allows it;
-// DeleteComment excludes 400 though Follow and CreateComment allow it) -
-// is ErrUpstream.
+// TestRelayMethods_WhitelistPerMethod proves each method's own allow-list:
+// every whitelisted status relays, and a status a sibling method allows but
+// this one doesn't (e.g. Like excludes 400 though Follow allows it) is ErrUpstream.
 func TestRelayMethods_WhitelistPerMethod(t *testing.T) {
 	id := uuid.New()
 	var status int
@@ -160,9 +153,8 @@ func TestRelayMethods_WhitelistPerMethod(t *testing.T) {
 	}
 }
 
-// TestProfileSummary_DecodesTyped proves the profile-summary typed read:
-// it decodes JSON200 into ProfileSocialSummary instead of relaying raw
-// bytes, and forwards the caller's bearer and target user id.
+// TestProfileSummary_DecodesTyped decodes JSON200 into ProfileSocialSummary
+// and forwards the caller's bearer and target user id.
 func TestProfileSummary_DecodesTyped(t *testing.T) {
 	uid := uuid.New()
 	var gotPath, gotAuth string
@@ -187,8 +179,7 @@ func TestProfileSummary_DecodesTyped(t *testing.T) {
 	}
 }
 
-// TestShelvesSummary_DecodesTyped proves the batch shelf-summary typed
-// read decodes the summaries envelope.
+// TestShelvesSummary_DecodesTyped proves the batch shelf-summary typed read decodes the summaries envelope.
 func TestShelvesSummary_DecodesTyped(t *testing.T) {
 	shelfID := uuid.New()
 	var gotAuth string
@@ -213,8 +204,7 @@ func TestShelvesSummary_DecodesTyped(t *testing.T) {
 	}
 }
 
-// TestCommentsByIDs_DecodesTyped proves the feed-hydration typed read
-// decodes the comments envelope.
+// TestCommentsByIDs_DecodesTyped proves the feed-hydration typed read decodes the comments envelope.
 func TestCommentsByIDs_DecodesTyped(t *testing.T) {
 	commentID, shelfID, authorID := uuid.New(), uuid.New(), uuid.New()
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -235,9 +225,8 @@ func TestCommentsByIDs_DecodesTyped(t *testing.T) {
 	}
 }
 
-// TestFeed_DecodesTypedAndForwardsParams proves the activity-feed typed
-// read forwards tab/cursor/limit as query params and decodes the
-// events envelope plus the keyset next_cursor.
+// TestFeed_DecodesTypedAndForwardsParams forwards tab/cursor/limit as query
+// params and decodes the events envelope plus keyset next_cursor.
 func TestFeed_DecodesTypedAndForwardsParams(t *testing.T) {
 	evID, actor, target := uuid.New(), uuid.New(), uuid.New()
 	var gotQuery string
@@ -267,8 +256,7 @@ func TestFeed_DecodesTypedAndForwardsParams(t *testing.T) {
 	}
 }
 
-// TestTopShelves_DecodesTyped proves the Explore leaderboard typed read
-// decodes the ordered shelf id list.
+// TestTopShelves_DecodesTyped proves the Explore leaderboard typed read decodes the ordered shelf id list.
 func TestTopShelves_DecodesTyped(t *testing.T) {
 	shelfA, shelfB := uuid.New(), uuid.New()
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -289,8 +277,7 @@ func TestTopShelves_DecodesTyped(t *testing.T) {
 }
 
 // TestTypedReads_NonOKIsErrUpstream covers the non-200 branch shared by
-// every typed-read method: an upstream answer outside its contract is
-// ErrUpstream, not a zero value silently returned.
+// every typed-read method: outside-contract answers are ErrUpstream, never a silent zero value.
 func TestTypedReads_NonOKIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -318,11 +305,9 @@ func TestTypedReads_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestListComments_ForwardsQueryParams proves ListComments' own
-// query-parameter forwarding, wire-level: a non-nil cursor and limit
-// land on the request's actual query values (not just a raw-string
-// substring match), and nil/nil omits both params entirely rather
-// than forwarding an empty cursor or a zero limit.
+// TestListComments_ForwardsQueryParams proves cursor/limit land on the
+// request's actual query values wire-level (not just substring match), and
+// nil/nil omits both params rather than forwarding empty/zero.
 func TestListComments_ForwardsQueryParams(t *testing.T) {
 	id := uuid.New()
 	var gotQuery url.Values
@@ -353,9 +338,8 @@ func TestListComments_ForwardsQueryParams(t *testing.T) {
 	}
 }
 
-// TestRecordPublish_Succeeds proves the publish-orchestration leg posts
-// the shelf id as JSON with the caller's bearer and treats 204 as
-// success (it returns only an error, no Result).
+// TestRecordPublish_Succeeds proves it posts the shelf id as JSON with the
+// bearer and treats 204 as success (returns only an error, no Result).
 func TestRecordPublish_Succeeds(t *testing.T) {
 	shelfID := uuid.New()
 	var gotMethod, gotPath, gotAuth, gotContentType string
@@ -380,8 +364,7 @@ func TestRecordPublish_Succeeds(t *testing.T) {
 	}
 }
 
-// TestRecordPublish_NonNoContentIsErrUpstream covers RecordPublish's
-// non-204 branch.
+// TestRecordPublish_NonNoContentIsErrUpstream covers RecordPublish's non-204 branch.
 func TestRecordPublish_NonNoContentIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -391,10 +374,8 @@ func TestRecordPublish_NonNoContentIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestTransportErrorSurfaces proves every method's own transport-error
-// branch: a dead upstream surfaces as a plain wrapped error (never
-// ErrUpstream, which is reserved for an upstream that actually
-// answered outside the relayed contract).
+// TestTransportErrorSurfaces: a dead upstream wraps as a plain error, never
+// ErrUpstream (reserved for an upstream that actually answered outside the contract).
 func TestTransportErrorSurfaces(t *testing.T) {
 	c, err := New("http://127.0.0.1:1")
 	if err != nil {

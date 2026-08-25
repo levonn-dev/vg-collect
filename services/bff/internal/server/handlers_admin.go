@@ -1,5 +1,4 @@
-// Admin maintenance levers: catalog refresh, entry rematch,
-// snapshot recompute, and platform and region normalization sweeps.
+// Admin maintenance levers: catalog refresh, entry rematch, snapshot recompute, and normalization sweeps.
 
 package server
 

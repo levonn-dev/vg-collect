@@ -1,14 +1,7 @@
-// Validator-path pins: each case drives a request through the FULL
-// bff stack (real router, stubbed upstreams, no hand-faked wiring),
-// proving specval catches a bad request before any upstream hop.
-// TestValidatorPath_CreateEntry_OversizeDeveloperName, _MalformedJSON,
-// and TestValidatorPath_UpdateMe_HandleTooShort each pin a body-shape
-// rejection; TestValidatorPath_Explore_BadSortEnum pins a rejected
-// query param, enforced solely by specval. Valid bodies relaying
-// byte-for-byte (pin e) is proven by re-running
-// TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips in
-// handlers_collection_test.go unmodified - already a fully valid
-// EntryCreate body, so it needs no new case here.
+// Validator-path pins drive requests through the FULL bff stack (real
+// router, stubbed upstreams), proving specval rejects bad bodies/params
+// before any upstream hop. Valid-body relay is already proven by
+// TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips; no new case needed here.
 package server
 
 import (
@@ -24,12 +17,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
-// TestValidatorPath_CreateEntry_OversizeDeveloperName pins the
-// EntryCreate developers[] item maxLength(120) contract cap on the
-// /api/entries relay: a violating body 400s invalid_body AT THE BFF,
-// and the collection stub is never called - proving the bff's own
-// copy of the contract catches the bad body before any hop upstream,
-// not merely that collection would have rejected it too.
+// TestValidatorPath_CreateEntry_OversizeDeveloperName pins EntryCreate's
+// developers[] maxLength(120): a violating body 400s invalid_body AT THE BFF, collection never called.
 func TestValidatorPath_CreateEntry_OversizeDeveloperName(t *testing.T) {
 	var called int
 	col := &captureCollection{stubCollection: &stubCollection{}, onCreateEntry: func([]byte) { called++ }}
@@ -54,11 +43,8 @@ func TestValidatorPath_CreateEntry_OversizeDeveloperName(t *testing.T) {
 	}
 }
 
-// TestValidatorPath_UpdateMe_HandleTooShort pins UpdateMeRequest's
-// Handle contract (common.yaml's Handle: minLength 2): handle "x" is
-// one rune short. The stub below answers 200 for whatever body it is
-// handed, so nothing but specval stands between this body and the
-// upstream relay.
+// TestValidatorPath_UpdateMe_HandleTooShort pins Handle's minLength(2)
+// (common.yaml); the stub answers 200 for anything, so only specval blocks this body.
 func TestValidatorPath_UpdateMe_HandleTooShort(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	uid := uuid.New()
@@ -82,11 +68,8 @@ func TestValidatorPath_UpdateMe_HandleTooShort(t *testing.T) {
 	}
 }
 
-// TestValidatorPath_UpdateMe_AvatarUrlOversize pins
-// UpdateMeRequest's avatar_url maxLength(2048) contract cap on the
-// /api/me relay: an oversize URL 400s invalid_body AT THE BFF, and
-// the user-service stub is never called - proving the bff's own copy
-// of the contract catches the bad body before any hop upstream.
+// TestValidatorPath_UpdateMe_AvatarUrlOversize pins avatar_url's
+// maxLength(2048): an oversize URL 400s invalid_body AT THE BFF, user-service stub never called.
 func TestValidatorPath_UpdateMe_AvatarUrlOversize(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	uid := uuid.New()
@@ -114,10 +97,8 @@ func TestValidatorPath_UpdateMe_AvatarUrlOversize(t *testing.T) {
 	}
 }
 
-// TestValidatorPath_CreateEntry_MalformedJSON pins that a body which
-// is not valid JSON at all 400s invalid_body - the same house code a
-// schema violation gets, since specval's encoder maps every
-// unparseable body to the same detail regardless of cause.
+// TestValidatorPath_CreateEntry_MalformedJSON pins that non-JSON bodies
+// 400 invalid_body too: specval's encoder maps every unparseable body to the same detail.
 func TestValidatorPath_CreateEntry_MalformedJSON(t *testing.T) {
 	h, env := newTestHandlersWithCollection(t, &stubCollection{})
 	rec := doAuthedBody(t, h, env, http.MethodPost, "/api/entries", `{not json`)
@@ -132,9 +113,7 @@ func TestValidatorPath_CreateEntry_MalformedJSON(t *testing.T) {
 	}
 }
 
-// TestValidatorPath_Explore_BadSortEnum pins GetExplore's sort enum
-// contract (recent|top) on a social list relay, enforced solely by
-// specval.
+// TestValidatorPath_Explore_BadSortEnum pins GetExplore's sort enum (recent|top), enforced solely by specval.
 func TestValidatorPath_Explore_BadSortEnum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -152,16 +131,8 @@ func TestValidatorPath_Explore_BadSortEnum(t *testing.T) {
 	}
 }
 
-// TestValidatorPath_FeedAndExplore_LimitOverMaxRejected is the
-// deliberate clamp reversal that removing GetFeed/GetExplore's ceiling clamp
-// (limit = min(limit, ...)) produces: before that removal, an
-// over-max limit was silently pulled back down to the page cap
-// rather than rejected, even with specval already wired (the clamp
-// ran inside the handler, after specval had already let a
-// schema-valid-shaped integer through - specval's own maximum on
-// limit is what turns this into a 400 once the handler stops
-// second-guessing it). Both routes reject the same way now that the
-// ceiling clamp is gone.
+// TestValidatorPath_FeedAndExplore_LimitOverMaxRejected guards against a
+// handler-side clamp silently absorbing an over-max limit instead of specval's 400.
 func TestValidatorPath_FeedAndExplore_LimitOverMaxRejected(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))

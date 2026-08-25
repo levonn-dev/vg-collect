@@ -1,9 +1,6 @@
-// Package socialclient calls the social service with the user's own
-// Bearer token, via the generated typed client. Most methods are
-// verbatim relays (upstream problem bodies flow to the browser
-// unchanged); the typed reads are composition inputs the bff itself
-// consumes to build the shared shelf/profile pages, the activity feed
-// and Explore browsing, and the publish/purge orchestration legs.
+// Package socialclient calls the social service with the user's bearer
+// token. Most methods relay verbatim; typed reads are composition inputs
+// the bff consumes for shared pages, feed/Explore, and publish/purge orchestration.
 package socialclient
 
 import (
@@ -19,8 +16,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// ErrUpstream means the social service answered outside its relayed
-// contract (or an infrastructure layer answered for it).
+// ErrUpstream means the answer was outside the relayed contract (social or infrastructure).
 var ErrUpstream = errors.New("socialclient: upstream failure")
 
 // Result is one relayable upstream answer.
@@ -31,8 +27,7 @@ type Client struct {
 	api *socialapi.ClientWithResponses
 }
 
-// New builds a Client against baseURL using an otelhttp transport and
-// a 10-second timeout.
+// New builds a Client against baseURL with an otelhttp transport and a 10s timeout.
 func New(baseURL string) (*Client, error) {
 	api, err := socialapi.NewClientWithResponses(baseURL, socialapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
@@ -89,8 +84,7 @@ func (c *Client) ListComments(ctx context.Context, bearer string, shelfID uuid.U
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusOK, http.StatusBadRequest)
 }
 
-// CreateComment relays POST /shelves/{shelfId}/comments with the
-// browser body untouched (the social service owns its validation).
+// CreateComment relays POST .../comments; browser body untouched, social owns validation.
 func (c *Client) CreateComment(ctx context.Context, bearer string, shelfID uuid.UUID, body []byte) (Result, error) {
 	resp, err := c.api.CreateShelfCommentWithBodyWithResponse(ctx, shelfID, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -111,9 +105,7 @@ func (c *Client) DeleteComment(ctx context.Context, bearer string, commentID uui
 }
 
 // ProfileSummary is the typed read backing profile-page composition:
-// follower/following counts plus whether the caller follows them; not
-// relayed to browsers verbatim (the bff composes its own page schema
-// around it).
+// follower/following counts plus viewer-follows; not relayed verbatim, the bff composes its own schema.
 func (c *Client) ProfileSummary(ctx context.Context, bearer string, userID uuid.UUID) (socialapi.ProfileSocialSummary, error) {
 	resp, err := c.api.GetProfileSocialSummaryWithResponse(ctx, userID, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -125,9 +117,8 @@ func (c *Client) ProfileSummary(ctx context.Context, bearer string, userID uuid.
 	return *resp.JSON200, nil
 }
 
-// ShelvesSummary is the typed read backing shelf-card composition:
-// batch like/comment counts plus the caller's like state (a zeroed
-// row for every requested id, even ones with no social activity).
+// ShelvesSummary is the typed read backing shelf-card composition: batch
+// like/comment counts plus the caller's like state (a zeroed row for every requested id).
 func (c *Client) ShelvesSummary(ctx context.Context, bearer string, ids []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
 	resp, err := c.api.GetShelvesSocialSummaryWithResponse(ctx, &socialapi.GetShelvesSocialSummaryParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -139,8 +130,7 @@ func (c *Client) ShelvesSummary(ctx context.Context, bearer string, ids []uuid.U
 	return resp.JSON200.Summaries, nil
 }
 
-// CommentsByIDs is the typed read behind feed-excerpt hydration: live
-// comments among the given ids.
+// CommentsByIDs is the typed read behind feed-excerpt hydration: live comments among the given ids.
 func (c *Client) CommentsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]socialapi.Comment, error) {
 	resp, err := c.api.GetCommentsByIdsWithResponse(ctx, &socialapi.GetCommentsByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -152,8 +142,7 @@ func (c *Client) CommentsByIDs(ctx context.Context, bearer string, ids []uuid.UU
 	return resp.JSON200.Comments, nil
 }
 
-// Feed is the typed read behind the activity feed: raw events for the
-// caller, keyset-paged.
+// Feed is the typed read behind the activity feed: raw events for the caller, keyset-paged.
 func (c *Client) Feed(ctx context.Context, bearer, tab string, cursor *string, limit int) (events []socialapi.ActivityEvent, nextCursor *string, err error) {
 	params := &socialapi.GetFeedParams{Tab: socialapi.GetFeedParamsTab(tab), Cursor: cursor, Limit: &limit}
 	resp, ferr := c.api.GetFeedWithResponse(ctx, params, httpkit.BearerEditor(bearer))
@@ -166,8 +155,7 @@ func (c *Client) Feed(ctx context.Context, bearer, tab string, cursor *string, l
 	return resp.JSON200.Events, resp.JSON200.NextCursor, nil
 }
 
-// TopShelves is the typed read behind the Explore leaderboard: shelf
-// ids by live like count, most-liked first.
+// TopShelves is the typed read behind the Explore leaderboard: shelf ids by live like count, most-liked first.
 func (c *Client) TopShelves(ctx context.Context, bearer string, limit int) ([]uuid.UUID, error) {
 	resp, err := c.api.GetTopShelvesWithResponse(ctx, &socialapi.GetTopShelvesParams{Limit: &limit}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -179,9 +167,8 @@ func (c *Client) TopShelves(ctx context.Context, bearer string, limit int) ([]uu
 	return resp.JSON200.ShelfIds, nil
 }
 
-// RecordPublish tells social a shelf just (re)published - the bff's
-// own orchestration off a successful visibility-to-listed transition,
-// never called directly by a browser.
+// RecordPublish tells social a shelf just (re)published - the bff's own
+// orchestration off a listed transition, never called directly by a browser.
 func (c *Client) RecordPublish(ctx context.Context, bearer string, shelfID uuid.UUID) error {
 	resp, err := c.api.RecordShelfPublishedWithResponse(ctx, socialapi.RecordShelfPublishedJSONRequestBody{ShelfId: shelfID}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -193,8 +180,7 @@ func (c *Client) RecordPublish(ctx context.Context, bearer string, shelfID uuid.
 	return nil
 }
 
-// PurgeUserData relays the account-deletion leg: wipes the caller's
-// social graph (follows, likes, comments, activity).
+// PurgeUserData relays the account-deletion leg: wipes the caller's social graph (follows, likes, comments, activity).
 func (c *Client) PurgeUserData(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.PurgeUserDataWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {

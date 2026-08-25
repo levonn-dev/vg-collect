@@ -1,5 +1,4 @@
-// Product-identity administration: the unmatched and community
-// worklists, mapping corrections, community minting, and promotion.
+// Product-identity administration: unmatched/community worklists, mapping corrections, minting, promotion.
 
 package server
 
@@ -14,8 +13,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 )
 
-// ListUnmatchedProducts relays the admin worklist. The bff holds no
-// role logic for admin routes: enrichment enforces, problems relay.
+// ListUnmatchedProducts relays the admin worklist; enrichment enforces the role, problems relay.
 func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request, params api.ListUnmatchedProductsParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -26,9 +24,7 @@ func (h *Handlers) ListUnmatchedProducts(w http.ResponseWriter, r *http.Request,
 	h.relayEnrichment(w, r, res, err)
 }
 
-// ListCommunityProducts relays the admin community listing. The bff
-// holds no role logic for admin routes: enrichment enforces, problems
-// relay.
+// ListCommunityProducts relays the admin community listing; enrichment enforces the role, problems relay.
 func (h *Handlers) ListCommunityProducts(w http.ResponseWriter, r *http.Request, params api.ListCommunityProductsParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -53,10 +49,8 @@ func (h *Handlers) SetProductMapping(w http.ResponseWriter, r *http.Request, pro
 	h.relayEnrichment(w, r, res, err)
 }
 
-// DeleteProduct is the one orchestrated admin call: only collection
-// can see entries, so the bff runs the reference check there before
-// relaying enrichment's guarded delete. Collection's 403 relays
-// first, which keeps the role gate ahead of any cross-user fact.
+// DeleteProduct is the one orchestrated admin call: the bff checks
+// collection's entry references first, so its 403 gates access before any cross-user fact leaks.
 func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -90,8 +84,7 @@ func (h *Handlers) DeleteProduct(w http.ResponseWriter, r *http.Request, product
 	h.relayEnrichment(w, r, res, err)
 }
 
-// CreateCommunityProduct relays the admin mint; enrichment enforces
-// the role.
+// CreateCommunityProduct relays the admin mint; enrichment enforces the role.
 func (h *Handlers) CreateCommunityProduct(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {

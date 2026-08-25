@@ -15,10 +15,7 @@ import (
 )
 
 // newTestClient boots a server serving h and returns a userclient.Client
-// pointed at it; this file exercises userclient.New's error handling
-// itself (TestGet_BadUUID et al. call it directly), so unlike the
-// other client packages' identical helper, failure here is a genuine
-// t.Fatal rather than something worth a separate test.
+// pointed at it; this file also exercises userclient.New directly, so a build failure here is a genuine t.Fatal.
 func newTestClient(t *testing.T, h http.HandlerFunc) *userclient.Client {
 	t.Helper()
 	return reqtest.NewTestClient(t, h, func(baseURL string) *userclient.Client {
@@ -167,11 +164,8 @@ func TestDelete_NonNoContentIsError(t *testing.T) {
 	}
 }
 
-// TestDelete_NonNoContentIsErrUpstream pins Delete's fallback branch to
-// the same wrapping SharedProfile and Get already use: a caller gating
-// on errors.Is(err, userclient.ErrUpstream) must actually match instead
-// of silently falling through, the way a bare fmt.Errorf without %w
-// would.
+// TestDelete_NonNoContentIsErrUpstream pins that Delete's fallback wraps
+// with %w, so errors.Is(err, ErrUpstream) matches instead of silently falling through.
 func TestDelete_NonNoContentIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -211,11 +205,8 @@ func TestGet_NonJSON404IsNotNotFound(t *testing.T) {
 	}
 }
 
-// TestGet_NonOKIsErrUpstream pins Get's fallback branch to the same
-// wrapping SharedProfile already uses: a caller gating on
-// errors.Is(err, userclient.ErrUpstream) must actually match instead
-// of silently falling through, the way a bare fmt.Errorf without %w
-// would.
+// TestGet_NonOKIsErrUpstream pins that Get's fallback wraps with %w, so
+// errors.Is(err, ErrUpstream) matches instead of silently falling through.
 func TestGet_NonOKIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -269,9 +260,8 @@ func TestSharedProfile_NotFound(t *testing.T) {
 	}
 }
 
-// TestSharedProfile_PrivateHandleAlsoErrProfileNotFound pins the
-// deliberate ambiguity: a private handle's problem+json 404 is
-// indistinguishable from an unknown one, both ErrProfileNotFound.
+// TestSharedProfile_PrivateHandleAlsoErrProfileNotFound pins the deliberate
+// ambiguity: a private handle's 404 is indistinguishable from an unknown one.
 func TestSharedProfile_PrivateHandleAlsoErrProfileNotFound(t *testing.T) {
 	c := newTestClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")

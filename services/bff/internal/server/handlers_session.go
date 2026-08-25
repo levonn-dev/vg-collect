@@ -1,5 +1,4 @@
-// Login, callback, logout, and provider-link handlers: the
-// browser-navigation auth flows and their outcome redirects.
+// Login, callback, logout, and provider-link handlers: browser-navigation auth flows and their outcome redirects.
 
 package server
 
@@ -14,10 +13,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
-// Login starts a login as a browser navigation: failures land back on
-// the login page with ?error=<code>, never as JSON nobody renders. The
-// dev provider has no external IdP, so its start and callback collapse
-// into this single request (token mint, cookie, straight home).
+// Login starts a login as a browser navigation: failures land back on the
+// login page with ?error=<code>. The dev provider has no external IdP, so start/callback collapse into one request.
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request, params api.LoginParams) {
 	if params.Provider == "dev" {
 		user := ""
@@ -37,14 +34,38 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request, params api.Logi
 		h.redirectLoginError(w, r, err)
 		return
 	}
+	h.setOAuthStateCookie(w, authorizeURL)
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
 
-// Callback is the redirect URI registered with providers: it finishes
-// a login or an account link server-to-server; code/state outcomes are
-// never exposed to scripts (navigation in, navigation out). A link's
-// two refusals land back on the account page with a code the frontend
-// renders as a message, never as a failed login.
+// oauthStateCookieTTL bounds the state-binding cookie; must not exceed
+// auth's server-side stateTTL (10m, services/auth/internal/server/handlers.go).
+const oauthStateCookieTTL = 10 * time.Minute
+
+// setOAuthStateCookie binds the authorize URL's state to the browser via a
+// short-lived cookie for Callback to match; no-ops safely since Callback fails closed without it.
+func (h *Handlers) setOAuthStateCookie(w http.ResponseWriter, authorizeURL string) {
+	u, err := url.Parse(authorizeURL)
+	if err != nil {
+		return
+	}
+	state := u.Query().Get("state")
+	if state == "" {
+		return
+	}
+	http.SetCookie(w, h.codec.StateCookie(state, int(oauthStateCookieTTL.Seconds())))
+}
+
+// oauthStateCookieMatches binds Callback to the browser that started the flow,
+// blocking a code+state pair from a different browser (login CSRF defense, RFC 9700 SS 4.7).
+func (h *Handlers) oauthStateCookieMatches(r *http.Request, state string) bool {
+	ck, err := r.Cookie(session.StateCookieName)
+	return err == nil && ck.Value != "" && ck.Value == state
+}
+
+// Callback is the redirect URI registered with providers, finishing a login
+// or link server-to-server (navigation in, navigation out, never exposed to scripts).
+// A link's two refusals land on the account page as a message, never a failed login.
 func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.CallbackParams) {
 	code, state := "", ""
 	if params.Code != nil {
@@ -53,7 +74,7 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 	if params.State != nil {
 		state = *params.State
 	}
-	if code == "" || state == "" {
+	if code == "" || state == "" || !h.oauthStateCookieMatches(r, state) {
 		h.loginEvent(r.Context(), "login", "failed")
 		http.Redirect(w, r, "/login?error=login_failed", http.StatusFound)
 		return
@@ -72,6 +93,7 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 		h.redirectLoginError(w, r, err)
 		return
 	}
+	http.SetCookie(w, h.codec.ClearStateCookie())
 	if pair.LinkedProvider != nil {
 		h.completeNavLogin(w, r, pair, "link", "/account?linked="+url.QueryEscape(*pair.LinkedProvider))
 		return
@@ -79,10 +101,8 @@ func (h *Handlers) Callback(w http.ResponseWriter, r *http.Request, params api.C
 	h.completeNavLogin(w, r, pair, "login", "/")
 }
 
-// completeNavLogin seals the pair into the session cookie and sends
-// the browser to target (home after a login, the account page after a
-// link). flow (login|link) labels the outcome counter: success only on
-// the cookie-set redirect, so a seal failure counts as failed.
+// completeNavLogin seals the pair into the session cookie and redirects to
+// target; flow labels the outcome counter, success only on the cookie-set redirect.
 func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair authclient.TokenPair, flow, target string) {
 	sealed, err := h.codec.Seal(session.Session{
 		AccessToken: pair.AccessToken, RefreshToken: pair.RefreshToken,
@@ -98,9 +118,8 @@ func (h *Handlers) completeNavLogin(w http.ResponseWriter, r *http.Request, pair
 	http.Redirect(w, r, target, http.StatusFound)
 }
 
-// loginOutcome maps a login failure onto the outcome vocabulary of
-// vg.bff.auth.logins (the ?error redirect codes differ only in the
-// catch-all, login_failed).
+// loginOutcome maps a login failure onto vg.bff.auth.logins' outcome vocabulary
+// (the ?error codes differ only in the catch-all, login_failed).
 func loginOutcome(err error) string {
 	switch {
 	case errors.Is(err, authclient.ErrEmailUnverified):
@@ -123,11 +142,8 @@ func (h *Handlers) redirectLoginError(w http.ResponseWriter, r *http.Request, er
 	http.Redirect(w, r, "/login?error="+code, http.StatusFound)
 }
 
-// Logout is allowlisted (it does its own cookie work) and idempotent:
-// whatever state the session is in, the cookie is gone afterwards.
-// Denylist and revocation are best-effort; a logged-out user must not
-// be blocked by a flaky dependency, and the short access TTL plus the
-// server-side family revocation bound the exposure.
+// Logout is allowlisted and idempotent: the cookie is gone regardless of
+// session state. Denylist/revocation are best-effort; short TTL plus family revocation bound exposure.
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if ck, err := r.Cookie(session.CookieName); err == nil {
 		if sess, err := h.codec.Open(ck.Value); err == nil {
@@ -146,8 +162,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ListProviders relays the auth service's enabled-provider list so the
-// login page renders exactly the buttons that can succeed.
+// ListProviders relays the enabled-provider list so the login page renders only buttons that can succeed.
 func (h *Handlers) ListProviders(w http.ResponseWriter, r *http.Request) {
 	names, err := h.auth.Providers(r.Context())
 	if err != nil {
@@ -157,8 +172,7 @@ func (h *Handlers) ListProviders(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, api.Providers{Providers: names})
 }
 
-// LinkLogin starts linking another provider as a navigation. Outcomes
-// travel as /account query params: navigations cannot render JSON.
+// LinkLogin starts linking another provider as a navigation; outcomes travel as /account query params.
 func (h *Handlers) LinkLogin(w http.ResponseWriter, r *http.Request, params api.LinkLoginParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -184,12 +198,13 @@ func (h *Handlers) LinkLogin(w http.ResponseWriter, r *http.Request, params api.
 		http.Redirect(w, r, "/account?link_error=link_failed", http.StatusFound)
 		return
 	}
+	// Callback is shared between login and link flows, so link start must bind the same state cookie.
+	h.setOAuthStateCookie(w, authorizeURL)
 	http.Redirect(w, r, authorizeURL, http.StatusFound)
 }
 
-// linkOutcome maps a link failure onto the outcome vocabulary of
-// vg.bff.auth.logins; linkErrorCode derives the ?link_error redirect
-// code from it (they differ only in the catch-all, link_failed).
+// linkOutcome maps a link failure onto vg.bff.auth.logins' outcome vocabulary;
+// linkErrorCode derives the ?link_error code from it (differ only in the catch-all).
 func linkOutcome(err error) string {
 	switch {
 	case errors.Is(err, authclient.ErrLinkConflict):

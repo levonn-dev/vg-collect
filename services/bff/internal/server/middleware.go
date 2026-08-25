@@ -15,17 +15,18 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/session"
 )
 
-// securityCSP is the SPA's content security policy. style-src allows
-// inline styles (React style props); img-src allows https + data so
-// provider avatars and cover art render; connect-src 'self' covers all
-// API calls (same origin by construction).
+// securityCSP is the SPA's CSP: style-src allows inline (React style
+// props), img-src allows https+data (avatars/cover art), connect-src is same-origin API only.
 const securityCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'; " +
 	"base-uri 'self'; form-action 'self'"
 
-// SecurityHeaders applies the browser hardening set to every response
-// (harmless on JSON, load-bearing on the SPA documents).
-func SecurityHeaders(next http.Handler) http.Handler {
+// securityPermissionsPolicy denies unused browser features, unconditionally.
+const securityPermissionsPolicy = "camera=(), microphone=(), geolocation=(), payment=()"
+
+// SecurityHeaders applies the hardening set to every response (harmless
+// on JSON, load-bearing on SPA documents); HSTS only when cookies are Secure.
+func (h *Handlers) SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hd := w.Header()
 		hd.Set("Content-Security-Policy", securityCSP)
@@ -33,15 +34,16 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		hd.Set("X-Frame-Options", "DENY")
 		hd.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		hd.Set("Cross-Origin-Opener-Policy", "same-origin")
+		hd.Set("Permissions-Policy", securityPermissionsPolicy)
+		if h.cookieSecure {
+			hd.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// CheckOrigin enforces same-origin on mutating methods (the second
-// CSRF layer next to SameSite=Lax). Browsers send Origin, or at least
-// Sec-Fetch-Site, on cross-site requests; a request bearing neither is
-// a non-browser client, which CSRF does not apply to (nothing tricked
-// it into attaching a victim's cookie).
+// CheckOrigin is the second CSRF layer next to SameSite=Lax; browsers send
+// Origin or Sec-Fetch-Site cross-site, so bearing neither means a non-browser client, exempt from CSRF.
 func (h *Handlers) CheckOrigin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -61,9 +63,7 @@ func (h *Handlers) CheckOrigin(next http.Handler) http.Handler {
 }
 
 // unauthenticated is the explicit allowlist of /api paths reachable
-// without a session. This list is the deliberate seam that later grows
-// public pages; everything not under /api (the SPA shell, health) is
-// public by construction.
+// without a session; everything outside /api is public by construction.
 var unauthenticated = map[string]bool{
 	"/api/auth/login":     true,
 	"/api/auth/callback":  true,
@@ -71,16 +71,12 @@ var unauthenticated = map[string]bool{
 	"/api/auth/providers": true,
 }
 
-// Authenticate guards /api/*: open the cookie, check the denylist
-// (fail-open), refresh the token pair when it is close to expiry, and
-// hand the session to the handler via the request context.
+// Authenticate guards /api/*: opens the cookie, checks the denylist
+// (fail-open), refreshes near expiry, and hands the session to the handler via context.
 func (h *Handlers) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Decide on the cleaned path so a non-normalized request
-		// (/./api/me, //api/me) cannot slip past the /api/ guard by
-		// relying on the router to normalize it afterwards. This is the
-		// public trust boundary; it must not depend on a downstream
-		// redirect to be correct.
+		// Clean first so a non-normalized request (/./api/me, //api/me) can't
+		// slip the /api/ guard; this trust boundary must not depend on downstream normalization.
 		p := path.Clean(r.URL.Path)
 		if !strings.HasPrefix(p, "/api/") || unauthenticated[p] {
 			next.ServeHTTP(w, r)
@@ -115,9 +111,8 @@ func (h *Handlers) Authenticate(next http.Handler) http.Handler {
 	})
 }
 
-// denylisted is fail-open: when Valkey is unreachable the request
-// proceeds (logged + counted). The denylist hardens an already short
-// access TTL; it is not the primary control.
+// denylisted is fail-open: an unreachable Valkey lets the request proceed
+// (logged + counted); it hardens an already-short access TTL, not the primary control.
 func (h *Handlers) denylisted(r *http.Request, jti string) bool {
 	hit, err := h.cache.DenylistHas(r.Context(), jti)
 	if err != nil {
@@ -127,21 +122,16 @@ func (h *Handlers) denylisted(r *http.Request, jti string) bool {
 	return hit
 }
 
-// refreshResult is what a rotation publishes for concurrent requests:
-// the sealed cookie plus its Max-Age (the session's remaining life).
-// The cookie value is AES-GCM ciphertext, so nothing secret rests in
-// Valkey in the clear.
+// refreshResult is what a rotation publishes: the sealed cookie plus its
+// Max-Age. The cookie is AES-GCM ciphertext, nothing secret in Valkey in the clear.
 type refreshResult struct {
 	Cookie string `json:"c"`
 	MaxAge int    `json:"m"`
 }
 
-// refreshSession rotates the refresh token, coordinating concurrent
-// requests so exactly one rotation happens per session: a second
-// rotation of the same token would trip the auth service's reuse
-// detection and revoke the whole session. A non-error return carries
-// the session to serve this request with; an error means the response
-// was written.
+// refreshSession coordinates concurrent requests to exactly one rotation
+// per session (reuse of the same token revokes it); non-error carries the
+// session to serve; error means the response was already written.
 func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess session.Session, claims session.Claims) (session.Session, session.Claims, error) {
 	ctx := r.Context()
 	key := session.RefreshKey(sess.RefreshToken)
@@ -149,9 +139,8 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 
 	locked, err := h.cache.AcquireRefreshLock(ctx, key, holder, lockTTL)
 	if err != nil {
-		// Valkey down: rotate without coordination. A concurrent tab
-		// might trip reuse detection and cost a re-login; availability
-		// wins over that edge while the cache is out.
+		// Valkey down: rotate without coordination; a concurrent tab may trip
+		// reuse detection and cost a re-login, but availability wins while the cache is out.
 		h.failOpenEvent(ctx, "refresh_lock", err)
 		locked, holder = true, ""
 	}
@@ -166,14 +155,9 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 		}()
 	}
 
-	// A prior holder may have already rotated THIS token and released the
-	// lock before our request (still bearing the consumed token) arrived.
-	// Re-refreshing a consumed token trips the auth service's reuse
-	// detection and revokes the whole session, so adopt the published
-	// result instead. It is keyed by this token's hash, so a present
-	// result is exactly our rotation's successor. (On a Valkey GET error
-	// we fall through and rotate: the SETNX just succeeded, so an error
-	// here is a rare blip and at worst costs one reuse.)
+	// A prior holder may have already rotated and released the lock before
+	// this request arrived, still bearing the consumed token; re-refreshing it
+	// trips reuse detection, so adopt the published result (keyed by this token's hash) instead.
 	if raw, gerr := h.cache.GetRefreshResult(ctx, key); gerr == nil && raw != "" {
 		if newSess, newClaims, res, ok := h.decodeResult(raw); ok {
 			http.SetCookie(w, h.codec.Cookie(res.Cookie, res.MaxAge))
@@ -211,8 +195,7 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 		return newSess, newClaims, nil
 
 	case errors.As(err, &reused):
-		// The chain is dead; denylist any reported still-live jtis so
-		// stolen access tokens die at this edge too.
+		// The chain is dead; denylist any reported still-live jtis so stolen access tokens die here too.
 		h.logger.WarnContext(ctx, "refresh token reuse detected; session family revoked",
 			"sub", claims.Sub, "revoked_jtis", len(reused.RevokeJTIs))
 		if derr := h.cache.DenylistAdd(ctx, reused.RevokeJTIs, h.accessTTL+time.Minute); derr != nil {
@@ -228,9 +211,8 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 		return session.Session{}, session.Claims{}, err
 
 	case errors.Is(err, authclient.ErrUserUnavailable):
-		// The refresh token was NOT consumed; keep the cookie. Serve
-		// on the current token if it still has life, else ask the
-		// client to retry.
+		// Token was NOT consumed; keep the cookie. Serve on the current token
+		// if it still has life, else ask the client to retry.
 		if h.now().Before(claims.Exp) {
 			h.refreshEvent(ctx, "deferred")
 			return sess, claims, nil
@@ -251,9 +233,8 @@ func (h *Handlers) refreshSession(w http.ResponseWriter, r *http.Request, sess s
 	}
 }
 
-// decodeResult turns a published rotation result into the session it
-// carries, or ok=false when it is malformed or no longer unsealable
-// (any failure is treated as "no usable result").
+// decodeResult turns a published rotation result into its session, or
+// ok=false when malformed or unsealable (any failure means "no usable result").
 func (h *Handlers) decodeResult(raw string) (session.Session, session.Claims, refreshResult, bool) {
 	var res refreshResult
 	if json.Unmarshal([]byte(raw), &res) != nil {
@@ -270,12 +251,9 @@ func (h *Handlers) decodeResult(raw string) (session.Session, session.Claims, re
 	return newSess, newClaims, res, true
 }
 
-// adoptRefreshResult rides a concurrent rotation. A still-valid token
-// does not wait at all (the rotation holder re-seals the cookie on ITS
-// response); only a request whose token already expired polls for the
-// published result. A timeout returns 401 WITHOUT clearing the cookie:
-// the rotation may still land, letting the browser's next request
-// adopt it.
+// adoptRefreshResult rides a concurrent rotation: a still-valid token
+// doesn't wait (its own response re-seals it); only an expired token polls.
+// A timeout returns 401 WITHOUT clearing the cookie so a later request can still adopt the rotation.
 func (h *Handlers) adoptRefreshResult(w http.ResponseWriter, r *http.Request, sess session.Session, claims session.Claims, key string) (session.Session, session.Claims, error) {
 	if h.now().Before(claims.Exp) {
 		return sess, claims, nil
@@ -305,8 +283,7 @@ func (h *Handlers) adoptRefreshResult(w http.ResponseWriter, r *http.Request, se
 		case <-time.After(h.pollInterval):
 		}
 	}
-	// Reached on budget expiry and on the give-up breaks above; every
-	// arrival here is a browser that got a spurious 401.
+	// Reached on budget expiry or a give-up break above; every arrival here got a spurious 401.
 	h.logger.WarnContext(r.Context(), "refresh result adoption timed out", "sub", claims.Sub)
 	h.refreshEvent(r.Context(), "adopt_timeout")
 	h.unauthorized(w, r)

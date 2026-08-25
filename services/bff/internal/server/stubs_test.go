@@ -1,10 +1,6 @@
-// Shared test doubles for this package's four upstream service
-// interfaces: AuthAPI, UserAPI, EnrichmentAPI, and CollectionAPI. Each
-// gets exactly one hand-rolled, function-field stub used by every
-// *_test.go file in this package. A method whose function field is
-// left unset panics naming the stub and method, so an unconfigured
-// dependency fails loudly at the call site instead of returning a
-// silent zero value.
+// Shared test doubles for AuthAPI, UserAPI, EnrichmentAPI, and CollectionAPI:
+// one hand-rolled, function-field stub per interface, used by every *_test.go
+// here. An unset method field panics naming the stub and method, never a silent zero value.
 package server
 
 import (
@@ -172,11 +168,8 @@ func (s *stubUsers) SearchProfiles(ctx context.Context, bearer, q string) (userc
 
 var _ UserAPI = (*stubUsers)(nil)
 
-// stubEnrichment implements EnrichmentAPI via function fields.
-// mu/calls/gotAuth/scoreCalls are opt-in bookkeeping: only a caller
-// whose closures update them (the real-Valkey stack in
-// middleware_test.go) gets a meaningful callCount/scoreCallCount/
-// gotAuth: every other caller leaves them zero, harmlessly unused.
+// stubEnrichment implements EnrichmentAPI via function fields; mu/calls/
+// gotAuth/scoreCalls are opt-in bookkeeping, meaningful only for callers whose closures update them.
 type stubEnrichment struct {
 	search  func(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
 	resolve func(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
@@ -317,9 +310,7 @@ func (s *stubEnrichment) NormalizeCommunityRegions(ctx context.Context, bearer s
 	return s.normalizeCommunityRegions(ctx, bearer)
 }
 
-// callCount reports how many times a caller's search closure chose to
-// tally itself (see the type comment); zero for a caller that never
-// touches s.calls.
+// callCount reports how many times a caller's search closure tallied itself (see the type comment).
 func (s *stubEnrichment) callCount() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -336,13 +327,8 @@ func (s *stubEnrichment) scoreCallCount() int {
 var _ EnrichmentAPI = (*stubEnrichment)(nil)
 
 // stubCollection implements CollectionAPI via function fields. Most
-// methods relay through call, which tags every call with its op name
-// and bearer (gotOps/gotBearer/gotAuth) so a route-matrix or never-
-// cached-at-the-bff test can assert on call counts and forwarded
-// bearers without a dedicated field per method; the route-matrix test
-// only needs the generic answer field. The shared-page and submission
-// surfaces use their own dedicated fields instead, matching
-// stubEnrichment's convention.
+// methods relay through call, tagging op/bearer (gotOps/gotBearer/gotAuth)
+// so tests assert call counts without a field per method; shared-page and submission surfaces use dedicated fields instead.
 type stubCollection struct {
 	answer  func(op string) (collectionclient.Result, error)
 	library func(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error)
@@ -382,8 +368,7 @@ func (s *stubCollection) call(op, bearer string) (collectionclient.Result, error
 	return s.answer(op)
 }
 
-// opCount reports how many recorded calls carried op (see call); the
-// never-cached-at-the-bff hit counters below are thin wrappers over it.
+// opCount reports how many recorded calls carried op; hit counters below are thin wrappers over it.
 func (s *stubCollection) opCount(op string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -1,11 +1,7 @@
 // Package cache is the bff's Valkey surface: the jti denylist, the
 // refresh singleflight (lock + published result), and the /api/me
-// composition cache. Every method returns errors verbatim; FAIL-OPEN
-// DECISIONS BELONG TO CALLERS (the denylist and caches harden or speed
-// up an already-correct system, they are not its primary controls).
-// Contexts are caller-supplied and carry their own deadlines; this
-// package imposes no per-operation timeouts (network-level timeouts
-// belong to the client options).
+// composition cache. Methods return errors verbatim; fail-open is a
+// caller decision. No per-operation timeouts; contexts carry their own.
 package cache
 
 import (
@@ -32,8 +28,7 @@ func New(rdb *redis.Client) *Cache {
 var releaseScript = redis.NewScript(
 	`if redis.call('get', KEYS[1]) == ARGV[1] then return redis.call('del', KEYS[1]) else return 0 end`)
 
-// DenylistAdd marks access-token jtis revoked for ttl (the access-token
-// TTL plus leeway: after that the tokens are dead by expiry anyway).
+// DenylistAdd marks jtis revoked for ttl (access-token TTL plus leeway).
 func (c *Cache) DenylistAdd(ctx context.Context, jtis []string, ttl time.Duration) error {
 	if len(jtis) == 0 {
 		return nil
@@ -42,8 +37,7 @@ func (c *Cache) DenylistAdd(ctx context.Context, jtis []string, ttl time.Duratio
 	for _, jti := range jtis {
 		pipe.Set(ctx, "denylist:"+jti, "1", ttl)
 	}
-	// Exec reports the first failed command; partial failures are
-	// treated as total failures by callers under the fail-open contract.
+	// Exec reports the first failed command; treated as total failure under the fail-open contract.
 	if _, err := pipe.Exec(ctx); err != nil {
 		return fmt.Errorf("cache: denylist add: %w", err)
 	}
@@ -59,8 +53,7 @@ func (c *Cache) DenylistHas(ctx context.Context, jti string) (bool, error) {
 	return n > 0, nil
 }
 
-// AcquireRefreshLock takes the per-session rotation lock. holder is a
-// random value identifying this acquisition for the release check.
+// AcquireRefreshLock takes the rotation lock; holder identifies this acquisition for release.
 func (c *Cache) AcquireRefreshLock(ctx context.Context, key, holder string, ttl time.Duration) (bool, error) {
 	ok, err := c.rdb.SetNX(ctx, "refresh:lock:"+key, holder, ttl).Result()
 	if err != nil {
@@ -77,10 +70,8 @@ func (c *Cache) ReleaseRefreshLock(ctx context.Context, key, holder string) erro
 	return nil
 }
 
-// PutRefreshResult publishes the sealed cookie produced by a rotation
-// so concurrent requests holding the consumed token can adopt it. The
-// value is AES-GCM ciphertext (exactly what goes to the browser), so
-// nothing secret rests in Valkey in the clear.
+// PutRefreshResult publishes the sealed cookie for concurrent holders of
+// the consumed token; the value is AES-GCM ciphertext, never plaintext in Valkey.
 func (c *Cache) PutRefreshResult(ctx context.Context, key, sealed string, ttl time.Duration) error {
 	if err := c.rdb.Set(ctx, "refresh:result:"+key, sealed, ttl).Err(); err != nil {
 		return fmt.Errorf("cache: put result: %w", err)
@@ -100,15 +91,13 @@ func (c *Cache) GetRefreshResult(ctx context.Context, key string) (string, error
 	return v, nil
 }
 
-// meKeyVersion tags the /api/me cache key with the projection shape.
-// Bump it whenever the Me projection changes so a deploy never serves
-// a pre-deploy body for the old shape.
+// meKeyVersion tags the /api/me cache key with the projection shape;
+// bump on any Me projection change so a deploy never serves a stale shape.
 const meKeyVersion = "v4"
 
 func meKey(sub string) string { return "me:" + meKeyVersion + ":" + sub }
 
-// GetMe returns the cached /api/me body for sub, or nil when absent.
-// Copied out of the client's reply string so callers own the bytes.
+// GetMe returns the cached /api/me body for sub (nil if absent), copied so callers own the bytes.
 func (c *Cache) GetMe(ctx context.Context, sub string) ([]byte, error) {
 	return valkeykit.GetBytes(ctx, c.rdb, meKey(sub), "cache: get me")
 }
@@ -118,8 +107,7 @@ func (c *Cache) PutMe(ctx context.Context, sub string, body []byte, ttl time.Dur
 	return valkeykit.PutBytes(ctx, c.rdb, meKey(sub), body, ttl, "cache: put me")
 }
 
-// InvalidateMe drops a user's cached /api/me after a profile edit so
-// the header reflects the change immediately, not at TTL expiry.
+// InvalidateMe drops a user's cached /api/me so a profile edit shows immediately, not at TTL expiry.
 func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
 	if err := c.rdb.Del(ctx, meKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate me: %w", err)
@@ -127,11 +115,8 @@ func (c *Cache) InvalidateMe(ctx context.Context, sub string) error {
 	return nil
 }
 
-// recsKeyVersion tags the /api/recommendations cache key with the
-// cached body's shape. The cached bytes are enrichment's raw
-// /recommendations:score wire body, verbatim, so bump it whenever that
-// upstream response shape changes - the same discipline meKeyVersion
-// documents for /api/me, on a cache with a much longer TTL.
+// recsKeyVersion tags the /api/recommendations cache key; the cached
+// bytes are enrichment's raw /recommendations:score body, verbatim - bump on upstream shape changes.
 const recsKeyVersion = "v1"
 
 func recsKey(sub string) string { return "recs:" + recsKeyVersion + ":" + sub }
@@ -146,8 +131,7 @@ func (c *Cache) PutRecs(ctx context.Context, sub string, body []byte, ttl time.D
 	return valkeykit.PutBytes(ctx, c.rdb, recsKey(sub), body, ttl, "cache: put recs")
 }
 
-// InvalidateRecs drops a user's recommendations after one of their
-// entry mutations (the library that feeds scoring changed).
+// InvalidateRecs drops recommendations when a library mutation changes scoring input.
 func (c *Cache) InvalidateRecs(ctx context.Context, sub string) error {
 	if err := c.rdb.Del(ctx, recsKey(sub)).Err(); err != nil {
 		return fmt.Errorf("cache: invalidate recs: %w", err)

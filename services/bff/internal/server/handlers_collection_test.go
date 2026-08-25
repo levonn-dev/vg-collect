@@ -1,5 +1,4 @@
-// Tests for the collection surface: entries, tags, saved views,
-// and the dashboard.
+// Tests for the collection surface: entries, tags, saved views, and the dashboard.
 
 package server
 
@@ -23,19 +22,9 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 )
 
-// TestUnitViewPublish_FiresEventFailOpen pins publishIfListed: a
-// successful view write that lands visibility=listed fires
-// social.RecordPublish with the view's id and the caller's own bearer;
-// a RecordPublish failure is swallowed (fail-open) so the view save
-// itself still answers exactly the collection relay - a social outage
-// must never fail the write. RecordPublish must not fire at all when
-// the write did not land listed: a private body, or any non-2xx
-// collection answer regardless of body. Both CreateView (201, id
-// parsed from the relay body) and UpdateView (200) are covered. Two
-// divergent-body subtests pin that the RESULT decides, not the
-// REQUEST: a request that asked for listed but whose result came back
-// private must not fire, and a request that never asked for listed
-// but whose result came back listed anyway must.
+// TestUnitViewPublish_FiresEventFailOpen pins publishIfListed across
+// CreateView(201) and UpdateView(200): RecordPublish fires only when the
+// RESULT lands listed (not the REQUEST), and its failure never fails the view save.
 func TestUnitViewPublish_FiresEventFailOpen(t *testing.T) {
 	viewID := uuid.New()
 	const listedBody = `{"name":"Backlog","params":{},"visibility":"listed"}`
@@ -198,8 +187,7 @@ func TestUnitViewPublish_FiresEventFailOpen(t *testing.T) {
 	})
 }
 
-// newTestHandlersWithCollection wires a session-ready Handlers around
-// the collection stub.
+// newTestHandlersWithCollection wires a session-ready Handlers around the collection stub.
 func newTestHandlersWithCollection(t *testing.T, col *stubCollection) (*Handlers, *testEnv) {
 	t.Helper()
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -276,11 +264,8 @@ func TestUnitCollectionPassThroughs_UpstreamFailureIs502(t *testing.T) {
 	}
 }
 
-// TestUnitCollectionReorderPassThrough_RelaysProblemBody mirrors
-// TestUnitProductPassThrough_RelaysProblemBody for a collection route:
-// a conflict from the collection service (two backlog items racing for
-// the same rank) must relay verbatim - status, content type, and body -
-// exactly like every other pass-through, never rewritten by the bff.
+// TestUnitCollectionReorderPassThrough_RelaysProblemBody mirrors the product
+// version: a reorder conflict (racing backlog ranks) relays verbatim, never rewritten.
 func TestUnitCollectionReorderPassThrough_RelaysProblemBody(t *testing.T) {
 	const problemBody = `{"type":"about:blank","title":"Conflict","status":409,"code":"conflicting_order"}`
 	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
@@ -303,9 +288,8 @@ func TestUnitCollectionReorderPassThrough_RelaysProblemBody(t *testing.T) {
 	}
 }
 
-// TestUnitValueHistoryPassThrough proves the value-history route relays
-// the collection service's body verbatim and forwards the session's
-// own bearer, exactly like the other collection pass-throughs.
+// TestUnitValueHistoryPassThrough proves value-history relays the body
+// verbatim and forwards the session's bearer, like other collection pass-throughs.
 func TestUnitValueHistoryPassThrough(t *testing.T) {
 	relayed := []byte(`{"available":true,"points":[{"date":"2026-07-01","value_cents":4200}]}`)
 	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
@@ -324,9 +308,8 @@ func TestUnitValueHistoryPassThrough(t *testing.T) {
 	}
 }
 
-// captureCollection embeds the stub so every method forwards, while
-// ListEntries, GetDashboard, CreateEntry, and UpdateEntry additionally
-// expose their converted params / raw body.
+// captureCollection embeds the stub so every method forwards; ListEntries,
+// GetDashboard, CreateEntry, and UpdateEntry additionally expose their converted params/raw body.
 type captureCollection struct {
 	*stubCollection
 	onList        func(*collectionapi.ListEntriesParams)
@@ -403,12 +386,8 @@ func TestUnitDashboardParams_Forwarded(t *testing.T) {
 	}
 }
 
-// populateEveryPointerField sets every pointer field of v (a struct
-// value addressed via reflect.ValueOf(&x).Elem()) to a non-nil pointer
-// - a one-element slice for a slice pointer, a zero value otherwise.
-// Every field of the generated *Params structs is a pointer, so a
-// struct built this way exercises every field a mapping function must
-// carry through.
+// populateEveryPointerField sets every pointer field of v (reflect.ValueOf(&x).Elem())
+// non-nil - a one-element slice for slices, zero value otherwise - to exercise every generated *Params field.
 func populateEveryPointerField(v reflect.Value) {
 	st := v.Type()
 	for i := 0; i < st.NumField(); i++ {
@@ -425,12 +404,8 @@ func populateEveryPointerField(v reflect.Value) {
 	}
 }
 
-// assertEveryFieldMapped holds the class-closing invariant a query-
-// param mapping function must keep: every source field must land on
-// its same-named destination field non-nil, so a future contract param
-// added to one generated package and forgotten in the hand-written
-// mapping fails a test instead of silently dropping a filter, the way
-// Developer/Publisher once did.
+// assertEveryFieldMapped requires every source field land on its same-named
+// destination field non-nil, catching a forgotten mapping before a filter silently drops.
 func assertEveryFieldMapped(t *testing.T, src, dst reflect.Value) {
 	t.Helper()
 	st := src.Type()
@@ -461,11 +436,7 @@ func TestUnitDashboardParams_MapsEveryField(t *testing.T) {
 }
 
 // TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips pins that a
-// pricing_mode=custom entry update reaches the collection stub with
-// its body unmodified, and the stub's answer - carrying
-// custom_value_cents/custom_value_set_at - round-trips to the client
-// verbatim. The bff neither validates nor reshapes custom pricing; it
-// is a pass-through like every other entry mutation.
+// pricing_mode=custom update round-trips unmodified; the bff neither validates nor reshapes it.
 func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
 	id := uuid.New()
 	const sent = `{"region":"ntsc_u","packaging":"loose","status":"backlog","pinned":false,"pricing_mode":"custom","custom_value_cents":12345}`
@@ -499,12 +470,8 @@ func TestUnitUpdateEntryPassThrough_CustomPricingRoundTrips(t *testing.T) {
 	}
 }
 
-// TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips pins
-// that the typed custom-price pair (custom_value_entered_cents /
-// custom_value_entered_currency) rides an entry update through the bff
-// exactly like every other custom pricing field: unmodified in, and the
-// collection stub's answer - carrying the pair - relays to the client
-// verbatim. The bff neither validates nor reshapes it.
+// TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips pins that
+// the entered-price pair (custom_value_entered_cents/currency) round-trips unmodified too.
 func TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips(t *testing.T) {
 	id := uuid.New()
 	const sent = `{"region":"ntsc_u","packaging":"loose","status":"backlog","pinned":false,"pricing_mode":"custom","custom_value_cents":5400,"custom_value_entered_cents":6000,"custom_value_entered_currency":"EUR"}`
@@ -538,14 +505,9 @@ func TestUnitUpdateEntryPassThrough_CustomPricingEnteredPairRoundTrips(t *testin
 	}
 }
 
-// TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips pins that an
-// entry create body carrying a region outside the known
-// ntsc_u/ntsc_j/pal/region_free set reaches the collection stub
-// byte-identical, and the stub's answer relays back unmodified. The bff
-// contract widened region to an open string alongside the collection
-// service; the create path was already a pure byte relay with no
-// region-shaped validation of its own, so this pins the widened value
-// travels the same way every other entry field already does.
+// TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips pins that a
+// region outside ntsc_u/ntsc_j/pal/region_free (region is now an open string)
+// still reaches collection byte-identical: create was already an unvalidated pass-through.
 func TestUnitCreateEntryPassThrough_OpenWorldRegionRoundTrips(t *testing.T) {
 	const sent = `{"item_type":"game","display_name":"Import Cart","packaging":"loose","region":"Korea"}`
 	const relayed = `{"id":"e1","region":"Korea"}`
@@ -618,10 +580,8 @@ func subjectOf(t *testing.T, token string) string {
 	return claims.Sub
 }
 
-// TestUnitAckEntryRegionMismatch_RelaysAndForwardsBearer mirrors
-// TestUnitAckSubmission_RelaysAndForwardsBearer above for the
-// region-mismatch ack: an authed POST relays 204 and forwards the
-// caller's own bearer to collection; no session is 401.
+// TestUnitAckEntryRegionMismatch_RelaysAndForwardsBearer mirrors the
+// submission-ack test: authed POST relays 204, forwards bearer, no session is 401.
 func TestUnitAckEntryRegionMismatch_RelaysAndForwardsBearer(t *testing.T) {
 	col := &stubCollection{answer: func(op string) (collectionclient.Result, error) {
 		if op != "ack_region_mismatch" {

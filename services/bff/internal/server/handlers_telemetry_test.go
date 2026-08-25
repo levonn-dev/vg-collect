@@ -14,15 +14,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// assertOversizeBodyProblem checks the 400 problem an over-cap OTLP
-// body answers with, detail text included. specval's own MaxBodyBytes
-// (1MiB, the same bound proxyOTLP's own httpkit.ReadCapped call
-// enforces) now catches an over-cap body first, at the request-
-// validation layer ahead of the handler: the body read fails during
-// specval's own schema check, so the answer carries the encoder's
-// generic house wording, not proxyOTLP's own detail text - that
-// handler-level check is unreachable for this exact cap but stays in
-// place as a second line of defense.
+// assertOversizeBodyProblem checks the 400 an over-cap OTLP body gets.
+// specval's own MaxBodyBytes (1MiB, same bound as proxyOTLP's ReadCapped)
+// catches it first, ahead of the handler, so the answer carries specval's generic wording, not proxyOTLP's.
 func assertOversizeBodyProblem(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusBadRequest {
@@ -40,17 +34,15 @@ func assertOversizeBodyProblem(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
-// stubRoundTripper lets a test assert whether the otlp relay's upstream
-// http.Client was ever dialed.
+// stubRoundTripper lets a test assert whether the otlp relay's upstream http.Client was ever dialed.
 type stubRoundTripper struct {
 	fn func(*http.Request) (*http.Response, error)
 }
 
 func (s *stubRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return s.fn(r) }
 
-// newTestHandlersForOtlp builds Handlers with a fresh session ready to
-// drive the otlp relay route; otlpProxyURL configures the relay target
-// ("" is drop mode).
+// newTestHandlersForOtlp builds Handlers with a fresh session ready to drive
+// the otlp relay route; otlpProxyURL configures the target ("" is drop mode).
 func newTestHandlersForOtlp(t *testing.T, otlpProxyURL string) (*Handlers, *testEnv) {
 	t.Helper()
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -86,11 +78,8 @@ func TestUnitProxyTraces_DropModeAnswers200(t *testing.T) {
 	}
 }
 
-// TestUnitProxyTraces_RelaysVerbatim proves the relay is a pure pass-
-// through in both directions: the collector sees the exact method, path,
-// body, and Content-Type/Content-Encoding the browser sent (but never the
-// session cookie), and the browser sees the collector's exact status,
-// content type, and body back.
+// TestUnitProxyTraces_RelaysVerbatim proves a pure pass-through: the
+// collector sees the exact method/path/body/headers (never the cookie), and the browser sees its exact reply.
 func TestUnitProxyTraces_RelaysVerbatim(t *testing.T) {
 	const marker = "collector-response-marker"
 	const sentBody = `{"resourceSpans":[{"resource":{}}]}`
@@ -206,11 +195,8 @@ func TestUnitProxyMetrics_DropModeAnswers200(t *testing.T) {
 	}
 }
 
-// TestUnitProxyMetrics_RelaysVerbatim proves the relay is a pure pass-
-// through in both directions: the collector sees the exact method, path,
-// body, and Content-Type/Content-Encoding the browser sent (but never the
-// session cookie), and the browser sees the collector's exact status,
-// content type, and body back.
+// TestUnitProxyMetrics_RelaysVerbatim proves a pure pass-through: the
+// collector sees the exact method/path/body/headers (never the cookie), and the browser sees its exact reply.
 func TestUnitProxyMetrics_RelaysVerbatim(t *testing.T) {
 	const marker = "collector-response-marker"
 	const sentBody = `{"resourceMetrics":[{"resource":{}}]}`

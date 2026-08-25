@@ -1,7 +1,6 @@
 // The bff: the only public vgkeep service. It owns the browser
 // session (sealed cookie, refresh, denylist, origin checks) and serves
-// the SPA bundle in cluster; every other service stays internal
-// behind it.
+// the SPA bundle; every other service stays internal behind it.
 package main
 
 import (
@@ -27,8 +26,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
-// The server package defines its dependency surfaces; prove the real
-// implementations satisfy them.
+// Compile-time proof the clients satisfy server's dependency interfaces.
 var (
 	_ server.SessionCache  = (*cache.Cache)(nil)
 	_ server.AuthAPI       = (*authclient.Client)(nil)
@@ -98,6 +96,7 @@ func run() error {
 		MeCacheTTL:     cfg.MeCacheTTL,
 		RecsCacheTTL:   cfg.RecsCacheTTL,
 		PublicOrigins:  cfg.PublicOrigins,
+		CookieSecure:   cfg.CookieSecure,
 		OTLPProxyURL:   cfg.OTLPProxyURL,
 		Logger:         slog.Default(),
 	})

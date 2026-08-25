@@ -1,5 +1,4 @@
-// Catalog-candidate submissions: filing, reading, canceling,
-// acknowledging, and the admin verdict queue.
+// Catalog-candidate submissions: filing, reading, canceling, acknowledging, and the admin verdict queue.
 
 package server
 

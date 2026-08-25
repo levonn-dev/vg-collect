@@ -1,9 +1,6 @@
-// Package static serves the embedded SPA bundle. The committed dist
-// directory is a placeholder; the container build overwrites it with
-// the real Vite output before compiling, so the binary ships the app.
-// Each behavior here has a CDN equivalent documented in the README's
-// production-paths section (response-headers policy, 403/404 fallback
-// mapping, immutable asset sync).
+// Package static serves the embedded SPA bundle; the committed dist
+// directory is a placeholder the container build overwrites with real Vite
+// output before compiling. Each behavior has a CDN equivalent in the README's production-paths section.
 package static
 
 import (
@@ -17,10 +14,8 @@ import (
 //go:embed all:dist
 var dist embed.FS
 
-// Handler serves the SPA: content-hashed assets cache forever,
-// index.html never caches (deploys take effect on the next
-// navigation), and extensionless unknown paths fall back to the app
-// shell for client-side routing.
+// Handler serves the SPA: content-hashed assets cache forever, index.html
+// never caches (deploys take effect next navigation), extensionless unknowns fall back to the app shell.
 func Handler() http.Handler {
 	sub, err := fs.Sub(dist, "dist")
 	if err != nil {
@@ -44,9 +39,8 @@ func Handler() http.Handler {
 			return
 		}
 		if info.IsDir() {
-			// Never serve a directory listing: it would leak the
-			// bundle's file inventory (and the build hash). A CDN
-			// answers 403 here; 404 is the in-cluster equivalent.
+			// Never serve a directory listing: it would leak the bundle's file
+			// inventory and build hash. A CDN answers 403 here; 404 is the in-cluster equivalent.
 			http.NotFound(w, r)
 			return
 		}
@@ -60,8 +54,7 @@ func Handler() http.Handler {
 	})
 }
 
-// serveIndex writes index.html directly (http.ServeFileFS would 301
-// the literal index.html path to ./, which loops through this handler).
+// serveIndex writes index.html directly (http.ServeFileFS would 301 it to ./, looping through this handler).
 func serveIndex(w http.ResponseWriter, sub fs.FS) {
 	b, err := fs.ReadFile(sub, "index.html")
 	if err != nil {

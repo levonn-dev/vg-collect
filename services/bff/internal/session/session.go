@@ -1,12 +1,8 @@
-// Package session defines the browser session the bff manages: the
-// token pair sealed into the cookie, unverified claim extraction, and
-// request-context plumbing.
-//
-// Claims are parsed WITHOUT signature verification on purpose: the
-// session cookie is AES-GCM sealed with the bff's own key, so anything
-// that opens is something this service sealed. Signature verification
-// of access tokens stays where it belongs, in the downstream services'
-// jwtauth middleware.
+// Package session defines the browser session: token pair sealed into the
+// cookie, unverified claim extraction, and context plumbing. Claims are
+// parsed WITHOUT signature verification on purpose: the cookie is AES-GCM
+// sealed with the bff's own key, so anything that opens is something this
+// service sealed; signature verification stays in the downstream services' jwtauth middleware.
 package session
 
 import (
@@ -48,8 +44,7 @@ func ParseClaims(accessToken string) (Claims, error) {
 	return Claims{Sub: sub, JTI: jti, Exp: exp.Time}, nil
 }
 
-// RefreshKey derives the cache key for refresh coordination from the
-// refresh token. Hashed so the raw token never appears as a key.
+// RefreshKey derives the refresh-coordination cache key; hashed so the raw token never appears as a key.
 func RefreshKey(refreshToken string) string {
 	sum := sha256.Sum256([]byte(refreshToken))
 	return hex.EncodeToString(sum[:])

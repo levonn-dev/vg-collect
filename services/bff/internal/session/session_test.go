@@ -78,8 +78,7 @@ func TestCodecRoundTrip(t *testing.T) {
 func TestCodecRejectsTampering(t *testing.T) {
 	codec, _ := NewCodec(testKey, true)
 	sealed, _ := codec.Seal(Session{AccessToken: "a", RefreshToken: "r"})
-	// Flip a byte in the middle of the ciphertext (past the 12-byte nonce,
-	// well within the payload). Deterministic regardless of first-char case.
+	// Flip a byte in the middle of the ciphertext (past the 12-byte nonce, deterministic regardless of case).
 	mid := len(sealed) / 2
 	flipped := sealed[:mid] + string(rune(sealed[mid]^1)) + sealed[mid+1:]
 	for _, bad := range []string{
@@ -153,9 +152,8 @@ func TestContextRoundTrip(t *testing.T) {
 	}
 }
 
-// TestOpenRejectsNonCanonicalBase64 confirms that Open uses Strict() decoding:
-// re-encoding the sealed bytes with the padded URLEncoding yields a different
-// string that a non-strict decoder would accept but Open must reject.
+// TestOpenRejectsNonCanonicalBase64 confirms Open uses Strict() decoding:
+// a padded-URLEncoding re-encoding a non-strict decoder would accept, Open must reject.
 func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
 	codec, _ := NewCodec(testKey, true)
 	sealed, _ := codec.Seal(Session{AccessToken: "a", RefreshToken: "r"})
@@ -171,9 +169,8 @@ func TestOpenRejectsNonCanonicalBase64(t *testing.T) {
 	}
 }
 
-// TestCodecUsesFullKeyWidth asserts AES-256 (not AES-128) keying: two keys
-// sharing the first 16 bytes but differing in the last 16 must not interop.
-// An accidental first-16-byte truncation would let them seal/open each other.
+// TestCodecUsesFullKeyWidth asserts AES-256 keying: two keys sharing the
+// first 16 bytes but differing in the last 16 must not interop (guards against silent AES-128 truncation).
 func TestCodecUsesFullKeyWidth(t *testing.T) {
 	keyA := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789ABCDEF"))
 	keyB := base64.StdEncoding.EncodeToString([]byte("0123456789abcdefFEDCBA9876543210"))
@@ -191,9 +188,8 @@ func TestCodecUsesFullKeyWidth(t *testing.T) {
 	}
 }
 
-// TestParseClaimsExpEdges pins current behavior for edge-case exp values:
-// zero, absent, and string exp are rejected; a negative exp parses to a past
-// instant (already-expired token) without erroring.
+// TestParseClaimsExpEdges pins edge-case exp handling: zero, absent, and
+// string exp are rejected; a negative exp parses to a past instant without erroring.
 func TestParseClaimsExpEdges(t *testing.T) {
 	mk := func(exp any) string {
 		claims := jwt.MapClaims{"sub": "u", "jti": "j"}

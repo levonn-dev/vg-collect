@@ -1,5 +1,4 @@
-// Browser telemetry relay: proxies OTLP trace and metric
-// batches from the frontend to the collector agent.
+// Browser telemetry relay: proxies OTLP trace/metric batches from the frontend to the collector agent.
 
 package server
 
@@ -11,11 +10,8 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// proxyOTLP relays a browser OTLP batch to the collector agent
-// verbatim; ProxyTraces and ProxyMetrics are thin wrappers selecting
-// the signal. Session-gated like every /api route; the body is
-// capped; the collector's response status and body pass through so
-// the web SDK sees real OTLP semantics. Never cached.
+// proxyOTLP relays a browser OTLP batch to the collector verbatim (session-
+// gated, capped, never cached); real status/body pass through so the web SDK sees actual OTLP semantics.
 func (h *Handlers) proxyOTLP(w http.ResponseWriter, r *http.Request, signal string) {
 	if _, _, ok := h.requireSession(w, r); !ok {
 		return
@@ -40,8 +36,7 @@ func (h *Handlers) proxyOTLP(w http.ResponseWriter, r *http.Request, signal stri
 	}
 	res, err := h.otlpHTTP.Do(req) //nolint:gosec // G704: destination is h.otlpProxyURL, a fixed operator-configured collector address never derived from the request; only the opaque, size-capped body is caller-supplied
 	if err != nil {
-		// The 502 shows in RED metrics; the line carries the cause
-		// (DNS, refused, timeout) that the status alone loses.
+		// The 502 shows in RED metrics; this line carries the cause (DNS, refused, timeout) the status loses.
 		h.logger.WarnContext(r.Context(), "browser telemetry relay failed", "err", err)
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collector unavailable")
 		return

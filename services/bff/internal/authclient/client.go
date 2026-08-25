@@ -1,6 +1,5 @@
-// Package authclient calls the auth service through the generated
-// typed client and translates its problem responses into the small
-// error taxonomy the bff branches on.
+// Package authclient calls the auth service and translates its problem
+// responses into the small error taxonomy the bff branches on.
 package authclient
 
 import (
@@ -17,23 +16,19 @@ import (
 )
 
 var (
-	// ErrLoginFailed covers every "this login attempt is bad" answer
-	// (unknown provider, bad state, unknown fixture, dev disabled); the
-	// browser lands back on the login page either way.
+	// ErrLoginFailed covers any "this login attempt is bad" answer: unknown
+	// provider, bad state, unknown fixture, or dev disabled.
 	ErrLoginFailed = errors.New("authclient: login failed")
 	// ErrEmailUnverified is the verified-email policy refusing a login.
 	ErrEmailUnverified = errors.New("authclient: provider did not assert a verified email")
 	// ErrProviderError is the identity provider misbehaving (retryable).
 	ErrProviderError = errors.New("authclient: identity provider error")
-	// ErrRefreshRejected is returned for a non-reuse 401: the token is
-	// expired, unknown, or the user was deleted. The session is dead;
-	// no chain was revoked and no jtis need denylisting.
+	// ErrRefreshRejected is a non-reuse 401 (expired, unknown, or deleted
+	// user): the session is dead, no chain revoked, no jtis to denylist.
 	ErrRefreshRejected = errors.New("authclient: refresh token rejected")
-	// ErrUserUnavailable means refresh could not consult the role
-	// source; the token was NOT consumed and the same one retries.
+	// ErrUserUnavailable means the role source is down and the unconsumed token retries unchanged.
 	ErrUserUnavailable = errors.New("authclient: role source unavailable")
-	// ErrLinkConflict means the identity being linked already belongs
-	// to another account (auth answers 409 identity_already_linked).
+	// ErrLinkConflict means the identity is already linked (auth 409 identity_already_linked).
 	ErrLinkConflict = errors.New("authclient: identity already linked to another account")
 	// ErrLinkEmailUnverified is the verified-email policy refusing a link.
 	ErrLinkEmailUnverified = errors.New("authclient: provider did not assert a verified email for link")
@@ -43,9 +38,8 @@ var (
 	ErrIdentityNotFound = errors.New("authclient: identity not found")
 )
 
-// ReusedError is refresh-token reuse: the chain is revoked and any
-// possibly-live access-token jtis ride along for denylisting (non-empty
-// only on the first detection).
+// ReusedError is refresh-token reuse: the chain is revoked; RevokeJTIs
+// holds live access-token jtis to denylist, non-empty only on first detection.
 type ReusedError struct {
 	RevokeJTIs []string
 }
@@ -53,8 +47,7 @@ type ReusedError struct {
 func (e *ReusedError) Error() string { return "authclient: refresh token reuse detected" }
 
 // TokenPair mirrors the auth service's token response. LinkedProvider
-// is set only by Callback/DevLink, when the completed flow was an
-// account link rather than a login.
+// is set only when Callback/DevLink completed a link flow, not a login.
 type TokenPair struct {
 	AccessToken      string
 	RefreshToken     string
@@ -68,8 +61,7 @@ type Client struct {
 	api *authapi.ClientWithResponses
 }
 
-// New builds a Client against baseURL using an otelhttp transport and a
-// 10-second timeout.
+// New builds a Client against baseURL with an otelhttp transport and a 10s timeout.
 func New(baseURL string) (*Client, error) {
 	api, err := authapi.NewClientWithResponses(baseURL, authapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
@@ -98,8 +90,7 @@ func (c *Client) Start(ctx context.Context, provider string) (string, error) {
 	}
 }
 
-// Callback completes a real-provider login, or an account link when the
-// consumed state was a link flow (linked_provider comes back set).
+// Callback completes a login, or a link if the consumed state was a link flow.
 func (c *Client) Callback(ctx context.Context, code, state string) (TokenPair, error) {
 	resp, err := c.api.OauthCallbackWithResponse(ctx, authapi.CallbackRequest{Code: code, State: state})
 	if err != nil {
@@ -131,8 +122,7 @@ func (c *Client) Callback(ctx context.Context, code, state string) (TokenPair, e
 	}
 }
 
-// DevToken logs a dev fixture in (the provider answers 404 when the
-// dev adapter is disabled, 400 for unknown fixtures).
+// DevToken logs a dev fixture in: 404 when the dev adapter is disabled, 400 for unknown fixtures.
 func (c *Client) DevToken(ctx context.Context, user string) (TokenPair, error) {
 	resp, err := c.api.DevTokenWithResponse(ctx, authapi.DevTokenRequest{User: user})
 	if err != nil {
@@ -148,9 +138,8 @@ func (c *Client) DevToken(ctx context.Context, user string) (TokenPair, error) {
 	}
 }
 
-// Refresh rotates a refresh token. Returns ReusedError when the token
-// has already been used (reuse detected), ErrRefreshRejected for other
-// 401 cases, and ErrUserUnavailable when the role source is down.
+// Refresh rotates a refresh token, returning ReusedError on detected reuse,
+// ErrRefreshRejected for other 401s, or ErrUserUnavailable if the role source is down.
 func (c *Client) Refresh(ctx context.Context, refreshToken string) (TokenPair, error) {
 	resp, err := c.api.RefreshTokenWithResponse(ctx, authapi.RefreshRequest{RefreshToken: refreshToken})
 	if err != nil {
@@ -223,8 +212,7 @@ func (c *Client) LinkStart(ctx context.Context, provider, bearer string) (string
 	return resp.JSON200.AuthorizeUrl, nil
 }
 
-// DevLink links a dev fixture identity to the session's account in one
-// hop (no external IdP round trip).
+// DevLink links a dev fixture identity to the account in one hop (no external IdP round trip).
 func (c *Client) DevLink(ctx context.Context, user, bearer string) (TokenPair, error) {
 	resp, err := c.api.DevLinkWithResponse(ctx, authapi.DevLinkRequest{User: user}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -263,8 +251,7 @@ func (c *Client) ListIdentities(ctx context.Context, userID, bearer string) ([]c
 	return resp.JSON200.Identities, nil
 }
 
-// DeleteIdentity unlinks a login; sentinel errors carry the two
-// user-meaningful refusals (not found, or the account's last login).
+// DeleteIdentity unlinks a login; sentinel errors cover not-found and last-login refusals.
 func (c *Client) DeleteIdentity(ctx context.Context, identityID uuid.UUID, bearer string) error {
 	resp, err := c.api.DeleteIdentityWithResponse(ctx, identityID, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -282,8 +269,7 @@ func (c *Client) DeleteIdentity(ctx context.Context, identityID uuid.UUID, beare
 	}
 }
 
-// DeleteUserAuth erases the account's identities and refresh families
-// (one leg of account deletion).
+// DeleteUserAuth erases the account's identities and refresh families (one leg of account deletion).
 func (c *Client) DeleteUserAuth(ctx context.Context, userID, bearer string) error {
 	uid, err := parseUserID(userID)
 	if err != nil {
@@ -299,13 +285,8 @@ func (c *Client) DeleteUserAuth(ctx context.Context, userID, bearer string) erro
 	return nil
 }
 
-// parseUserID converts a path-supplied user id into a uuid, wrapping a
-// parse failure into the taxonomy this package's callers already
-// expect. Duplicated in bff/internal/userclient rather than shared:
-// the two packages are the only callers, each wraps with its own
-// package prefix, and Go has no way to share an unexported helper
-// across package boundaries without a new importable package - not
-// worth it for three lines used five times total.
+// parseUserID converts a path-supplied id to a uuid in this package's error
+// taxonomy. Duplicated in userclient; not worth a shared package for it.
 func parseUserID(id string) (uuid.UUID, error) {
 	uid, err := uuid.Parse(id)
 	if err != nil {

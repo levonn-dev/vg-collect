@@ -40,11 +40,8 @@ func TestLoadDefaults(t *testing.T) {
 }
 
 func TestLoadMissingRequired(t *testing.T) {
-	// t.Setenv can only represent a present value, so this unsets each
-	// var afterward to prove required's own absent-only failure mode;
-	// notEmpty (also set on every field here) separately catches a
-	// present-but-empty value. t.Setenv registers cleanup before
-	// os.Unsetenv so the env is restored correctly at test end.
+	// t.Setenv registers cleanup before the explicit Unsetenv below, so this
+	// tests required's absent-only failure mode (notEmpty covers present-but-empty separately).
 	for _, name := range []string{"COOKIE_KEY", "PUBLIC_ORIGINS", "AUTH_SERVICE_URL", "USER_SERVICE_URL", "ENRICHMENT_SERVICE_URL", "COLLECTION_SERVICE_URL", "SOCIAL_SERVICE_URL", "VALKEY_URL"} {
 		t.Run(name, func(t *testing.T) {
 			setRequired(t)
@@ -60,10 +57,8 @@ func TestLoadMissingRequired(t *testing.T) {
 }
 
 func TestLoadRejectsEmptyPublicOrigins(t *testing.T) {
-	// "required" alone accepts a present-but-empty value, and the env
-	// library skips slice population on empty strings entirely: an empty
-	// PUBLIC_ORIGINS would boot a bff that rejects every mutating
-	// request. Startup must fail instead.
+	// required alone accepts present-but-empty; the env library skips slice
+	// population on empty strings - an empty PUBLIC_ORIGINS must fail startup, not silently reject every request.
 	setRequired(t)
 	t.Setenv("PUBLIC_ORIGINS", "")
 	if _, err := config.Load(); err == nil {

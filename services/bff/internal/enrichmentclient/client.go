@@ -1,9 +1,6 @@
-// Package enrichmentclient calls the enrichment service with the
-// user's own Bearer token, via the generated typed client. The bff
-// serves these routes as verbatim relays (single-source pass-throughs
-// are never cached at the bff), so methods return the upstream status,
-// content type, and raw body for the statuses the bff relays, and
-// ErrUpstream for everything else.
+// Package enrichmentclient calls the enrichment service with the user's
+// bearer token. Methods relay the upstream status, content type, and
+// body verbatim (uncached) and return ErrUpstream otherwise.
 package enrichmentclient
 
 import (
@@ -20,8 +17,7 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// ErrUpstream means the enrichment service answered outside its
-// relayed contract (or an infrastructure layer answered for it).
+// ErrUpstream means the answer was outside the relayed contract (enrichment or infrastructure).
 var ErrUpstream = errors.New("enrichmentclient: upstream failure")
 
 // Result is one relayable upstream answer.
@@ -32,8 +28,7 @@ type Client struct {
 	api *enrichapi.ClientWithResponses
 }
 
-// New builds a Client against baseURL using an otelhttp transport and
-// a 10-second timeout.
+// New builds a Client against baseURL with an otelhttp transport and a 10s timeout.
 func New(baseURL string) (*Client, error) {
 	api, err := enrichapi.NewClientWithResponses(baseURL, enrichapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
@@ -53,8 +48,7 @@ func (c *Client) Search(ctx context.Context, bearer, typ, q string) (Result, err
 		http.StatusOK, http.StatusBadRequest)
 }
 
-// Resolve relays POST /products/resolve (the browser body passes
-// through untouched; enrichment owns its validation).
+// Resolve relays POST /products/resolve; browser body passes through untouched, enrichment owns validation.
 func (c *Client) Resolve(ctx context.Context, bearer string, body []byte) (Result, error) {
 	resp, err := c.api.ResolveProductWithBodyWithResponse(ctx, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -74,8 +68,7 @@ func (c *Client) Product(ctx context.Context, bearer string, id uuid.UUID) (Resu
 		http.StatusOK, http.StatusNotFound)
 }
 
-// FX relays GET /fx/latest. A 502 is a relayable answer (cold fx
-// cache upstream), not a client failure.
+// FX relays GET /fx/latest; a 502 (cold fx cache) is a relayable answer, not a client failure.
 func (c *Client) FX(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.GetFxLatestWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -85,8 +78,7 @@ func (c *Client) FX(ctx context.Context, bearer string) (Result, error) {
 		http.StatusOK, http.StatusBadGateway)
 }
 
-// ListPlatforms relays GET /platforms. A 502 is a relayable answer
-// (cold platform catalog upstream), not a client failure.
+// ListPlatforms relays GET /platforms; a 502 (cold catalog) is a relayable answer, not a client failure.
 func (c *Client) ListPlatforms(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.ListPlatformsWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -96,9 +88,8 @@ func (c *Client) ListPlatforms(ctx context.Context, bearer string) (Result, erro
 		http.StatusOK, http.StatusBadGateway)
 }
 
-// UnmatchedProducts relays GET /admin/products/unmatched. Enrichment
-// enforces the admin role, so its 403 is a relayable user answer
-// here, not an infrastructure fault.
+// UnmatchedProducts relays GET /admin/products/unmatched; enrichment
+// enforces the admin role, so its 403 is a relayable user answer.
 func (c *Client) UnmatchedProducts(ctx context.Context, bearer string, params *enrichapi.ListUnmatchedProductsParams) (Result, error) {
 	resp, err := c.api.ListUnmatchedProductsWithResponse(ctx, params, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -108,9 +99,8 @@ func (c *Client) UnmatchedProducts(ctx context.Context, bearer string, params *e
 		http.StatusOK, http.StatusForbidden)
 }
 
-// CommunityProducts relays GET /admin/products/community. Enrichment
-// enforces the admin role, so its 403 is a relayable user answer
-// here, not an infrastructure fault.
+// CommunityProducts relays GET /admin/products/community; enrichment
+// enforces the admin role, so its 403 is a relayable user answer.
 func (c *Client) CommunityProducts(ctx context.Context, bearer string, params *enrichapi.ListCommunityProductsParams) (Result, error) {
 	resp, err := c.api.ListCommunityProductsWithResponse(ctx, params, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -120,9 +110,8 @@ func (c *Client) CommunityProducts(ctx context.Context, bearer string, params *e
 		http.StatusOK, http.StatusForbidden)
 }
 
-// SetProductMapping relays PUT /admin/products/{id}/pricecharting
-// with the browser's body untouched; every contract answer (identity
-// conflicts included) passes through.
+// SetProductMapping relays PUT .../pricecharting with the browser body
+// untouched; every contract answer, including identity conflicts, passes through.
 func (c *Client) SetProductMapping(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
 	resp, err := c.api.SetProductMappingWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -133,9 +122,8 @@ func (c *Client) SetProductMapping(ctx context.Context, bearer string, id uuid.U
 		http.StatusConflict, http.StatusBadGateway)
 }
 
-// DeleteProduct relays DELETE /admin/products/{id} - the guarded
-// residue mop (204; 409 product_matched for matched products). The
-// bff ran the entry-reference check before calling.
+// DeleteProduct relays DELETE /admin/products/{id}, the guarded residue
+// mop (204; 409 product_matched); the bff ran the entry-reference check before calling.
 func (c *Client) DeleteProduct(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
 	resp, err := c.api.DeleteProductWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -186,8 +174,7 @@ func (c *Client) DismissPromoteCandidate(ctx context.Context, bearer string, id 
 		http.StatusNoContent, http.StatusBadRequest, http.StatusForbidden, http.StatusNotFound)
 }
 
-// TriggerRefresh relays POST /admin/refresh (202 started, 403, 409
-// refresh_in_progress).
+// TriggerRefresh relays POST /admin/refresh (202 started, 403, 409 refresh_in_progress).
 func (c *Client) TriggerRefresh(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.TriggerRefreshWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -197,10 +184,8 @@ func (c *Client) TriggerRefresh(ctx context.Context, bearer string) (Result, err
 		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
 }
 
-// NormalizeCommunityRegions relays POST
-// /internal/normalize-community-regions (200 sweep summary, 403;
-// enrichment also accepts a service token, but the bff only ever
-// forwards the admin's own bearer).
+// NormalizeCommunityRegions relays POST /internal/normalize-community-regions
+// (200 sweep summary, 403); enrichment also accepts a service token, but the bff forwards only the admin's bearer.
 func (c *Client) NormalizeCommunityRegions(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.InternalNormalizeCommunityRegionsWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -210,10 +195,8 @@ func (c *Client) NormalizeCommunityRegions(ctx context.Context, bearer string) (
 		http.StatusOK, http.StatusForbidden)
 }
 
-// Score calls the recommendation scorer with the user's own token,
-// returning the raw 200 body plus its decoded degraded flag (the
-// caller caches only non-degraded results). Any other answer is an
-// infrastructure fault.
+// Score returns the raw 200 body plus its decoded degraded flag (callers
+// cache only non-degraded results); any other answer is an infrastructure fault.
 func (c *Client) Score(ctx context.Context, bearer string, req enrichapi.ScoreRequest) ([]byte, bool, error) {
 	resp, err := c.api.ScoreRecommendationsWithResponse(ctx, req, httpkit.BearerEditor(bearer))
 	if err != nil {

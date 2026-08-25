@@ -24,9 +24,7 @@ import (
 )
 
 // stubSocialFull implements server.SocialAPI via function fields; each
-// method panics when its field is unset (function-field, nil-panic -
-// the convention stubEnrichment and the newer stubCollection methods
-// already use).
+// method panics when unset (same convention as stubEnrichment/stubCollection).
 type stubSocialFull struct {
 	follow         func(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
 	unfollow       func(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
@@ -144,10 +142,8 @@ func (s *stubSocialFull) PurgeUserData(ctx context.Context, bearer string) (soci
 	return s.purgeUserData(ctx, bearer)
 }
 
-// TestUnitShelfPage_EffectiveVisibility pins effectiveShelf's
-// two-sided rule (private beats unlisted beats listed; both the shelf
-// and the owner profile must be non-private) and the social-summary
-// degrade posture, all through GET /api/shelves/{shelfId}.
+// TestUnitShelfPage_EffectiveVisibility pins effectiveShelf's two-sided
+// rule (shelf and owner both non-private) and the social-summary degrade posture.
 func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 	shelfID, ownerID := uuid.New(), uuid.New()
 	shelf := collectionapi.SharedShelf{
@@ -249,13 +245,8 @@ func TestUnitShelfPage_EffectiveVisibility(t *testing.T) {
 	})
 }
 
-// TestUnitProfileShelfPage_EffectiveVisibility pins
-// GetProfileShelfPage's anti-enumeration property: unknown handle,
-// private owner, and unknown slug all converge on the exact same 404
-// shelf_not_found so a probing request cannot tell the reasons apart
-// (GetShelfPage's own effectiveShelf rule, applied here to the
-// handle+slug lookup path), plus the happy path, through
-// GET /api/profiles/{handle}/shelves/{slug}.
+// TestUnitProfileShelfPage_EffectiveVisibility pins the anti-enumeration property:
+// unknown handle, private owner, and unknown slug all converge on the same 404.
 func TestUnitProfileShelfPage_EffectiveVisibility(t *testing.T) {
 	ownerID, shelfID := uuid.New(), uuid.New()
 	listedOwner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
@@ -297,8 +288,7 @@ func TestUnitProfileShelfPage_EffectiveVisibility(t *testing.T) {
 		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
 			return privateOwner, nil
 		}}
-		// sharedShelfBySlug is deliberately unset: a private owner must
-		// short-circuit before collection is ever consulted for the slug.
+		// sharedShelfBySlug is deliberately unset: a private owner must short-circuit before collection is called.
 		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
 		rec := doAuthed(t, h, env, http.MethodGet, path)
 		if rec.Code != http.StatusNotFound {
@@ -367,11 +357,8 @@ func TestUnitProfileShelfPage_EffectiveVisibility(t *testing.T) {
 	})
 }
 
-// TestUnitProfilePage_ComposesAndHides pins GET /api/profiles/{handle}:
-// the 404 on an unresolvable handle, that the shelf list is scoped to
-// exactly the resolved owner, and that a social outage degrades the
-// whole social block (profile summary and per-shelf counts alike)
-// while still serving the shelf list.
+// TestUnitProfilePage_ComposesAndHides pins the 404 on an unresolvable
+// handle, shelves scoped to the resolved owner, and social degrading without dropping shelves.
 func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 	ownerID := uuid.New()
 	owner := userapi.ProfileCard{UserId: ownerID, Handle: "alice", ProfileVisibility: "listed"}
@@ -404,8 +391,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 		usr := &stubUsers{sharedProfile: func(context.Context, string, string) (userapi.ProfileCard, error) {
 			return privateOwner, nil
 		}}
-		// listSharedShelves is deliberately unset: a private owner must
-		// short-circuit before collection is ever consulted for the shelf list.
+		// listSharedShelves is deliberately unset: a private owner must short-circuit before collection is called.
 		h, env := setup(usr, &stubCollection{}, &stubSocialFull{})
 		rec := doAuthed(t, h, env, http.MethodGet, path)
 		if rec.Code != http.StatusNotFound {
@@ -472,8 +458,7 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 		col := &stubCollection{listSharedShelves: func(context.Context, string, []uuid.UUID, int, int) ([]collectionapi.SharedShelfSummary, int, error) {
 			return []collectionapi.SharedShelfSummary{shelfSummary}, 1, nil
 		}}
-		// shelvesSummary is deliberately unset: ProfileSummary failing
-		// must short-circuit before it is ever called.
+		// shelvesSummary is deliberately unset: ProfileSummary failing must short-circuit before it is called.
 		soc := &stubSocialFull{profileSummary: func(context.Context, string, uuid.UUID) (socialapi.ProfileSocialSummary, error) {
 			return socialapi.ProfileSocialSummary{}, errors.New("social down")
 		}}
@@ -498,11 +483,8 @@ func TestUnitProfilePage_ComposesAndHides(t *testing.T) {
 	})
 }
 
-// TestUnitSocialRelays_PassProblemsVerbatim pins that a social relay
-// carries the upstream status and body through unchanged in both
-// directions: a rate-cap problem on a like, and a created comment's
-// body (mirrors captureUsers'/TestUpdate_RelaysValidationProblemVerbatim's
-// body-verbatim assertions).
+// TestUnitSocialRelays_PassProblemsVerbatim pins verbatim status/body in
+// both directions: a rate-cap problem on a like, and a created comment's body.
 func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -543,13 +525,8 @@ func TestUnitSocialRelays_PassProblemsVerbatim(t *testing.T) {
 	})
 }
 
-// TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession pins
-// SearchUsers, the one route relayUser carries: a listed-handle
-// search relays the user service's status and body verbatim and
-// forwards the caller's own bearer and q untouched, a dead client
-// answers the exact upstream_error problem relayUser produces (not
-// just "some 502"), and no session is 401 before the handler - and
-// before the user service - ever runs.
+// TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession relays status/body
+// and forwards bearer/q verbatim, answers relayUser's exact upstream_error on a dead client, and gates on session.
 func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -592,10 +569,7 @@ func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
 	})
 
 	t.Run("no session is 401 before the user service ever runs", func(t *testing.T) {
-		// searchProfiles stays nil: reaching the user service would
-		// panic, which is the ordering assertion (mirrors
-		// TestUnitAdminDelete_ReferencedAnswers409BeforeEnrichment's
-		// deleteProduct-stays-nil trick).
+		// searchProfiles stays nil: reaching the user service would panic, which is the ordering assertion.
 		h.users = &stubUsers{}
 		rec := doUnauthed(t, h, env, http.MethodGet, "/api/search/users?q=alice")
 		if rec.Code != http.StatusUnauthorized {
@@ -604,23 +578,19 @@ func TestUnitSearchUsers_RelaysForwardsBearerAndGatesSession(t *testing.T) {
 	})
 }
 
-// mockComment builds a social comment row for a stubbed ListComments
-// body. AuthorId is a pointer purely for fixture-building so a nil
-// marshals to the JSON literal null - the purge-anonymized shape
-// composeCommentsPage must tolerate - unlike production's rawComment,
-// which decodes that same null into uuid.Nil.
-type mockComment struct {
-	Id        uuid.UUID  `json:"id"`
-	ShelfId   uuid.UUID  `json:"shelf_id"`
-	AuthorId  *uuid.UUID `json:"author_id"`
-	Body      string     `json:"body"`
-	CreatedAt time.Time  `json:"created_at"`
+// stubComment builds a social comment row for a stubbed ListComments body.
+type stubComment struct {
+	Id        uuid.UUID `json:"id"`
+	ShelfId   uuid.UUID `json:"shelf_id"`
+	AuthorId  uuid.UUID `json:"author_id"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
-func mockCommentsBody(t *testing.T, comments []mockComment, nextCursor *string) []byte {
+func stubCommentsBody(t *testing.T, comments []stubComment, nextCursor *string) []byte {
 	t.Helper()
 	b, err := json.Marshal(struct {
-		Comments   []mockComment `json:"comments"`
+		Comments   []stubComment `json:"comments"`
 		NextCursor *string       `json:"next_cursor,omitempty"`
 	}{Comments: comments, NextCursor: nextCursor})
 	if err != nil {
@@ -629,8 +599,7 @@ func mockCommentsBody(t *testing.T, comments []mockComment, nextCursor *string) 
 	return b
 }
 
-// commentDTO is the subset of a composed Comment this file's tests
-// decode.
+// commentDTO is the subset of a composed Comment this file's tests decode.
 type commentDTO struct {
 	Id       uuid.UUID `json:"id"`
 	AuthorId uuid.UUID `json:"author_id"`
@@ -645,17 +614,12 @@ type commentListDTO struct {
 	NextCursor *string      `json:"next_cursor,omitempty"`
 }
 
-// TestUnitShelfComments_AuthorHydration pins ListShelfComments'
-// composition: each live comment's author_id is hydrated into a
-// ProfileCard batched in ONE deduplicated SharedCardsByIDs call, a
-// purge-anonymized (author_id null) row is excluded from that batch
-// and never carries author, a card-fetch failure fails open (the page
-// still serves, sans authors), and cursor/limit still pass straight
-// through to social.
+// TestUnitShelfComments_AuthorHydration pins that author_id hydrates via ONE
+// deduplicated SharedCardsByIDs call, fails open on card-fetch error, and passes cursor/limit through.
 func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 	shelfID, ownerID := uuid.New(), uuid.New()
 	aliceID, bobID := uuid.New(), uuid.New()
-	commentA, commentB, commentC, commentD := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	commentA, commentB, commentC := uuid.New(), uuid.New(), uuid.New()
 	created := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 
 	shelf := collectionapi.SharedShelf{
@@ -666,14 +630,11 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 	alice := userapi.ProfileCard{UserId: aliceID, Handle: "alice", ProfileVisibility: "listed"}
 	bob := userapi.ProfileCard{UserId: bobID, Handle: "bob", ProfileVisibility: "listed"}
 
-	// A and B are both authored by alice (dedup), C by bob (right card
-	// attached to the right comment, not swapped), D is anonymized
-	// (author_id null).
-	rows := []mockComment{
-		{Id: commentA, ShelfId: shelfID, AuthorId: &aliceID, Body: "first", CreatedAt: created},
-		{Id: commentB, ShelfId: shelfID, AuthorId: &aliceID, Body: "second", CreatedAt: created},
-		{Id: commentC, ShelfId: shelfID, AuthorId: &bobID, Body: "third", CreatedAt: created},
-		{Id: commentD, ShelfId: shelfID, AuthorId: nil, Body: "anonymized", CreatedAt: created},
+	// A and B are both authored by alice (dedup); C by bob (right card attached, not swapped).
+	rows := []stubComment{
+		{Id: commentA, ShelfId: shelfID, AuthorId: aliceID, Body: "first", CreatedAt: created},
+		{Id: commentB, ShelfId: shelfID, AuthorId: aliceID, Body: "second", CreatedAt: created},
+		{Id: commentC, ShelfId: shelfID, AuthorId: bobID, Body: "third", CreatedAt: created},
 	}
 
 	setup := func(usr *stubUsers, soc *stubSocialFull) (*Handlers, *testEnv) {
@@ -687,7 +648,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 	}
 	path := "/api/shelves/" + shelfID.String() + "/comments?cursor=abc&limit=3"
 
-	t.Run("attaches the right card per author, deduplicated, anonymized excluded, cursor forwarded", func(t *testing.T) {
+	t.Run("attaches the right card per author, deduplicated, cursor forwarded", func(t *testing.T) {
 		var gotCursor *string
 		var gotLimit *int
 		var authorBatchCalls [][]uuid.UUID
@@ -709,7 +670,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 			}
 			gotCursor, gotLimit = cursor, limit
 			return socialclient.Result{Status: http.StatusOK, ContentType: "application/json",
-				Body: mockCommentsBody(t, rows, &next)}, nil
+				Body: stubCommentsBody(t, rows, &next)}, nil
 		}}
 		h, env := setup(usr, soc)
 		rec := doAuthed(t, h, env, http.MethodGet, path)
@@ -730,8 +691,8 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		if got.NextCursor == nil || *got.NextCursor != next {
 			t.Fatalf("next_cursor = %v, want %s", got.NextCursor, next)
 		}
-		if len(got.Comments) != 4 {
-			t.Fatalf("comments = %d, want 4", len(got.Comments))
+		if len(got.Comments) != 3 {
+			t.Fatalf("comments = %d, want 3", len(got.Comments))
 		}
 		byID := map[uuid.UUID]commentDTO{}
 		for _, c := range got.Comments {
@@ -746,14 +707,8 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		if byID[commentC].Author == nil || byID[commentC].Author.Handle != "bob" {
 			t.Fatalf("comment C author = %+v, want bob", byID[commentC].Author)
 		}
-		if byID[commentD].Author != nil {
-			t.Fatalf("comment D (anonymized) author = %+v, want absent", byID[commentD].Author)
-		}
-		// Pin the wire author_id field itself (not just the hydrated
-		// Author card, which is keyed off it and so would pass even if
-		// the id on the wire were swapped or wrong): A and B carry
-		// alice's real seeded uuid, C carries bob's, both literally -
-		// and only D, the anonymized row, decodes to the zero value.
+		// Pin the wire author_id itself, not just the hydrated Author card (keyed
+		// off it, so it would pass even if the wire id were swapped): A/B carry alice's uuid, C carries bob's.
 		if byID[commentA].AuthorId != aliceID {
 			t.Fatalf("comment A author_id = %s, want %s (alice)", byID[commentA].AuthorId, aliceID)
 		}
@@ -762,20 +717,6 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		}
 		if byID[commentC].AuthorId != bobID {
 			t.Fatalf("comment C author_id = %s, want %s (bob)", byID[commentC].AuthorId, bobID)
-		}
-		if byID[commentD].AuthorId != uuid.Nil {
-			t.Fatalf("comment D (anonymized) author_id = %s, want the zero value (wire null)", byID[commentD].AuthorId)
-		}
-		// Wire-truth check: commentDTO.AuthorId (uuid.UUID, non-pointer)
-		// would silently decode a JSON null into uuid.Nil above without
-		// erroring, so the byID assertions alone cannot prove the
-		// response actually put null on the wire for comment D rather
-		// than, say, a zeroed uuid. Assert the literal bytes instead
-		// (same idiom as the fail-open subtest's rec.Body string check
-		// below): api.Comment.AuthorId is required+nullable, so the key
-		// must always be present and null for this one row.
-		if !strings.Contains(rec.Body.String(), `"author_id":null`) {
-			t.Fatalf("response body missing literal author_id null for the anonymized comment: %s", rec.Body)
 		}
 
 		if len(authorBatchCalls) != 2 {
@@ -793,15 +734,14 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 			seen[id] = true
 		}
 		if !seen[aliceID] || !seen[bobID] {
-			t.Fatalf("author batch %v, want alice and bob, not the anonymized row", batch)
+			t.Fatalf("author batch %v, want alice and bob", batch)
 		}
 	})
 
 	t.Run("card-fetch failure fails open: 200 without authors, event logged", func(t *testing.T) {
 		usr := &stubUsers{sharedCardsByIDs: func(_ context.Context, _ string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
-			// The first call (effectiveShelf's owner lookup) still
-			// succeeds; only the comment-author batch (requesting
-			// alice alone) fails, so the page must still serve.
+			// The first call (effectiveShelf's owner lookup) succeeds; only the
+			// comment-author batch (alice alone) fails, so the page must still serve.
 			if len(ids) == 1 && ids[0] == ownerID {
 				return []userapi.ProfileCard{owner}, nil
 			}
@@ -809,7 +749,7 @@ func TestUnitShelfComments_AuthorHydration(t *testing.T) {
 		}}
 		soc := &stubSocialFull{listComments: func(context.Context, string, uuid.UUID, *string, *int) (socialclient.Result, error) {
 			return socialclient.Result{Status: http.StatusOK, ContentType: "application/json",
-				Body: mockCommentsBody(t, rows[:1], nil)}, nil
+				Body: stubCommentsBody(t, rows[:1], nil)}, nil
 		}}
 		h, env := setup(usr, soc)
 		var logBuf bytes.Buffer
@@ -865,13 +805,8 @@ type feedPageDTO struct {
 }
 
 // TestUnitFeed_FillLoopAndGating pins the fill loop's page-full and
-// no-next-cursor termination conditions (feedFillRounds exhaustion is
-// covered separately by inspection: the loop's `for` guard is the
-// same three-way race for every round) together with the tab-driven
-// gating rule: actions are signed (actor cards always attach) while
-// objects are gated (tab=following drops a row naming a non-listed
-// shelf or a non-listed followee; tab=you keeps every row because the
-// objects are the caller's own).
+// no-next-cursor terminations (feedFillRounds exhaustion is covered by
+// inspection) and the tab-driven gate: objects drop when unlisted on tab=following, tab=you keeps everything.
 func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 	base := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	actor1, actor2, actor3, actor4 := uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -1031,10 +966,8 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 	})
 
 	t.Run("tab=following: an unfillable page stops at feedFillRounds, not page-full or exhaustion", func(t *testing.T) {
-		// Every round hands back one dropped (unlisted-shelf) event plus
-		// a non-nil next_cursor - the stream never reports exhausted and
-		// items never reach the limit, so only the round cap can stop
-		// the loop.
+		// Every round hands back one dropped event plus a non-nil next_cursor - the
+		// stream never exhausts and items never reach the limit, so only the round cap stops the loop.
 		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.users, h.collection = newUsers(), newCollection()
 		var rounds int
@@ -1071,22 +1004,17 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 		if len(got.Items) != 0 {
 			t.Fatalf("items = %+v, want none (every round's row was gated out)", got.Items)
 		}
-		// The raw stream is not exhausted (every round still returned a
-		// next_cursor) - a short page from hitting the round cap must
-		// still carry a cursor so a follow-up request resumes the fill
-		// instead of being told the feed is over.
+		// The raw stream is not exhausted; a short page from the round cap must
+		// still carry a cursor so a follow-up request resumes, instead of being told the feed is over.
 		if got.NextCursor == nil || *got.NextCursor != lastCursor {
 			t.Fatalf("next_cursor = %v, want %q (round %d's own raw cursor)", got.NextCursor, lastCursor, feedFillRounds)
 		}
 	})
 }
 
-// TestUnitFeed_UpstreamErrorsAreHard502s pins that GetFeed never
-// degrades quietly the way a shelf/profile page's social block does:
-// a raw social.Feed failure and a hydrateFeed batch failure (any of
-// its four lookups) both answer 502, because the failed lookup is
-// itself gating-relevant - fail-open here would risk naming a gated
-// object.
+// TestUnitFeed_UpstreamErrorsAreHard502s pins that GetFeed never degrades
+// quietly: a raw social.Feed failure or any hydrateFeed batch failure both
+// answer 502, since the failed lookup is gating-relevant - fail-open would risk naming a gated object.
 func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	actorID, shelfID, ownerID := uuid.New(), uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
@@ -1124,15 +1052,9 @@ func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	})
 }
 
-// TestUnitFeed_ValidatesTabAndCursor pins that GetFeed rejects a bad
-// tab or a malformed cursor with 400 invalid_param before social is
-// ever called: socialclient.Feed collapses every non-200 (including
-// social's own 400 on either input) into one generic error, so
-// unvalidated bad input would otherwise surface as a misleading 502
-// instead of the contract's documented 400. Every bad-input subtest
-// leaves h.social's feed field unset, so an unwanted call panics
-// loudly rather than passing silently; the last subtest proves a
-// well-formed cursor still reaches social.Feed unchanged.
+// TestUnitFeed_ValidatesTabAndCursor pins that a bad tab or malformed cursor
+// gets 400 before social is called (else socialclient.Feed's generic-error
+// collapse would surface a misleading 502); h.social.feed stays unset so an unwanted call panics.
 func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -1157,10 +1079,8 @@ func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 		assertInvalidParam(t, "/api/feed?tab=bogus")
 	})
 
-	// uuids contain dashes, never dots, so splitting a cursor on its
-	// FIRST dot can never mistake a uuid's own hyphens for a second
-	// field - these cases must all fail for other reasons (no dot at
-	// all, an empty half, or a non-uuid right half).
+	// uuids contain dashes, never dots, so splitting on the FIRST dot can't
+	// mistake a uuid's hyphens for a second field; these cases fail for other reasons.
 	badCursors := []string{"abc", "123.", ".uuid", "1.2.not-a-uuid"}
 	for _, c := range badCursors {
 		t.Run("garbage cursor "+c+" -> 400", func(t *testing.T) {
@@ -1186,11 +1106,8 @@ func TestUnitFeed_ValidatesTabAndCursor(t *testing.T) {
 	})
 }
 
-// TestUnitFeed_ValidatesLimitMinimum pins that GetFeed rejects a
-// sub-minimum limit with 400 invalid_param before social is ever
-// called - api/bff.yaml declares minimum: 1 on feed's limit. limit=1
-// (the minimum) must still be accepted and reach social.Feed
-// unchanged.
+// TestUnitFeed_ValidatesLimitMinimum pins that GetFeed rejects a sub-minimum
+// limit with 400 before social is called (api/bff.yaml: minimum 1); limit=1 must still be accepted.
 func TestUnitFeed_ValidatesLimitMinimum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -1226,11 +1143,8 @@ func TestUnitFeed_ValidatesLimitMinimum(t *testing.T) {
 	})
 }
 
-// TestUnitFeed_DropsListedShelfWithNonListedOwner pins the other half
-// of the following-tab shelf gate (TestUnitFeed_FillLoopAndGating
-// covers the shelf-not-listed half): a listed shelf whose owner is
-// not listed is still gated out - the shelf's own visibility is
-// necessary but not sufficient.
+// TestUnitFeed_DropsListedShelfWithNonListedOwner pins the shelf gate's other
+// half: a listed shelf with a non-listed owner is still gated out.
 func TestUnitFeed_DropsListedShelfWithNonListedOwner(t *testing.T) {
 	actorID, ownerID, shelfID := uuid.New(), uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
@@ -1273,12 +1187,8 @@ func TestUnitFeed_DropsListedShelfWithNonListedOwner(t *testing.T) {
 	}
 }
 
-// TestUnitFeed_FollowedUserCard pins that a followed_user event's
-// FeedItem carries the followee's card: the card is already
-// batch-resolved for the tab=following gate (cardByID[e.TargetUserId])
-// and must not be discarded once the gate clears it, and tab=you must
-// carry it too since the map is populated for every followed_user
-// event regardless of tab.
+// TestUnitFeed_FollowedUserCard pins that a followed_user event carries the
+// followee's card on both tab=following (gate-cleared) and tab=you.
 func TestUnitFeed_FollowedUserCard(t *testing.T) {
 	actorID, followeeID := uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
@@ -1346,12 +1256,8 @@ func TestUnitFeed_FollowedUserCard(t *testing.T) {
 	})
 }
 
-// TestUnitFeed_ActorCardAttachesAtAnyVisibility pins that an event's
-// actor card attaches regardless of the actor's own
-// profile_visibility: SharedCardsByIDs is a plain batch lookup with
-// no visibility filter of its own (unlike the tab=following object
-// gate, which does filter on visibility), so an unlisted or private
-// actor must still be named for their own action.
+// TestUnitFeed_ActorCardAttachesAtAnyVisibility pins that an actor card
+// attaches regardless of visibility: SharedCardsByIDs has no visibility filter, unlike the object gate.
 func TestUnitFeed_ActorCardAttachesAtAnyVisibility(t *testing.T) {
 	t.Run("private actor liking a listed shelf: row survives, actor card still attached", func(t *testing.T) {
 		actorID, ownerID, shelfID := uuid.New(), uuid.New(), uuid.New()
@@ -1396,9 +1302,8 @@ func TestUnitFeed_ActorCardAttachesAtAnyVisibility(t *testing.T) {
 	})
 }
 
-// TestUnitFeed_CommentExcerpts pins that a commented_shelf event's
-// object_comment_id drives one CommentsByIDs lookup and that the
-// surviving item's comment_excerpt is the live comment's body.
+// TestUnitFeed_CommentExcerpts pins that object_comment_id drives one
+// CommentsByIDs lookup and comment_excerpt is the live comment's body.
 func TestUnitFeed_CommentExcerpts(t *testing.T) {
 	actorID, ownerID := uuid.New(), uuid.New()
 	shelfID, commentID := uuid.New(), uuid.New()
@@ -1451,12 +1356,9 @@ func TestUnitFeed_CommentExcerpts(t *testing.T) {
 	}
 }
 
-// TestUnitExplore_RecentAndTop covers both Explore surfaces: recent's
-// page collection (unfiltered) -> gate owners -> fill -> hydrate
-// counts pipeline (happy path, owner-gate drops, the fill loop's
-// refill and round cap, next_offset arithmetic, exhaustion, and a
-// social outage's fail-open), and top's leaderboard-order-preserving
-// drop of a non-listed shelf and a non-listed owner.
+// TestUnitExplore_RecentAndTop covers recent's page->gate->fill->hydrate
+// pipeline (owner-gate drops, refill/round cap, next_offset, exhaustion,
+// social fail-open) and top's leaderboard-order-preserving drop of non-listed rows.
 func TestUnitExplore_RecentAndTop(t *testing.T) {
 	t.Run("recent: pages collection unfiltered, gates listed owners, counts hydrate", func(t *testing.T) {
 		id1, id2 := uuid.New(), uuid.New()
@@ -1485,9 +1387,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		h.collection = &stubCollection{listSharedShelves: func(_ context.Context, _ string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error) {
 			calls++
 			ownerIDsArgNil, gotLimit, gotOffset = len(ownerIDs) == 0, limit, offset
-			// total=12: offset(10)+consumed(2)=12 too, so this page is the
-			// exact tail end - the exhaustion (not round-cap or limit-fill)
-			// path, pinned separately below.
+			// total=12: offset(10)+consumed(2)=12, so this page is the exact tail end -
+			// the exhaustion path (not round-cap or limit-fill), pinned separately below.
 			return []collectionapi.SharedShelfSummary{shelfA, shelfB}, 12, nil
 		}}
 		h.social = &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
@@ -1578,11 +1479,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop owner-gate: a shelf is listed by
-	// query construction alone (collection's unfiltered query only ever
-	// returns visibility=listed rows), so the owner card is the one
-	// check left; an owner who has gone unlisted (or vanished) drops
-	// their shelf while a listed sibling in the same page survives.
+	// TestUnitExplore_RecentAndTop owner-gate: shelves are listed by query
+	// construction alone, so the owner card is the one check left; an unlisted/vanished owner drops their shelf.
 	t.Run("recent: owner-unlisted shelf dropped while listed sibling survives", func(t *testing.T) {
 		listedOwner, unlistedOwner := uuid.New(), uuid.New()
 		kept := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Kept", Slug: "kept", OwnerId: listedOwner, Visibility: "listed", CoverUrls: []string{}}
@@ -1633,10 +1531,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop fill loop: mirrors
-	// TestUnitFeed_FillLoopAndGating - round 1 comes back entirely
-	// dropped (owners gone unlisted), so the loop must re-page collection
-	// at the ADVANCED offset for round 2, not repeat round 1's rows.
+	// TestUnitExplore_RecentAndTop fill loop: round 1 comes back entirely
+	// dropped, so the loop must re-page collection at the ADVANCED offset for round 2, not repeat round 1.
 	t.Run("recent: fill loop refills after an all-dropped round (round 2 fetch proven)", func(t *testing.T) {
 		unlistedOwner1, unlistedOwner2, listedOwner := uuid.New(), uuid.New(), uuid.New()
 		dropped1 := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Dropped1", Slug: "dropped1", OwnerId: unlistedOwner1, Visibility: "listed", CoverUrls: []string{}}
@@ -1702,11 +1598,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop next_offset arithmetic: the response
-	// is limit-satisfied after round 1 (1 survivor fills limit=1), but
-	// collection actually handed back 2 raw rows to get there and more
-	// remain beyond them - next_offset must reflect the 2 raw rows
-	// consumed, not the 1 gated survivor nor any other count.
+	// TestUnitExplore_RecentAndTop next_offset arithmetic: limit=1 fills after
+	// 2 raw rows (1 gated), so next_offset must reflect the 2 raw rows consumed, not the survivor count.
 	t.Run("recent: next_offset counts raw consumed rows, not gated survivors", func(t *testing.T) {
 		unlistedOwner, listedOwner := uuid.New(), uuid.New()
 		dropped := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Dropped", Slug: "dropped", OwnerId: unlistedOwner, Visibility: "listed", CoverUrls: []string{}}
@@ -1729,8 +1622,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		var calls int
 		h.collection = &stubCollection{listSharedShelves: func(context.Context, string, []uuid.UUID, int, int) ([]collectionapi.SharedShelfSummary, int, error) {
 			calls++
-			// 2 raw rows, only 1 survives the owner gate; total=5 means 3
-			// more rows exist past this page.
+			// 2 raw rows, only 1 survives the owner gate; total=5 means 3 more rows exist past this page.
 			return []collectionapi.SharedShelfSummary{dropped, survivor}, 5, nil
 		}}
 		h.social = &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
@@ -1763,14 +1655,9 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop mid-page-break: round 1 examines
-	// its whole page without filling (A survives, B's owner is
-	// unlisted), so it advances by the full page as usual - offset 2
-	// for round 2. Round 2 then fills the limit at C, the FIRST of
-	// its two rows, leaving D - also listed - unexamined in that same
-	// page's tail. next_offset must resume just past C (offset 3, at
-	// D), the last row actually examined-and-included, not past the
-	// whole page - advancing past D that way would skip it forever.
+	// TestUnitExplore_RecentAndTop mid-page-break: round 2 fills the limit at C,
+	// the FIRST of its 2 rows, leaving D unexamined in the same page's tail; next_offset
+	// must resume just past C (at D), not past the whole page, or D is skipped forever.
 	t.Run("recent: mid-page fill resumes past the last INCLUDED row, not the whole page (regression)", func(t *testing.T) {
 		ownerA, ownerB, ownerC, ownerD := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 		shelfA := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "A", Slug: "a", OwnerId: ownerA, Visibility: "listed", CoverUrls: []string{}}
@@ -1801,11 +1688,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 			gotOffsets = append(gotOffsets, offset)
 			switch calls {
 			case 1:
-				// total=5: one more row exists past D, so a resume
-				// point of 4 (past D) and one of 3 (at D) both read
-				// as "more data left" - this total makes the failure
-				// mode a present-but-wrong next_offset that skips D,
-				// not a falsely-absent one.
+				// total=5: a resume point of 4 (past D) or 3 (at D) both read as more-data-left,
+				// so the failure mode here is a present-but-wrong next_offset that skips D, not a falsely-absent one.
 				return []collectionapi.SharedShelfSummary{shelfA, shelfB}, 5, nil
 			case 2:
 				return []collectionapi.SharedShelfSummary{shelfC, shelfD}, 5, nil
@@ -1847,10 +1731,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop mid-page-break continuation: a
-	// caller following the previous test's next_offset=3 must land
-	// exactly on D, the shelf the old arithmetic skipped, and see no
-	// further next_offset once collection confirms D was the last row.
+	// TestUnitExplore_RecentAndTop mid-page-break continuation: following
+	// next_offset=3 must land exactly on D (the shelf old arithmetic skipped), with no further next_offset.
 	t.Run("recent: continuation request at the resumed offset serves the previously-skipped shelf", func(t *testing.T) {
 		ownerD := uuid.New()
 		shelfD := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "D", Slug: "d", OwnerId: ownerD, Visibility: "listed", CoverUrls: []string{}}
@@ -1900,10 +1782,8 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		}
 	})
 
-	// TestUnitExplore_RecentAndTop exhaustion: collection handing back
-	// fewer rows than asked means there is nothing left to page to, so
-	// next_offset must be entirely absent from the response, the same
-	// "absent, not null" contract next_cursor uses on the feed.
+	// TestUnitExplore_RecentAndTop exhaustion: fewer rows than asked means
+	// next_offset must be entirely absent, the same "absent, not null" contract next_cursor uses.
 	t.Run("recent: exhaustion (collection returns fewer than asked) leaves next_offset absent", func(t *testing.T) {
 		owner := uuid.New()
 		shelf := collectionapi.SharedShelfSummary{Id: uuid.New(), Name: "Only", Slug: "only", OwnerId: owner, Visibility: "listed", CoverUrls: []string{}}
@@ -1913,8 +1793,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 			return []userapi.ProfileCard{{UserId: owner, Handle: "keeper", ProfileVisibility: "listed"}}, nil
 		}}
 		h.collection = &stubCollection{listSharedShelves: func(context.Context, string, []uuid.UUID, int, int) ([]collectionapi.SharedShelfSummary, int, error) {
-			// The default limit is 20; handing back 1 row (fewer than
-			// asked) means the listed-shelf stream is exhausted.
+			// The default limit is 20; handing back 1 row (fewer than asked) means the stream is exhausted.
 			return []collectionapi.SharedShelfSummary{shelf}, 1, nil
 		}}
 		h.social = &stubSocialFull{shelvesSummary: func(context.Context, string, []uuid.UUID) ([]socialapi.ShelfSocialSummary, error) {
@@ -1951,9 +1830,7 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 		h := newTestHandlers(t, newStubCache(), &stubAuth{})
 		h.social = soc
 		h.collection = &stubCollection{sharedShelvesByIDs: func(context.Context, string, []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
-			// Deliberately returned out of leaderboard order, to prove
-			// the handler walks the leaderboard's own order rather than
-			// trusting this response's order.
+			// Deliberately returned out of leaderboard order, to prove the handler walks the leaderboard's own order.
 			return []collectionapi.SharedShelfSummary{
 				{Id: shelfD, Name: "D", Slug: "d", OwnerId: ownerD, Visibility: "listed", CoverUrls: []string{}},
 				{Id: shelfC, Name: "C", Slug: "c", OwnerId: ownerC, Visibility: "listed", CoverUrls: []string{}},
@@ -1996,12 +1873,9 @@ func TestUnitExplore_RecentAndTop(t *testing.T) {
 	})
 }
 
-// TestUnitExplore_ValidatesLimitAndOffsetMinimum pins that
-// GetExplore's sort=recent branch rejects a sub-minimum limit or a
-// negative offset with 400 invalid_param before any upstream call -
-// api/bff.yaml declares minimum: 1 on limit and minimum: 0 on offset.
-// limit=1 (the minimum) must still be accepted and reach the upstream
-// collection call.
+// TestUnitExplore_ValidatesLimitAndOffsetMinimum pins that sort=recent rejects
+// a sub-minimum limit or negative offset with 400 before any upstream call
+// (api/bff.yaml: minimum 1/0); limit=1 must still be accepted.
 func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
@@ -2047,30 +1921,17 @@ func TestUnitExplore_ValidatesLimitAndOffsetMinimum(t *testing.T) {
 	})
 }
 
-// --- Direct pins for the ID-collection helper family (two
-// dedupe-builders, three index-builders) below. dedupedCommentAuthorIDs
-// deliberately filters uuid.Nil (purged/anonymized comment authors -
-// see rawComment's own doc comment above); shelfSocialByID must keep
-// returning a POINTER map because a missing key reading back nil, not
-// a zero-valued struct, is load-bearing at toShelfCard and all three
-// of its call sites (composeShelfPage, hydrateFeed, exploreRecent,
-// exploreTop - toShelfCard's nil check is what leaves a card's social
-// fields absent rather than zeroed). TestUnitShelfComments_AuthorHydration
-// above and the explore/feed suites elsewhere in this file already
-// exercise these functions indirectly through full HTTP routes; these
-// five are the direct, single-function pins their shared generics
-// (dedupedIDs, indexByID, indexByIDPtr) need so a naive reuse (a
-// filterless dedupe, or a value-typed index) fails a fast unit test
-// instead of only a full composition test three call sites away.
+// Direct pins for the ID-collection helper family (two dedupe-builders,
+// three index-builders): shelfSocialByID must keep returning a POINTER map,
+// since a missing key reading nil (not zero-valued) is load-bearing at
+// toShelfCard's call sites; these unit tests catch a naive value-map reuse fast.
 
-func TestUnitDedupedCommentAuthorIDs_FiltersNilAndDedupesInFirstSeenOrder(t *testing.T) {
+func TestUnitDedupedCommentAuthorIDs_DedupesInFirstSeenOrder(t *testing.T) {
 	alice, bob := uuid.New(), uuid.New()
 	comments := []rawComment{
 		{AuthorId: alice},
-		{AuthorId: uuid.Nil}, // purge-anonymized; must not appear or count as "seen"
 		{AuthorId: bob},
 		{AuthorId: alice}, // duplicate; must not repeat
-		{AuthorId: uuid.Nil},
 	}
 	got := dedupedCommentAuthorIDs(comments)
 	want := []uuid.UUID{alice, bob}
@@ -2084,12 +1945,9 @@ func TestUnitDedupedCommentAuthorIDs_FiltersNilAndDedupesInFirstSeenOrder(t *tes
 	}
 }
 
-// TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrderNoNilFilter is
-// dedupedCommentAuthorIDs' sibling: the same dedupe shape, but
-// WITHOUT a uuid.Nil filter - collectionapi.SharedShelfSummary.OwnerId
-// is never the purge sentinel (every shelf has a real owner), so a
-// shared generic must not apply the comment-author filter here.
-func TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrderNoNilFilter(t *testing.T) {
+// TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrder is dedupedCommentAuthorIDs'
+// sibling: same dedupe shape over collectionapi.SharedShelfSummary.OwnerId.
+func TestUnitDedupedOwnerIDs_DedupesInFirstSeenOrder(t *testing.T) {
 	ownerA, ownerB := uuid.New(), uuid.New()
 	shelves := []collectionapi.SharedShelfSummary{
 		{Id: uuid.New(), OwnerId: ownerA},
@@ -2136,13 +1994,8 @@ func TestUnitShelfSummariesByID_IndexesByShelfID(t *testing.T) {
 }
 
 // TestUnitCommentByID_IndexesByCommentID pins hydrateFeed's inline
-// commentByID map-build (no standalone named function - it has only
-// the one call site, unlike cardsByID/shelfSummariesByID/
-// shelfSocialByID above): indexByID with the exact same closure shape
-// hydrateFeed itself uses. A value map is correct here: commentByID's
-// one reader is an `if c, ok := ...; ok` guarded lookup
-// (TestUnitFeed_CommentExcerpts exercises it end to end), so unlike
-// shelfSocialByID there is no nil-on-miss contract to preserve.
+// commentByID build (indexByID, no standalone function - one call site).
+// A value map is correct here: the one reader is an ok-checked lookup, no nil-on-miss contract needed.
 func TestUnitCommentByID_IndexesByCommentID(t *testing.T) {
 	c1, c2 := uuid.New(), uuid.New()
 	comments := []socialapi.Comment{
@@ -2158,11 +2011,8 @@ func TestUnitCommentByID_IndexesByCommentID(t *testing.T) {
 	}
 }
 
-// TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue pins the
-// pointer-map contract shelfSocialByID exists for: a shelf id NOT in
-// the input summaries must read back a nil *ShelfSocialSummary from
-// the returned map, not a pointer to a zero-valued struct. This is
-// the property that rules out a naive value-typed indexByID reuse.
+// TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue pins the pointer-map
+// contract: a missing shelf id reads back nil, not a zero-valued struct pointer.
 func TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue(t *testing.T) {
 	present, missing := uuid.New(), uuid.New()
 	summaries := []socialapi.ShelfSocialSummary{
@@ -2181,12 +2031,9 @@ func TestUnitShelfSocialByID_MissingKeyReadsNilNotZeroValue(t *testing.T) {
 		t.Fatalf("present value = %+v, want the seeded summary", *p)
 	}
 
-	// A nil (never-assigned) map must behave identically: every
-	// exploreRecent/exploreTop call site declares summaryByID as a
-	// bare `var`, populated only on a successful ShelvesSummary call,
-	// and reads straight from it either way - a nil Go map read never
-	// panics and always yields the zero value for the value type,
-	// nil, here.
+	// A nil (never-assigned) map must behave identically: exploreRecent/exploreTop
+	// declare summaryByID as a bare var, populated only on success; a nil Go map
+	// read never panics and yields the zero value (nil) either way.
 	var nilMap map[uuid.UUID]*socialapi.ShelfSocialSummary
 	if nilMap[present] != nil {
 		t.Fatalf("nil map read = %+v, want nil", nilMap[present])

@@ -70,10 +70,8 @@ func TestRelay_DeclaredProblemPassesUndeclaredFails(t *testing.T) {
 	}
 }
 
-// TestAdminAndFxRelays_RouteBearerStatusAndBody drives the fx and admin
-// relay methods against a stub that answers each method's happy status,
-// proving each reaches the right verb+path, forwards the caller's own
-// bearer, and relays the upstream status, content type, and body verbatim.
+// TestAdminAndFxRelays_RouteBearerStatusAndBody checks verb, path, bearer,
+// and relay fidelity across the fx and admin relay methods.
 func TestAdminAndFxRelays_RouteBearerStatusAndBody(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	var status int
@@ -150,9 +148,7 @@ func TestAdminAndFxRelays_RouteBearerStatusAndBody(t *testing.T) {
 	}
 }
 
-// TestAdminRelays_ForbiddenIsRelayed proves the admin nuance: enrichment
-// enforces the admin role itself, so its 403 is a relayable user answer
-// on admin routes, not an infrastructure fault.
+// TestAdminRelays_ForbiddenIsRelayed: enrichment enforces the admin role, so 403 relays as a user answer.
 func TestAdminRelays_ForbiddenIsRelayed(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")

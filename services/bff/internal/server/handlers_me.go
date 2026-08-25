@@ -1,5 +1,4 @@
-// The signed-in user's own profile: read, update,
-// linked-identity management, and full account deletion.
+// The signed-in user's own profile: read, update, linked identities, and account deletion.
 
 package server
 
@@ -19,9 +18,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
-// GetMe composes the signed-in user's profile from the user service,
-// briefly cached (the bff caches only what it composes; pass-throughs
-// stay uncached).
+// GetMe composes the signed-in user's profile, briefly cached (the bff
+// caches only what it composes; pass-throughs stay uncached).
 func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
@@ -64,8 +62,7 @@ func (h *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	writeRawJSON(w, body)
 }
 
-// UpdateMe forwards a profile edit and drops the cached projection so
-// the app bar updates on the next fetch, not at TTL.
+// UpdateMe forwards a profile edit and drops the cached projection so the app bar updates on next fetch.
 func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
@@ -99,8 +96,7 @@ func (h *Handlers) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		LandingPage:       common.LandingPage(u.LandingPage)})
 }
 
-// GetMyIdentities lists the session account's linked logins. Uncached:
-// it changes exactly when the user links or unlinks.
+// GetMyIdentities lists linked logins, uncached: changes only on link/unlink.
 func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
@@ -118,8 +114,7 @@ func (h *Handlers) GetMyIdentities(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// DeleteMyIdentity unlinks one login, relaying the auth service's two
-// user-meaningful refusals.
+// DeleteMyIdentity unlinks one login, relaying auth's two user-meaningful refusals.
 func (h *Handlers) DeleteMyIdentity(w http.ResponseWriter, r *http.Request, identityId openapi_types.UUID) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -138,11 +133,9 @@ func (h *Handlers) DeleteMyIdentity(w http.ResponseWriter, r *http.Request, iden
 	}
 }
 
-// DeleteMe deletes the account everywhere. Order is self-healing:
-// data first - collection, then the social graph - then auth, then
-// the user row that login resolution anchors on; an interruption
-// leaves a login-able account that can retry, and the email fallback
-// re-attaches an abandoned partial.
+// DeleteMe deletes the account everywhere; order is self-healing: data
+// first (collection, social), then auth, then the user row login resolution
+// anchors on - an interruption leaves a login-able account that can retry.
 func (h *Handlers) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {

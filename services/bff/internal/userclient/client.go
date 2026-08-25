@@ -1,8 +1,6 @@
-// Package userclient fetches user profiles on behalf of the end user,
-// forwarding the user's own bearer token (the user service allows
-// self-access). No service credential is minted, unlike the auth
-// service's service-role client; the bff already holds the user's
-// token from the session cookie.
+// Package userclient fetches user profiles on the end user's own bearer
+// token (the user service allows self-access); no service credential is
+// minted, unlike auth's service-role client - the bff already holds the user's token.
 package userclient
 
 import (
@@ -18,21 +16,17 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// ErrUserNotFound is returned when the user service issues a parsed
-// problem+json 404, meaning the account is gone (not a proxy error).
+// ErrUserNotFound is a parsed problem+json 404: the account is gone, not a proxy error.
 var ErrUserNotFound = errors.New("userclient: user not found")
 
-// ErrProfileNotFound is returned when the user service issues a
-// parsed problem+json 404 for a shared-profile resolve: unknown and
-// private handles are deliberately indistinguishable.
+// ErrProfileNotFound is a parsed problem+json 404 on a shared-profile
+// resolve; unknown and private handles are deliberately indistinguishable.
 var ErrProfileNotFound = errors.New("userclient: profile not found")
 
-// ErrUpstream means the user service answered outside its relayed
-// contract (or an infrastructure layer answered for it).
+// ErrUpstream means the answer was outside the relayed contract (user or infrastructure).
 var ErrUpstream = errors.New("userclient: upstream failure")
 
-// Result relays a raw upstream answer so validation problems from the
-// user service reach the browser verbatim.
+// Result relays a raw upstream answer so user-service validation problems reach the browser verbatim.
 type Result = httpkit.RelayResult
 
 // Client wraps the generated userapi typed client.
@@ -40,8 +34,7 @@ type Client struct {
 	api *userapi.ClientWithResponses
 }
 
-// New builds a Client against baseURL using an otelhttp transport and a
-// 10-second timeout.
+// New builds a Client against baseURL with an otelhttp transport and a 10s timeout.
 func New(baseURL string) (*Client, error) {
 	api, err := userapi.NewClientWithResponses(baseURL, userapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
@@ -50,10 +43,8 @@ func New(baseURL string) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
-// Get fetches the user as themselves (the user service allows
-// sub == id). Gate not-found on the parsed problem body, not the raw
-// status, so a misrouted 404 page is a transient error rather than a
-// vanished account.
+// Get fetches the user as themselves (sub == id). Gated on the parsed
+// problem body, not raw status, so a misrouted 404 page is transient, not a vanished account.
 func (c *Client) Get(ctx context.Context, id, bearer string) (userapi.User, error) {
 	uid, err := parseUserID(id)
 	if err != nil {
@@ -72,8 +63,7 @@ func (c *Client) Get(ctx context.Context, id, bearer string) (userapi.User, erro
 	return *resp.JSON200, nil
 }
 
-// Update forwards a profile PATCH as the user; the body is relayed
-// untouched in both directions (the user service owns validation).
+// Update forwards a profile PATCH as the user; body relays untouched both ways, user service owns validation.
 func (c *Client) Update(ctx context.Context, id, bearer string, body []byte) (Result, error) {
 	uid, err := parseUserID(id)
 	if err != nil {
@@ -107,13 +97,8 @@ func (c *Client) Delete(ctx context.Context, id, bearer string) error {
 	return nil
 }
 
-// parseUserID converts a path-supplied user id into a uuid, wrapping a
-// parse failure into the taxonomy this package's callers already
-// expect. Duplicated in bff/internal/authclient rather than shared:
-// the two packages are the only callers, each wraps with its own
-// package prefix, and Go has no way to share an unexported helper
-// across package boundaries without a new importable package - not
-// worth it for three lines used five times total.
+// parseUserID converts a path-supplied id to a uuid in this package's error
+// taxonomy. Duplicated in authclient; not worth a shared package for it.
 func parseUserID(id string) (uuid.UUID, error) {
 	uid, err := uuid.Parse(id)
 	if err != nil {
@@ -122,10 +107,8 @@ func parseUserID(id string) (uuid.UUID, error) {
 	return uid, nil
 }
 
-// SharedProfile resolves a handle to its cross-user profile card, the
-// composition input behind the shared shelf/profile pages. Gated on
-// the parsed problem body like Get: unknown and private
-// handles are deliberately indistinguishable, both ErrProfileNotFound.
+// SharedProfile resolves a handle to its cross-user profile card; gated on
+// the parsed problem body, unknown and private handles both ErrProfileNotFound.
 func (c *Client) SharedProfile(ctx context.Context, bearer, handle string) (userapi.ProfileCard, error) {
 	resp, err := c.api.GetSharedProfileWithResponse(ctx, handle, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -140,9 +123,8 @@ func (c *Client) SharedProfile(ctx context.Context, bearer, handle string) (user
 	return *resp.JSON200, nil
 }
 
-// SharedCardsByIDs batch-resolves profile cards for hydration -
-// returned regardless of visibility (actions are signed; page access
-// is gated separately, by effectiveShelf and its siblings).
+// SharedCardsByIDs batch-resolves profile cards for hydration, returned
+// regardless of visibility (actions are signed; page access is gated separately).
 func (c *Client) SharedCardsByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]userapi.ProfileCard, error) {
 	resp, err := c.api.GetSharedProfilesByIdsWithResponse(ctx, &userapi.GetSharedProfilesByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -154,8 +136,7 @@ func (c *Client) SharedCardsByIDs(ctx context.Context, bearer string, ids []uuid
 	return resp.JSON200.Profiles, nil
 }
 
-// SearchProfiles relays a listed-handle substring search verbatim
-// (the SPA's people-search box).
+// SearchProfiles relays a listed-handle substring search verbatim (the SPA's people-search box).
 func (c *Client) SearchProfiles(ctx context.Context, bearer, q string) (Result, error) {
 	resp, err := c.api.SearchSharedProfilesWithResponse(ctx, &userapi.SearchSharedProfilesParams{Q: q}, httpkit.BearerEditor(bearer))
 	if err != nil {

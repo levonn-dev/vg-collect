@@ -31,9 +31,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
-// SessionCache is the Valkey surface the server needs (implemented by
-// the cache package, stubs in tests). Errors mean "Valkey is having a
-// moment"; each call site decides its own fail-open behavior.
+// SessionCache is the Valkey surface (cache package; stubbed in tests).
+// Errors are transient; each call site decides its own fail-open behavior.
 type SessionCache interface {
 	DenylistAdd(ctx context.Context, jtis []string, ttl time.Duration) error
 	DenylistHas(ctx context.Context, jti string) (bool, error)
@@ -74,10 +73,8 @@ type UserAPI interface {
 	SearchProfiles(ctx context.Context, bearer, q string) (userclient.Result, error)
 }
 
-// EnrichmentAPI is the enrichment service surface (implemented by
-// enrichmentclient). Answers are verbatim relays: Result carries the
-// upstream status, content type, and body for the statuses the bff
-// serves as-is.
+// EnrichmentAPI is the enrichment service surface (enrichmentclient).
+// Answers are verbatim relays; Result carries upstream status, content type, and body.
 type EnrichmentAPI interface {
 	Search(ctx context.Context, bearer, typ, q string) (enrichmentclient.Result, error)
 	Resolve(ctx context.Context, bearer string, body []byte) (enrichmentclient.Result, error)
@@ -97,9 +94,8 @@ type EnrichmentAPI interface {
 	NormalizeCommunityRegions(ctx context.Context, bearer string) (enrichmentclient.Result, error)
 }
 
-// CollectionAPI is the collection service surface (implemented by
-// collectionclient). Answers are verbatim relays except
-// LibrarySummary, which the bff consumes itself.
+// CollectionAPI is the collection service surface (collectionclient).
+// Answers are verbatim relays except LibrarySummary, consumed by the bff itself.
 type CollectionAPI interface {
 	ListEntries(ctx context.Context, bearer string, params *collectionapi.ListEntriesParams) (collectionclient.Result, error)
 	CreateEntry(ctx context.Context, bearer string, body []byte) (collectionclient.Result, error)
@@ -139,12 +135,8 @@ type CollectionAPI interface {
 	SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error)
 }
 
-// SocialAPI is the social service surface (implemented by
-// socialclient). Follow/Unfollow/Like/Unlike/ListComments/
-// CreateComment/DeleteComment/PurgeUserData are verbatim relays; the
-// rest are typed reads the bff consumes itself to compose the shared
-// pages, the activity feed and Explore browsing, and the publish
-// orchestration leg.
+// SocialAPI is the social service surface (socialclient). Methods
+// returning Result relay verbatim; the rest are typed reads the bff composes into pages, feed, and publish.
 type SocialAPI interface {
 	Follow(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
 	Unfollow(ctx context.Context, bearer string, userID uuid.UUID) (socialclient.Result, error)
@@ -165,39 +157,32 @@ type SocialAPI interface {
 const (
 	// lockTTL caps how long a crashed rotation can block others.
 	lockTTL = 10 * time.Second
-	// resultTTL is how long a published rotation result stays adoptable
-	// by a concurrent or slightly-late request still bearing the
-	// pre-rotation token. It must exceed the in-flight lifetime of such a
-	// request (bounded by client and proxy timeouts) so a late arrival
-	// adopts the successor instead of re-refreshing the consumed token;
-	// keep it above the gateway's maximum request timeout.
+	// resultTTL is how long a published rotation result stays adoptable; must
+	// exceed the gateway's max request timeout so a late arrival adopts it instead of re-refreshing.
 	resultTTL = 60 * time.Second
 )
 
 // Options carries tunables that vary between environments.
 type Options struct {
-	// AccessTokenTTL must match the auth service's access-token TTL;
-	// bounds denylist entry lifetimes.
+	// AccessTokenTTL must match auth's access-token TTL; bounds denylist entry lifetimes.
 	AccessTokenTTL time.Duration
-	// RefreshWindow: refresh starts when less than this remains on the
-	// access token.
+	// RefreshWindow: refresh starts when less than this remains on the access token.
 	RefreshWindow time.Duration
 	MeCacheTTL    time.Duration
-	// RecsCacheTTL bounds how long a composed /api/recommendations
-	// answer stays valid before the next request recomposes it (the
-	// caller's own entry mutations invalidate it sooner).
+	// RecsCacheTTL bounds how long a composed /api/recommendations answer
+	// stays valid before recomposing; the caller's own entry mutations invalidate it sooner.
 	RecsCacheTTL time.Duration
 	// PublicOrigins are the origins allowed to send mutating requests.
 	PublicOrigins []string
-	// OTLPProxyURL is the collector agent's OTLP/HTTP base URL for the
-	// browser telemetry relay. Empty disables the relay (payloads are
-	// accepted and dropped).
+	// CookieSecure gates HSTS; must match config.CookieSecure or HSTS and cookie disagree.
+	CookieSecure bool
+	// OTLPProxyURL is the collector agent's OTLP/HTTP base URL for browser
+	// telemetry relay; empty disables it (payloads accepted and dropped).
 	OTLPProxyURL string
 	Logger       *slog.Logger
 }
 
-// Handlers owns the codec, backing services, and tunable knobs for
-// every HTTP handler in the bff.
+// Handlers owns the codec, backing services, and tunable knobs for every HTTP handler.
 type Handlers struct {
 	codec         *session.Codec
 	cache         SessionCache
@@ -212,6 +197,7 @@ type Handlers struct {
 	meTTL         time.Duration
 	recsTTL       time.Duration
 	publicOrigins []string
+	cookieSecure  bool
 	otlpProxyURL  string
 	otlpHTTP      *http.Client
 	failOpen      metric.Int64Counter
@@ -225,15 +211,14 @@ type Handlers struct {
 	pollBudget   time.Duration
 }
 
-// New builds a Handlers. The OTel meter is best-effort: a counter
-// registration failure is logged but does not prevent startup.
+// New builds a Handlers; a failed OTel counter registration is logged, not fatal.
 func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, enrichment EnrichmentAPI, collection CollectionAPI, social SocialAPI, opts Options) *Handlers {
 	if opts.Logger == nil {
 		opts.Logger = slog.Default()
 	}
 	meter := otel.Meter("github.com/levonn-dev/vgkeep/services/bff")
 	failOpen := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.cache.fail_open",
-		"Valkey operations that failed and were failed open", "{event}")
+		"Dependency operations (cache and upstream reads) that failed and were failed open", "{event}")
 	logins := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.auth.logins",
 		"Completed login and account-link attempts by flow and outcome", "{login}")
 	refreshes := vgotel.CounterLogged(meter, opts.Logger, "vg.bff.session.refreshes",
@@ -248,6 +233,7 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		meTTL:         opts.MeCacheTTL,
 		recsTTL:       opts.RecsCacheTTL,
 		publicOrigins: opts.PublicOrigins,
+		cookieSecure:  opts.CookieSecure,
 		otlpProxyURL:  opts.OTLPProxyURL,
 		otlpHTTP: &http.Client{
 			Timeout:   10 * time.Second,
@@ -259,36 +245,31 @@ func New(codec *session.Codec, cache SessionCache, auth AuthAPI, users UserAPI, 
 		cacheLookups: cacheLookups,
 		now:          time.Now,
 		pollInterval: 100 * time.Millisecond,
-		// pollBudget is deliberately shorter than the auth refresh timeout:
-		// a waiter returns 401 promptly and the browser's retry adopts the late result.
+		// pollBudget is shorter than auth's refresh timeout: a waiter returns 401 promptly for retry.
 		pollBudget: 3 * time.Second,
 	}
 }
 
-// failOpenEvent records a Valkey failure that the caller is about to
-// fail open on (log + metric; alerting watches the metric).
+// failOpenEvent records a dependency failure the caller is about to fail
+// open on (log + metric; alerting watches the metric).
 func (h *Handlers) failOpenEvent(ctx context.Context, op string, err error) {
-	h.logger.ErrorContext(ctx, "dependency unavailable; failing open", "op", op, "err", err)
+	h.logger.WarnContext(ctx, "dependency unavailable; failing open", "op", op, "err", err)
 	vgotel.Count(ctx, h.failOpen, attribute.String("op", op))
 }
 
-// loginEvent counts one completed login or account-link attempt
-// (flow: login|link; outcome vocabulary in the bff runbook). Redirects
-// to an identity provider are not counted: that attempt completes at
-// the callback.
+// loginEvent counts one completed login or account-link attempt (flow:
+// login|link, outcome vocabulary in the bff runbook); IdP redirects don't count, only the callback.
 func (h *Handlers) loginEvent(ctx context.Context, flow, outcome string) {
 	vgotel.Count(ctx, h.logins, attribute.String("flow", flow), attribute.String("outcome", outcome))
 }
 
-// refreshEvent counts one session refresh attempt reaching a terminal
-// outcome (vocabulary in the bff runbook).
+// refreshEvent counts one session refresh attempt reaching a terminal outcome (bff runbook vocabulary).
 func (h *Handlers) refreshEvent(ctx context.Context, outcome string) {
 	vgotel.Count(ctx, h.refreshes, attribute.String("outcome", outcome))
 }
 
-// cacheLookupEvent counts a composition-cache lookup (cache: me|recs).
-// A Valkey read error counts as miss (the composition runs); the
-// caller fires failOpenEvent for the error itself.
+// cacheLookupEvent counts a composition-cache lookup (cache: me|recs); a
+// Valkey read error counts as miss (composition runs), caller fires failOpenEvent separately.
 func (h *Handlers) cacheLookupEvent(ctx context.Context, cache, outcome string) {
 	vgotel.Count(ctx, h.cacheLookups, attribute.String("cache", cache), attribute.String("outcome", outcome))
 }
@@ -306,13 +287,8 @@ func (h *Handlers) clearAndUnauthorized(w http.ResponseWriter, r *http.Request) 
 	h.unauthorized(w, r)
 }
 
-// requireSession is the entry guard every session-gated handler runs
-// first: it wraps session.FromContext and, on a miss, writes the 401
-// itself so every call site collapses to a single ok check instead of
-// repeating the unauthorized call. Mid-handler re-checks (an account
-// that vanished after the prologue already passed, a cookie that needs
-// clearing) call h.unauthorized or h.clearAndUnauthorized directly -
-// requireSession is only for the handler's own opening guard.
+// requireSession is the opening guard for session-gated handlers: on a miss
+// it writes 401 itself. Mid-handler re-checks call h.unauthorized/clearAndUnauthorized directly, never this.
 func (h *Handlers) requireSession(w http.ResponseWriter, r *http.Request) (session.Session, session.Claims, bool) {
 	sess, claims, ok := session.FromContext(r.Context())
 	if !ok {
@@ -322,8 +298,7 @@ func (h *Handlers) requireSession(w http.ResponseWriter, r *http.Request) (sessi
 	return sess, claims, true
 }
 
-// writeRelay serves an upstream answer verbatim (pass-throughs are
-// never cached at the bff: one staleness authority per data type).
+// writeRelay serves an upstream answer verbatim; never cached (one staleness authority per type).
 func writeRelay(w http.ResponseWriter, status int, contentType string, body []byte) {
 	if contentType == "" {
 		contentType = "application/json"
@@ -333,15 +308,13 @@ func writeRelay(w http.ResponseWriter, status int, contentType string, body []by
 	_, _ = w.Write(body)
 }
 
-// readCapped reads a pass-through body under the standard cap; a
-// false return means the 400 was already written.
+// readCapped reads a pass-through body under the standard cap; false means the 400 was already written.
 func readCapped(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return httpkit.ReadCapped(w, r, 64*1024)
 }
 
-// relayCollection funnels every collection pass-through: session
-// check happened at the caller; any client error is an infrastructure
-// fault answered 502.
+// relayCollection funnels every collection pass-through (session check
+// happened at the caller); any client error answers 502.
 func (h *Handlers) relayCollection(w http.ResponseWriter, r *http.Request, res collectionclient.Result, err error) {
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "collection service unavailable")
@@ -350,9 +323,8 @@ func (h *Handlers) relayCollection(w http.ResponseWriter, r *http.Request, res c
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-// relayEnrichment funnels every enrichment pass-through: session check
-// happened at the caller; any client error is an infrastructure fault
-// answered 502 (relayCollection's twin for the enrichment service).
+// relayEnrichment funnels every enrichment pass-through (session check
+// happened at the caller); any client error answers 502 (relayCollection's twin).
 func (h *Handlers) relayEnrichment(w http.ResponseWriter, r *http.Request, res enrichmentclient.Result, err error) {
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "enrichment service unavailable")
@@ -361,9 +333,8 @@ func (h *Handlers) relayEnrichment(w http.ResponseWriter, r *http.Request, res e
 	writeRelay(w, res.Status, res.ContentType, res.Body)
 }
 
-// relayUser funnels every user-service pass-through: session check
-// happened at the caller; any client error is an infrastructure fault
-// answered 502 (relayCollection's twin for the user service).
+// relayUser funnels every user-service pass-through (session check
+// happened at the caller); any client error answers 502 (relayCollection's twin).
 func (h *Handlers) relayUser(w http.ResponseWriter, r *http.Request, res userclient.Result, err error) {
 	if err != nil {
 		writeProblem(w, r, http.StatusBadGateway, "upstream_error", "user service unavailable")

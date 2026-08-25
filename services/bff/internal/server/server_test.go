@@ -29,10 +29,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/userclient"
 )
 
-// stubCounter records Add calls so tests can assert the exact bounded
-// attributes each decision path emits (under test no SDK meter is
-// installed; probeMetrics swaps these in for the noop instruments New
-// hands out).
+// stubCounter records Add calls so tests can assert exact attributes; no
+// SDK meter is installed under test, probeMetrics swaps these in for New's noop instruments.
 type stubCounter struct {
 	embedded.Int64Counter
 	mu   sync.Mutex
@@ -79,8 +77,7 @@ func (c *stubCounter) snapshot() []counterAdd {
 	return append([]counterAdd(nil), c.adds...)
 }
 
-// stubCacheResultErr fails only the published-result read, so a test
-// can hold the waiter path on a healthy lock while the poll errors.
+// stubCacheResultErr fails only the published-result read, so a test can hold the waiter path while polling errors.
 type stubCacheResultErr struct {
 	*stubCache
 	resultErr error
@@ -149,16 +146,9 @@ func TestUnitLoginOutcomeMapping(t *testing.T) {
 	}
 }
 
-// TestUnitRelayEnrichment_UpstreamErrorIs502 and
-// TestUnitRelayUser_UpstreamErrorIs502 pin relayEnrichment and
-// relayUser's error classification directly, the same way
-// TestUnitLoginOutcomeMapping pins loginOutcome above: a dead client
-// is an infrastructure fault, answered with the fixed upstream_error
-// problem, never the client's own error text. relayCollection and
-// relaySocial are the pattern (see server.go and handlers_social.go);
-// these two round the set out to all four backend services and are
-// exercised directly since a handler-level test would only prove one
-// caller's wiring, not the helper's own contract.
+// TestUnitRelayEnrichment_UpstreamErrorIs502 and TestUnitRelayUser_UpstreamErrorIs502
+// pin relayEnrichment/relayUser's error classification directly: a dead client is
+// an infrastructure fault, answered with the fixed upstream_error problem, never the client's own error text.
 func TestUnitRelayEnrichment_UpstreamErrorIs502(t *testing.T) {
 	h := &Handlers{}
 	rec := httptest.NewRecorder()
@@ -179,9 +169,7 @@ func TestUnitRelayEnrichment_UpstreamErrorIs502(t *testing.T) {
 	}
 }
 
-// TestUnitRelayEnrichment_PassThroughRelaysVerbatim pins the happy
-// path: no client error relays the upstream status, content type, and
-// body exactly, untouched.
+// TestUnitRelayEnrichment_PassThroughRelaysVerbatim: no client error relays status, content type, and body exactly.
 func TestUnitRelayEnrichment_PassThroughRelaysVerbatim(t *testing.T) {
 	h := &Handlers{}
 	rec := httptest.NewRecorder()
@@ -213,9 +201,7 @@ func TestUnitRelayUser_UpstreamErrorIs502(t *testing.T) {
 	}
 }
 
-// TestUnitRelayUser_PassThroughRelaysVerbatim mirrors
-// TestUnitRelayEnrichment_PassThroughRelaysVerbatim for the user
-// service.
+// TestUnitRelayUser_PassThroughRelaysVerbatim mirrors the enrichment version for the user service.
 func TestUnitRelayUser_PassThroughRelaysVerbatim(t *testing.T) {
 	h := &Handlers{}
 	rec := httptest.NewRecorder()
@@ -315,7 +301,7 @@ func TestUnitLoginMetric_LoginFlow(t *testing.T) {
 			h := newTestHandlers(t, newStubCache(), tc.auth)
 			p := probeMetrics(h)
 			rec := httptest.NewRecorder()
-			newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, tc.path))
 			assertOnly(t, p.logins, flowOutcome(tc.flow, tc.outcome)...)
 		})
 	}
@@ -395,8 +381,7 @@ func TestUnitRefreshMetric_Outcomes(t *testing.T) {
 	okPair := authclient.TokenPair{AccessToken: newAccess, RefreshToken: "refresh-2",
 		ExpiresIn: 300, RefreshExpiresIn: 1000}
 
-	// drive sends one /api/me request whose access token has ttl left,
-	// against a prepared cache and auth stub.
+	// drive sends one /api/me request whose access token has ttl left, against a prepared cache and auth stub.
 	drive := func(t *testing.T, fc *stubCache, a AuthAPI, ttl time.Duration) (*Handlers, *metricsProbe, *httptest.ResponseRecorder) {
 		t.Helper()
 		h := newTestHandlers(t, fc, a)
@@ -579,9 +564,8 @@ func TestUnitRefreshMetric_Outcomes(t *testing.T) {
 	})
 
 	t.Run("adopt_timeout_on_unreadable_result", func(t *testing.T) {
-		// Three flavors of an unusable published result: not JSON, a
-		// cookie that does not unseal, and a sealed session whose
-		// access token does not parse.
+		// Three flavors of an unusable published result: not JSON, an
+		// unsealable cookie, and a sealed session whose access token doesn't parse.
 		key := session.RefreshKey("refresh-1")
 		for name, seed := range map[string]func(t *testing.T, h *Handlers) string{
 			"not_json":   func(*testing.T, *Handlers) string { return "not json" },
@@ -635,8 +619,7 @@ func TestUnitRefreshMetric_Outcomes(t *testing.T) {
 	})
 
 	t.Run("valid_waiter_counts_nothing", func(t *testing.T) {
-		// Lock held elsewhere, token still valid: served now, and the
-		// holder's own rotation is the one counted event.
+		// Lock held elsewhere, token still valid: served now; the holder's own rotation is the one counted event.
 		fc := newStubCache()
 		fc.locks[session.RefreshKey("refresh-1")] = "someone-else"
 		_, p, rec := drive(t, fc, &stubAuth{}, 10*time.Second)
@@ -778,10 +761,7 @@ func TestUnitProxyMetrics_RelayFailureLogsWarn(t *testing.T) {
 	}
 }
 
-// TestUnitNew_NilLoggerDoesNotPanic pins the constructor's
-// tolerate-nil idiom (shared across services): a caller that leaves
-// Options.Logger nil gets slog.Default() instead of a panic on the
-// first log call.
+// TestUnitNew_NilLoggerDoesNotPanic: nil Options.Logger gets slog.Default(), not a panic on first log.
 func TestUnitNew_NilLoggerDoesNotPanic(t *testing.T) {
 	h := New(nil, nil, nil, nil, nil, nil, nil, Options{})
 	if h == nil {

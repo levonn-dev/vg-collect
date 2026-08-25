@@ -1,5 +1,4 @@
-// Tests for the signed-in user's own profile: read, update,
-// linked-identity management, and account deletion.
+// Tests for the signed-in user's own profile: read, update, linked identities, and account deletion.
 
 package server
 
@@ -59,8 +58,7 @@ func TestGetMe(t *testing.T) {
 		t.Fatal("composition should be cached")
 	}
 
-	// Second call served from cache: an unconfigured user client would
-	// panic if reached, proving it never is.
+	// Second call served from cache: an unconfigured user client would panic if reached.
 	h.users = &stubUsers{}
 	rec = httptest.NewRecorder()
 	r = httptest.NewRequest(http.MethodGet, "/api/me", nil)
@@ -103,11 +101,8 @@ func TestGetMeUpstreamError(t *testing.T) {
 	}
 }
 
-// TestGetMeComposesAndCaches proves the
-// /api/me composition is cached in real Valkey: the first call composes
-// from the real userclient over HTTP and caches the body; the second is
-// served from the real Valkey me-cache even after the user service
-// starts failing.
+// TestGetMeComposesAndCaches proves /api/me caches in real Valkey: the
+// first call composes over HTTP, the second serves from cache even after the user service fails.
 func TestGetMeComposesAndCaches(t *testing.T) {
 	s := newStack(t)
 	const sub = "11111111-1111-1111-1111-111111111111"
@@ -133,8 +128,7 @@ func TestGetMeComposesAndCaches(t *testing.T) {
 		t.Fatalf("composed me = %+v", me)
 	}
 
-	// Break the user service: a re-compose would now fail. The second
-	// call must be served from the real Valkey me-cache.
+	// Break the user service: a re-compose would now fail, so this call must be served from cache.
 	s.users.setMode(userError)
 	r2 := s.getMe(t, cookie)
 	if r2.status != http.StatusOK {
@@ -225,8 +219,7 @@ func TestUpdateMe_RelaysAndInvalidatesCache(t *testing.T) {
 	})
 }
 
-// TestUnitGetMe_IncludesPreferredCurrency pins that the profile's
-// currency reaches the browser projection.
+// TestUnitGetMe_IncludesPreferredCurrency pins that currency reaches the browser projection.
 func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -255,10 +248,8 @@ func TestUnitGetMe_IncludesPreferredCurrency(t *testing.T) {
 	}
 }
 
-// TestUnitGetMe_IncludesProfileVisibility pins that a non-default
-// profile_visibility reaches the browser projection unchanged (the
-// user service's column default is "private"; a silently-dropped or
-// defaulted-away field would still read "private" here).
+// TestUnitGetMe_IncludesProfileVisibility pins that a non-default value
+// reaches the browser unchanged (a silently-dropped field would still read the "private" default).
 func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 	t.Run("non_default_value_round_trips", func(t *testing.T) {
 		uid := uuid.New()
@@ -289,10 +280,8 @@ func TestUnitGetMe_IncludesProfileVisibility(t *testing.T) {
 	})
 }
 
-// TestUnitGetMe_IncludesLandingPage pins that the profile's landing_page
-// preference reaches the browser projection (the user service default
-// is "feed"; a non-default value proves the field is not silently
-// dropped or defaulted-away in the composition).
+// TestUnitGetMe_IncludesLandingPage pins that a non-default landing_page
+// reaches the browser (proving the field isn't silently dropped or defaulted away).
 func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
 	uid := uuid.New()
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -321,9 +310,8 @@ func TestUnitGetMe_IncludesLandingPage(t *testing.T) {
 	}
 }
 
-// captureUsers embeds the stub so Get and Delete forward unchanged,
-// while Update additionally exposes the raw body reaching the user
-// service (mirrors captureCollection's pass-through capture).
+// captureUsers embeds the stub so Get/Delete forward unchanged; Update
+// additionally exposes the raw body (mirrors captureCollection).
 type captureUsers struct {
 	*stubUsers
 	onUpdate func(body []byte)
@@ -334,8 +322,7 @@ func (c *captureUsers) Update(ctx context.Context, id, bearer string, body []byt
 	return c.stubUsers.Update(ctx, id, bearer, body)
 }
 
-// TestUnitUpdateMe_RelaysPreferredCurrency pins that the PATCH body
-// reaches the user service verbatim and the answer projects the field.
+// TestUnitUpdateMe_RelaysPreferredCurrency pins that the PATCH body reaches the user service verbatim.
 func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 	uid := uuid.New()
 	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","preferred_currency":"JPY","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
@@ -369,9 +356,8 @@ func TestUnitUpdateMe_RelaysPreferredCurrency(t *testing.T) {
 	}
 }
 
-// TestUnitUpdateMe_RelaysLandingPage pins that a PATCH carrying
-// landing_page reaches the user client verbatim in the request body,
-// and the answer's landing_page projects onto the composed Me.
+// TestUnitUpdateMe_RelaysLandingPage pins that landing_page reaches the
+// user client verbatim, and the answer's value projects onto the composed Me.
 func TestUnitUpdateMe_RelaysLandingPage(t *testing.T) {
 	uid := uuid.New()
 	userJSON := []byte(`{"id":"` + uid.String() + `","email":"alice@example.test","handle":"alice","landing_page":"collection","roles":["user"],"created_at":"2026-01-01T00:00:00Z","updated_at":"2026-01-01T00:00:00Z"}`)
@@ -568,6 +554,11 @@ func TestLinkLoginNavigations(t *testing.T) {
 		newRouterFor(t, h).ServeHTTP(rec, r)
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "https://idp.example/authorize?state=link1" {
 			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
+		}
+		// Callback is shared between login and link flows, so link start must bind the same oauth-state cookie.
+		st := findCookie(rec.Result().Cookies(), session.StateCookieName)
+		if st == nil || st.Value != "link1" || !st.HttpOnly {
+			t.Fatalf("state cookie = %+v", st)
 		}
 	})
 

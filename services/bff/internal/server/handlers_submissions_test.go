@@ -14,10 +14,8 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/collectionclient"
 )
 
-// TestUnitSubmissionRelays_FidelityAndNoSession covers the three user
-// submission ops: a create relays the 201 body verbatim and forwards
-// the session's own bearer, a read relays a problem body verbatim,
-// and a mutation with no session answers 401 before the handler runs.
+// TestUnitSubmissionRelays_FidelityAndNoSession covers create (201 verbatim,
+// bearer forwarded), read (problem verbatim), and no-session 401 before the handler runs.
 func TestUnitSubmissionRelays_FidelityAndNoSession(t *testing.T) {
 	const sub = `{"id":"s1","entry_id":"e1","status":"pending","created_at":"2026-07-17T00:00:00Z","updated_at":"2026-07-17T00:00:00Z"}`
 	var gotBearer string
@@ -54,8 +52,7 @@ func TestUnitSubmissionRelays_FidelityAndNoSession(t *testing.T) {
 }
 
 // TestUnitVerdictRelay_BodyPassthroughAnd409 proves the admin verdict
-// forwards the browser's body untouched and relays a conflict
-// (another admin already resolved the row) verbatim.
+// forwards the body untouched and relays a resolved-conflict verbatim.
 func TestUnitVerdictRelay_BodyPassthroughAnd409(t *testing.T) {
 	var gotBody []byte
 	coll := &stubCollection{submitVerdict: func(_ context.Context, _ string, _ uuid.UUID, body []byte) (collectionclient.Result, error) {
@@ -75,10 +72,8 @@ func TestUnitVerdictRelay_BodyPassthroughAnd409(t *testing.T) {
 	}
 }
 
-// TestUnitCancelSubmission_RelaysAndForwardsBearer proves the pending-
-// submission cancel forwards the session's own bearer and relays the
-// upstream's answer verbatim; a request with no session never reaches
-// the handler.
+// TestUnitCancelSubmission_RelaysAndForwardsBearer proves cancel forwards
+// the session's bearer and relays verbatim; no session never reaches the handler.
 func TestUnitCancelSubmission_RelaysAndForwardsBearer(t *testing.T) {
 	var gotBearer string
 	coll := &stubCollection{cancelSubmission: func(_ context.Context, bearer string, _ uuid.UUID) (collectionclient.Result, error) {
@@ -102,10 +97,8 @@ func TestUnitCancelSubmission_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
-// TestUnitListSubmissions_RelaysAndForwardsParams proves the admin
-// queue read forwards its query params (limit/offset) and relays the
-// upstream body verbatim; collection enforces the role, so the bff
-// holds no gate of its own here beyond the session.
+// TestUnitListSubmissions_RelaysAndForwardsParams proves the admin queue
+// forwards limit/offset and relays verbatim; collection enforces the role, not the bff.
 func TestUnitListSubmissions_RelaysAndForwardsParams(t *testing.T) {
 	const page = `{"submissions":[],"total_count":0}`
 	var gotBearer string
@@ -128,8 +121,7 @@ func TestUnitListSubmissions_RelaysAndForwardsParams(t *testing.T) {
 }
 
 // The four tests below mirror TestUnitFxRelay_ClientErrorAnswers502: each
-// covers one new handler's own upstream-failure branch (a dead client,
-// not an upstream answer) which no other test above happens to exercise.
+// covers one handler's own dead-client failure branch, not exercised above.
 
 func TestUnitCancelSubmission_ClientErrorAnswers502(t *testing.T) {
 	coll := &stubCollection{cancelSubmission: func(context.Context, string, uuid.UUID) (collectionclient.Result, error) {

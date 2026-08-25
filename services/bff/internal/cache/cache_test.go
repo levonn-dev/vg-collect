@@ -18,11 +18,8 @@ func newTestCache(t *testing.T) *cache.Cache {
 	return c
 }
 
-// newTestCacheWithClient is newTestCache but also hands back the raw
-// client, for tests that need to reach around the Cache API (e.g. to
-// seed or inspect a key directly). Each test starts on an empty
-// keyspace via its own FlushDB below (never FlushAll: the URL is
-// scoped to this binary's own database on the shared server).
+// newTestCacheWithClient also returns the raw client for direct key access.
+// Uses FlushDB, never FlushAll: this binary's database is scoped on the shared server.
 func newTestCacheWithClient(t *testing.T) (*cache.Cache, *redis.Client) {
 	t.Helper()
 	ctx := context.Background()
@@ -121,16 +118,13 @@ func TestMeCache(t *testing.T) {
 		t.Fatalf("body=%q err=%v", body, err)
 	}
 
-	// The round-trip key is versioned: a deploy that changes the Me
-	// projection bumps the version tag, so a pre-deploy body never
-	// leaks into a post-deploy read.
+	// Key is versioned: a stale pre-deploy body must never leak into a post-deploy read.
 	versioned, err := client.Get(ctx, "me:v4:user-1").Result()
 	if err != nil || versioned != `{"id":"user-1"}` {
 		t.Fatalf("PutMe must write the versioned key me:v4:<sub>: got=%q err=%v", versioned, err)
 	}
 
-	// A body left over from before versioning (a bare "me:" key, no
-	// version segment) must not be served.
+	// A pre-versioning body (bare "me:" key, no version segment) must not be served.
 	if err := client.Set(ctx, "me:user-2", []byte(`{"legacy":true}`), time.Minute).Err(); err != nil {
 		t.Fatal(err)
 	}

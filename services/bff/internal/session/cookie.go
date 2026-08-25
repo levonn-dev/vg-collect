@@ -11,16 +11,12 @@ import (
 	"net/http"
 )
 
-// CookieName uses the __Host- prefix: the browser then guarantees the
-// cookie is Secure, Path=/, and has no Domain, so a compromised sibling
-// subdomain cannot set or overwrite it. Secure cookies (and __Host-) are
-// accepted over http://localhost, so this works in dev too.
+// CookieName's __Host- prefix guarantees Secure, Path=/, no Domain, so a
+// compromised sibling subdomain can't set or overwrite it; localhost accepts it too, for dev.
 const CookieName = "__Host-vg_session"
 
-// sessionAAD domain-separates cookie seals from any other future use of
-// the same key: GCM authenticates this label, so a blob sealed for a
-// different purpose cannot be replayed into the session cookie. Changing
-// this label invalidates every live cookie.
+// sessionAAD domain-separates cookie seals via GCM's AAD, so a blob sealed
+// for a different purpose can't replay here; changing this label invalidates every live cookie.
 const sessionAAD = "vg_session/v1"
 
 // Codec seals Sessions into cookie values with AES-256-GCM. The sealed
@@ -90,8 +86,7 @@ func (c *Codec) Open(value string) (Session, error) {
 }
 
 // Cookie wraps a sealed value in the session cookie. maxAge is seconds
-// (the refresh token's remaining life, so cookie and session expire
-// together).
+// (the refresh token's remaining life, so cookie and session expire together).
 func (c *Codec) Cookie(sealed string, maxAge int) *http.Cookie {
 	return &http.Cookie{ //nolint:gosec // G124: Secure follows the codec setting (false only in dev)
 		Name:     CookieName,
@@ -108,6 +103,36 @@ func (c *Codec) Cookie(sealed string, maxAge int) *http.Cookie {
 func (c *Codec) ClearCookie() *http.Cookie {
 	return &http.Cookie{ //nolint:gosec // G124: Secure follows the codec setting (false only in dev)
 		Name:     CookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   c.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// StateCookieName binds an OAuth state value to the browser that started
+// the flow; Callback requires a match before consuming the code (login CSRF defense, RFC 9700 SS 4.7).
+const StateCookieName = "__Host-vg_oauth_state"
+
+// StateCookie wraps state in the OAuth state-binding cookie; maxAge (seconds) must not exceed auth's state TTL.
+func (c *Codec) StateCookie(state string, maxAge int) *http.Cookie {
+	return &http.Cookie{ //nolint:gosec // G124: Secure follows the codec setting (false only in dev)
+		Name:     StateCookieName,
+		Value:    state,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   c.secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// ClearStateCookie expires the OAuth state-binding cookie immediately.
+func (c *Codec) ClearStateCookie() *http.Cookie {
+	return &http.Cookie{ //nolint:gosec // G124: Secure follows the codec setting (false only in dev)
+		Name:     StateCookieName,
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,

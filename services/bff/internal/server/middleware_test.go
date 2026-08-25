@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -192,6 +193,7 @@ func newTestHandlers(t *testing.T, c SessionCache, a AuthAPI) *Handlers {
 		RefreshWindow:  30 * time.Second,
 		MeCacheTTL:     45 * time.Second,
 		PublicOrigins:  []string{"http://localhost:8090", "http://localhost:5173"},
+		CookieSecure:   true,
 		Logger:         slog.New(slog.DiscardHandler),
 	})
 	h.pollInterval = 5 * time.Millisecond
@@ -206,6 +208,21 @@ func sealedCookie(t *testing.T, h *Handlers, access, refresh string) *http.Cooki
 		t.Fatal(err)
 	}
 	return h.codec.Cookie(sealed, 3600)
+}
+
+// oauthStateReq builds a GET request for path, attaching the matching
+// oauth-state cookie when path carries a state param (needed for Callback's browser-binding check).
+func oauthStateReq(t *testing.T, h *Handlers, path string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	u, err := url.Parse(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state := u.Query().Get("state"); state != "" {
+		req.AddCookie(h.codec.StateCookie(state, 600))
+	}
+	return req
 }
 
 // echoNext records that it ran and what session it saw.
@@ -234,6 +251,16 @@ func clearedCookie(rec *httptest.ResponseRecorder) bool {
 	return false
 }
 
+// findCookie returns the cookie named name, or nil if absent.
+func findCookie(cs []*http.Cookie, name string) *http.Cookie {
+	for _, c := range cs {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
 func mustResultJSON(t *testing.T, sealed string, maxAge int) string {
 	t.Helper()
 	b, err := json.Marshal(refreshResult{Cookie: sealed, MaxAge: maxAge})
@@ -243,11 +270,8 @@ func mustResultJSON(t *testing.T, sealed string, maxAge int) string {
 	return string(b)
 }
 
-// stubAuthService models the auth service's refresh rotation and reuse
-// detection over real HTTP. It is single-use per refresh token: a
-// not-yet-consumed token rotates to a fresh pair (new access jti), and
-// replaying a consumed token returns refresh_reused carrying the live
-// jti for that chain (exactly what the real auth service revokes).
+// stubAuthService models auth's refresh rotation and reuse detection over
+// real HTTP: an unconsumed token rotates to a fresh pair; a replay returns refresh_reused with the live jti.
 type stubAuthService struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -255,18 +279,15 @@ type stubAuthService struct {
 	mu sync.Mutex
 	// consumed marks refresh tokens already spent by a rotation.
 	consumed map[string]bool
-	// liveJTI maps a refresh token to the access jti minted alongside it
-	// (the still-live jti the reuse response must report for that chain).
+	// liveJTI maps a refresh token to the access jti minted alongside it (reported on reuse).
 	liveJTI map[string]string
-	// chainSub maps a refresh token to the subject its chain belongs to,
-	// so a rotation mints the successor for the same user (the bff sends
-	// only the refresh token to /token/refresh).
+	// chainSub maps a refresh token to its chain's subject, so rotation mints
+	// the successor for the same user (the bff sends only the refresh token).
 	chainSub map[string]string
 	// next numbers freshly minted refresh tokens (refresh-2, refresh-3...).
 	next int
 
-	// refreshCalls counts every /token/refresh request served, for the
-	// singleflight assertion.
+	// refreshCalls counts every /token/refresh request served, for the singleflight assertion.
 	refreshCalls atomic.Int32
 	// refreshDelay widens the concurrency window while the lock is held.
 	refreshDelay time.Duration
@@ -290,9 +311,7 @@ func newStubAuthService(t *testing.T) *stubAuthService {
 }
 
 // seedChain registers a chain's starting refresh token with the subject
-// and live access jti the test sealed into the cookie, so the first
-// rotation mints a successor for the same user and a reuse of that token
-// reports the right live jti.
+// and live jti sealed into the test cookie, for correct rotation and reuse reporting.
 func (f *stubAuthService) seedChain(refreshToken, sub, accessJTI string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -300,8 +319,7 @@ func (f *stubAuthService) seedChain(refreshToken, sub, accessJTI string) {
 	f.liveJTI[refreshToken] = accessJTI
 }
 
-// markConsumed pre-marks a refresh token as already spent, so the first
-// refresh of it returns refresh_reused (the stolen/replayed-token case).
+// markConsumed pre-marks a refresh token as spent, so refreshing it returns refresh_reused.
 func (f *stubAuthService) markConsumed(refreshToken, sub, liveJTI string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -328,8 +346,7 @@ func (f *stubAuthService) refresh(w http.ResponseWriter, r *http.Request) {
 	defer f.mu.Unlock()
 	rt := req.RefreshToken
 	if f.consumed[rt] {
-		// Reuse: the chain is dead. Report the live access jti so the bff
-		// denylists it (the real auth service revokes the family here).
+		// Reuse: the chain is dead; report the live access jti so the bff denylists it.
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -348,8 +365,7 @@ func (f *stubAuthService) refresh(w http.ResponseWriter, r *http.Request) {
 	rt2 := "refresh-" + itoa(f.next)
 	newJTI := "jti-" + itoa(f.next)
 	access := mintAccess(f.t, sub, newJTI, time.Now().Add(5*time.Minute))
-	// Carry the chain forward: the successor token belongs to the same
-	// user and its live jti is the one just minted.
+	// Carry the chain forward: the successor belongs to the same user, live jti is the one just minted.
 	f.chainSub[rt2] = sub
 	f.liveJTI[rt2] = newJTI
 
@@ -380,9 +396,8 @@ func itoa(n int) string {
 	return string(b[i:])
 }
 
-// stubUserService answers GET /users/{id} with a canned profile. The
-// test can switch it to error (500) or 404 on demand to drive the
-// cache/compose paths.
+// stubUserService answers GET /users/{id} with a canned profile; the test
+// can switch it to error(500) or 404 to drive cache/compose paths.
 type stubUserService struct {
 	srv *httptest.Server
 
@@ -446,10 +461,8 @@ func (f *stubUserService) get(w http.ResponseWriter, _ *http.Request) {
 	}
 }
 
-// stubOtlpCollector answers POST /v1/traces and POST /v1/metrics with a
-// canned 200, recording a running hit count per signal: the
-// never-cached-at-the-bff proof needs an exact hit count, just like the
-// other pass-throughs.
+// stubOtlpCollector answers POST /v1/traces and /v1/metrics with a
+// canned 200, tracking a hit count per signal for the never-cached-at-the-bff proof.
 type stubOtlpCollector struct {
 	srv *httptest.Server
 
@@ -510,16 +523,9 @@ type stack struct {
 	client     *http.Client
 }
 
-// newStack wires the whole bff vertical: a Valkey container behind
-// cache.New, the authclient/userclient against httptest stubs, the
-// shared stubEnrichment/stubCollection doubles wired directly (their
-// wire-level Authorization/Bearer formatting is the enrichmentclient
-// and collectionclient packages' own contract, proven in their tests;
-// what belongs here is that Handlers forwards the session's own bearer
-// and never shadows the upstream's caching), and the codec + Handlers
-// + router on an httptest server. Skips on -short. Each test starts on
-// an empty keyspace via its own FlushDB below (never FlushAll: the
-// URL is scoped to this binary's own database on the shared server).
+// newStack wires the bff vertical (Valkey, authclient/userclient over httptest
+// stubs, stubEnrichment/stubCollection direct; their bearer wire format is proven
+// in their own packages). Uses FlushDB, never FlushAll: database is scoped on the shared server.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
@@ -576,9 +582,8 @@ func newStack(t *testing.T) *stack {
 			panic("stack: unexpected collection op " + op)
 		}
 	}
-	// library answers the recommendations composition's library read
-	// with a fixed one-game library (rating 8), mirroring the fixture
-	// TestUnitRecommendations_ComposesAndCaches already exercises.
+	// library answers the recommendations composition's library read with a
+	// fixed one-game library (rating 8), mirroring TestUnitRecommendations_ComposesAndCaches.
 	fcol.library = func(context.Context, string) (collectionapi.LibrarySummary, error) {
 		rating := 8
 		return collectionapi.LibrarySummary{Library: []collectionapi.LibraryEntry{{IgdbGameId: 9, Rating: &rating}}}, nil
@@ -590,9 +595,8 @@ func newStack(t *testing.T) *stack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// No stubSocialService double exists: none of this stack's tests
-	// exercise a social route, so a nil-panic stub (same convention as
-	// every other unused surface here) is the correct no-op.
+	// No stubSocialService double exists: no test here exercises a social
+	// route, so the nil-panic stub (same convention as other unused surfaces) is correct.
 	h := New(codec, c, authClient, userClient, fe, fcol, &stubSocialFull{}, Options{
 		AccessTokenTTL: 5 * time.Minute,
 		RefreshWindow:  30 * time.Second,
@@ -624,11 +628,8 @@ func newStack(t *testing.T) *stack {
 	}
 }
 
-// cookieFor seals (access, refresh) into the session cookie. The cookie
-// is attached to requests explicitly (see getMe): a Go http client will
-// not send a __Host--prefixed cookie over http via a jar, but the bff
-// reads r.Cookie(session.CookieName), so an explicitly-added cookie of
-// that name is honored regardless of prefix rules.
+// cookieFor seals (access, refresh); attached explicitly because a Go http
+// client's jar won't send __Host--prefixed cookies over http, but the bff reads by name regardless.
 func (s *stack) cookieFor(t *testing.T, access, refresh string) *http.Cookie {
 	t.Helper()
 	sealed, err := s.codec.Seal(session.Session{AccessToken: access, RefreshToken: refresh})
@@ -768,8 +769,7 @@ func (s *stack) recommendations(t *testing.T, cookie *http.Cookie) recommendatio
 	return recommendationsResult{status: resp.StatusCode, body: body}
 }
 
-// createEntry POSTs /api/entries with the Origin header CheckOrigin
-// requires of a mutating request.
+// createEntry POSTs /api/entries with the Origin header CheckOrigin requires.
 func (s *stack) createEntry(t *testing.T, cookie *http.Cookie) int {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, s.baseURL+"/api/entries", strings.NewReader(`{"region":"ntsc_u","packaging":"loose"}`))
@@ -865,9 +865,8 @@ func TestProtectedRequiresSession(t *testing.T) {
 		t.Fatal("garbage cookie should be cleared")
 	}
 
-	// /api/auth/link is a navigation like /api/auth/login, but unlike it
-	// the link target is session-guarded: linking acts on an existing
-	// account, so it must never be allowlisted.
+	// /api/auth/link is a navigation like /api/auth/login, but it's session-
+	// guarded: linking acts on an existing account, so it must never be allowlisted.
 	rec = doAuth(h, httptest.NewRequest(http.MethodGet, "/api/auth/link?provider=dev", nil), echoNext(t, new(string)))
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("/api/auth/link without a session: code = %d, want 401 (it must not be allowlisted)", rec.Code)
@@ -1127,13 +1126,16 @@ func TestCheckOrigin(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	rec := httptest.NewRecorder()
-	SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).
+	h.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).
 		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 	for header, want := range map[string]string{
-		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":        "DENY",
-		"Referrer-Policy":        "strict-origin-when-cross-origin",
+		"X-Content-Type-Options":    "nosniff",
+		"X-Frame-Options":           "DENY",
+		"Referrer-Policy":           "strict-origin-when-cross-origin",
+		"Permissions-Policy":        securityPermissionsPolicy,
+		"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
 	} {
 		if got := rec.Header().Get(header); got != want {
 			t.Errorf("%s = %q", header, got)
@@ -1144,10 +1146,25 @@ func TestSecurityHeaders(t *testing.T) {
 	}
 }
 
+// TestSecurityHeadersCookieInsecure: HSTS is wrong advice over plain HTTP,
+// so it's absent when the cookie codec isn't Secure; Permissions-Policy has no such dependency.
+func TestSecurityHeadersCookieInsecure(t *testing.T) {
+	h := newTestHandlers(t, newStubCache(), &stubAuth{})
+	h.cookieSecure = false
+	rec := httptest.NewRecorder()
+	h.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})).
+		ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if got := rec.Header().Get("Strict-Transport-Security"); got != "" {
+		t.Errorf("Strict-Transport-Security = %q, want absent", got)
+	}
+	if got := rec.Header().Get("Permissions-Policy"); got != securityPermissionsPolicy {
+		t.Errorf("Permissions-Policy = %q", got)
+	}
+}
+
 func TestAuthenticateGuardsNonNormalizedPaths(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
-	// A protected path in non-normalized form must still require a
-	// session at THIS guard (no reliance on the router to normalize).
+	// A protected path in non-normalized form must still require a session at THIS guard.
 	for _, raw := range []string{"/./api/me", "//api/me", "/api/../api/me"} {
 		ran := false
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { ran = true })
@@ -1183,8 +1200,7 @@ func TestStaleRequestAfterRotationAdoptsNotReRefresh(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		if rotated[rt] {
-			// The real auth service revokes the family when a consumed
-			// refresh token is presented again.
+			// The real auth service revokes the family when a consumed refresh token is presented again.
 			return authclient.TokenPair{}, &authclient.ReusedError{RevokeJTIs: []string{"j1"}}
 		}
 		rotated[rt] = true
@@ -1201,8 +1217,7 @@ func TestStaleRequestAfterRotationAdoptsNotReRefresh(t *testing.T) {
 		t.Fatalf("first request code = %d", rec.Code)
 	}
 
-	// Request 2 still bears the consumed refresh-1 (its cookie had not
-	// updated). It must adopt the published result, never re-refresh.
+	// Request 2 still bears the consumed refresh-1; it must adopt the published result, never re-refresh.
 	var saw string
 	r2 := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	r2.AddCookie(cookie)
@@ -1221,14 +1236,12 @@ func TestStaleRequestAfterRotationAdoptsNotReRefresh(t *testing.T) {
 	}
 }
 
-// TestConcurrentRefreshHitsAuthOnce: N concurrent requests
-// bearing the same expiring-but-valid token must trigger exactly one
-// rotation, because real Valkey SETNX makes the refresh singleflight.
+// TestConcurrentRefreshHitsAuthOnce: N concurrent requests on the same
+// expiring-but-valid token trigger exactly one rotation (real Valkey SETNX singleflight).
 func TestConcurrentRefreshHitsAuthOnce(t *testing.T) {
 	s := newStack(t)
 	s.auth.refreshDelay = 20 * time.Millisecond // hold the lock while others arrive
-	// sub must be a UUID: /api/me's userclient parses it as one when
-	// composing the profile after the (winner's) rotation.
+	// sub must be a UUID: /api/me's userclient parses it as one when composing the profile.
 	const sub = "22222222-2222-2222-2222-222222222222"
 	access := mintAccess(t, sub, "jA", time.Now().Add(10*time.Second))
 	s.auth.seedChain("refresh-1", sub, "jA")
@@ -1257,18 +1270,12 @@ func TestConcurrentRefreshHitsAuthOnce(t *testing.T) {
 	}
 }
 
-// TestStaleTokenAdoptsAfterRotation is the
-// headline: the real-Valkey version of the reuse-window regression.
-// Request 1 rotates refresh-1 -> refresh-2 and publishes to Valkey.
-// Request 2, still bearing the consumed refresh-1, must ADOPT the
-// published successor from real Valkey (keyed by sha256(refresh-1))
-// instead of presenting the consumed token to auth a second time. If it
-// re-refreshed, the stub auth would answer refresh_reused and the bff
-// would 401 + clear; this asserts that does NOT happen.
+// TestStaleTokenAdoptsAfterRotation guards the reuse-window regression: a
+// stale request bearing the just-rotated refresh-1 must adopt the published
+// successor (keyed by sha256(refresh-1)), never re-present it and trip refresh_reused.
 func TestStaleTokenAdoptsAfterRotation(t *testing.T) {
 	s := newStack(t)
-	// sub must be a UUID: /api/me composes the profile via the userclient
-	// (which parses sub as a UUID) on both requests.
+	// sub must be a UUID: /api/me composes the profile via the userclient on both requests.
 	const sub = "33333333-3333-3333-3333-333333333333"
 	access := mintAccess(t, sub, "jA", time.Now().Add(10*time.Second)) // within the 30s window, still valid
 	s.auth.seedChain("refresh-1", sub, "jA")
@@ -1283,8 +1290,7 @@ func TestStaleTokenAdoptsAfterRotation(t *testing.T) {
 		t.Fatalf("after request 1, refresh calls = %d, want 1", got)
 	}
 
-	// Request 2 still bears the consumed refresh-1. It must adopt the
-	// published result, never re-present the consumed token.
+	// Request 2 still bears the consumed refresh-1; it must adopt, never re-present the consumed token.
 	r2 := s.getMe(t, cookie)
 	if r2.status != http.StatusOK {
 		t.Fatalf("request 2 status = %d, want 200 (must adopt the rotated session, not re-refresh)", r2.status)
@@ -1297,20 +1303,15 @@ func TestStaleTokenAdoptsAfterRotation(t *testing.T) {
 	}
 }
 
-// TestReuseDenylistsAndRejects drives the reuse
-// path's real-Valkey denylist write and the denylist read that rejects
-// a stolen access token. Step A: a refresh of an already-consumed token
-// returns refresh_reused; the bff writes the reported jti to the real
-// Valkey denylist and clears+401. Step B: a fresh, otherwise-valid
-// cookie whose access jti equals that denylisted jti is rejected by the
-// real-Valkey EXISTS check before any refresh.
+// TestReuseDenylistsAndRejects proves the real-Valkey denylist round trip:
+// step A's refresh_reused writes the reported jti and clears+401; step B's
+// fresh cookie with that now-denylisted jti is rejected by EXISTS before any refresh.
 func TestReuseDenylistsAndRejects(t *testing.T) {
 	s := newStack(t)
 	const sub = "44444444-4444-4444-4444-444444444444"
 	s.users.id, s.users.email, s.users.handle = sub, "u1@example.test", "u-one"
 
-	// Step A: expiring-valid access (jti jA) on an already-consumed
-	// refresh token whose live jti is jLive.
+	// Step A: expiring-valid access (jti jA) on an already-consumed refresh token whose live jti is jLive.
 	accessA := mintAccess(t, sub, "jA", time.Now().Add(10*time.Second))
 	s.auth.markConsumed("already-consumed", sub, "jLive")
 	rA := s.getMe(t, s.cookieFor(t, accessA, "already-consumed"))
@@ -1318,10 +1319,8 @@ func TestReuseDenylistsAndRejects(t *testing.T) {
 		t.Fatalf("step A: status=%d cleared=%v, want 401 + cleared", rA.status, rA.cleared)
 	}
 
-	// Step B: a fresh, valid cookie whose access jti is the now-denylisted
-	// jLive (exp far out, so no refresh is attempted) must be rejected by
-	// the real-Valkey denylist read. Snapshot the cumulative refresh count
-	// first: step A spent exactly one refresh; step B must add none.
+	// Step B: a fresh, valid cookie whose access jti is the now-denylisted jLive
+	// (exp far out, no refresh attempted); snapshot refresh count first since step A spent exactly one.
 	before := s.auth.refreshCalls.Load()
 	accessLive := mintAccess(t, sub, "jLive", time.Now().Add(5*time.Minute))
 	rB := s.getMe(t, s.cookieFor(t, accessLive, "refresh-unused"))
@@ -1333,13 +1332,8 @@ func TestReuseDenylistsAndRejects(t *testing.T) {
 	}
 }
 
-// TestSearchPassThroughReachesEnrichmentWithBearerNeverCached drives the
-// cookie-authenticated search route through the real server against
-// the shared enrichment stub, proving the session's own bearer rides
-// the proxied call and that the route is never cached at the bff: two
-// identical calls must reach the upstream twice, not once. The wire-
-// level Authorization header format is enrichmentclient's own
-// contract, proven in that package's tests.
+// TestSearchPassThroughReachesEnrichmentWithBearerNeverCached proves the
+// session's bearer rides the proxied call and the route is never cached: two identical calls hit upstream twice.
 func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "55555555-5555-5555-5555-555555555555"
@@ -1364,13 +1358,8 @@ func TestSearchPassThroughReachesEnrichmentWithBearerNeverCached(t *testing.T) {
 	}
 }
 
-// TestEntriesPassThroughHitsCollectionTwiceNeverCached drives the
-// cookie-authenticated entries route through the real server against
-// the shared collection stub, proving the session's own bearer rides
-// the proxied call and that the route is never cached at the bff: two
-// identical calls must reach the upstream twice, not once. The wire-
-// level Authorization header format is collectionclient's own
-// contract, proven in that package's tests.
+// TestEntriesPassThroughHitsCollectionTwiceNeverCached proves the
+// session's bearer rides the proxied call and the route is never cached: two identical calls hit upstream twice.
 func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "66666666-6666-6666-6666-666666666666"
@@ -1395,12 +1384,8 @@ func TestEntriesPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	}
 }
 
-// TestValueHistoryPassThroughHitsCollectionTwiceNeverCached drives the
-// cookie-authenticated value-history route through the real server
-// against the shared collection stub, proving that the route is never
-// cached at the bff: two identical calls must reach the upstream
-// twice, not once. This pins the single-source rule for the new route
-// (the collection service owns the cache; the bff must never shadow it).
+// TestValueHistoryPassThroughHitsCollectionTwiceNeverCached pins the
+// single-source rule: two identical calls hit upstream twice, never a bff cache.
 func TestValueHistoryPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	s := newStack(t)
 	const sub = "88888888-8888-8888-8888-888888888888"
@@ -1423,12 +1408,8 @@ func TestValueHistoryPassThroughHitsCollectionTwiceNeverCached(t *testing.T) {
 	}
 }
 
-// TestRecommendationsCacheLifecycle drives the composed
-// /api/recommendations route against real Valkey: two reads must cost
-// exactly one upstream score call (the second is a real-Valkey cache
-// hit), and a subsequent entry mutation must invalidate that cache so
-// the next read recomposes - the genuine guard against real SETNX/DEL
-// semantics that a stub cache could fake.
+// TestRecommendationsCacheLifecycle checks against real Valkey: two reads cost
+// one upstream score call (cache hit on the second), and an entry mutation invalidates it for the next read.
 func TestRecommendationsCacheLifecycle(t *testing.T) {
 	s := newStack(t)
 	const sub = "77777777-7777-7777-7777-777777777777"
@@ -1463,12 +1444,8 @@ func TestRecommendationsCacheLifecycle(t *testing.T) {
 	}
 }
 
-// TestOtlpProxyRelaysWithSessionAndNeverCaches drives the cookie-
-// authenticated otlp relay route through the real server against a stub
-// collector, proving two identical calls both reach the collector (a
-// pass-through is never cached at the bff, exactly like every other
-// relay route) and that a cookieless POST is rejected before the
-// collector is ever dialed.
+// TestOtlpProxyRelaysWithSessionAndNeverCaches proves two identical calls
+// both reach the collector (never cached) and a cookieless POST is rejected before it is dialed.
 func TestOtlpProxyRelaysWithSessionAndNeverCaches(t *testing.T) {
 	s := newStack(t)
 	const sub = "99999999-9999-9999-9999-999999999999"

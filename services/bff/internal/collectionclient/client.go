@@ -1,10 +1,7 @@
-// Package collectionclient calls the collection service with the
-// user's own Bearer token, via the generated typed client. The bff
-// serves these routes as verbatim relays (single-source pass-throughs
-// are never cached at the bff): most methods return the upstream
-// status, content type, and raw body for the statuses the bff relays,
-// and ErrUpstream for everything else. LibrarySummary is the one
-// typed read - the bff consumes it itself to compose recommendations.
+// Package collectionclient calls the collection service with the user's
+// bearer token. Most methods relay the upstream status, content type,
+// and body verbatim (uncached) and return ErrUpstream otherwise;
+// LibrarySummary is the one typed read, consumed by the bff for recommendations.
 package collectionclient
 
 import (
@@ -20,13 +17,11 @@ import (
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 )
 
-// ErrUpstream means the collection service answered outside its
-// relayed contract (or an infrastructure layer answered for it).
+// ErrUpstream means the answer was outside the relayed contract (collection or infrastructure).
 var ErrUpstream = errors.New("collectionclient: upstream failure")
 
-// ErrShelfNotFound is returned when the collection service issues a
-// parsed problem+json 404 for a single-shelf resolve: unknown and
-// private shelves are deliberately indistinguishable.
+// ErrShelfNotFound is a parsed 404 on a single-shelf resolve; unknown
+// and private shelves are deliberately indistinguishable.
 var ErrShelfNotFound = errors.New("collectionclient: shelf not found")
 
 // Result is one relayable upstream answer.
@@ -37,8 +32,7 @@ type Client struct {
 	api *collectionapi.ClientWithResponses
 }
 
-// New builds a Client against baseURL using an otelhttp transport and
-// a 10-second timeout.
+// New builds a Client against baseURL with an otelhttp transport and a 10s timeout.
 func New(baseURL string) (*Client, error) {
 	api, err := collectionapi.NewClientWithResponses(baseURL, collectionapi.WithHTTPClient(httpkit.NewHTTPClient()))
 	if err != nil {
@@ -47,9 +41,8 @@ func New(baseURL string) (*Client, error) {
 	return &Client{api: api}, nil
 }
 
-// CountProductReferences asks collection for a product's entry
-// reference count - the admin delete's safety read. Collection
-// enforces role admin, so its 403 is a relayable user answer.
+// CountProductReferences is the admin delete's safety read for a
+// product's entry count; collection enforces role admin, so 403 relays.
 func (c *Client) CountProductReferences(ctx context.Context, bearer string, id uuid.UUID) (Result, error) {
 	resp, err := c.api.CountProductReferencesWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -110,8 +103,7 @@ func (c *Client) ListSubmissions(ctx context.Context, bearer string, params *col
 		http.StatusOK, http.StatusForbidden)
 }
 
-// SubmitVerdict relays the admin verdict with the browser's body
-// untouched; every contract answer passes through.
+// SubmitVerdict relays the admin verdict; the browser body passes through untouched.
 func (c *Client) SubmitVerdict(ctx context.Context, bearer string, id uuid.UUID, body []byte) (Result, error) {
 	resp, err := c.api.SubmitVerdictWithBodyWithResponse(ctx, id, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -133,9 +125,8 @@ func (c *Client) TriggerRematch(ctx context.Context, bearer string) (Result, err
 		http.StatusAccepted, http.StatusForbidden, http.StatusConflict)
 }
 
-// Resnapshot relays POST /internal/resnapshot (200 sweep summary,
-// 403; collection also accepts a service token, but the bff only
-// ever forwards the admin's own bearer).
+// Resnapshot relays POST /internal/resnapshot (200 sweep summary, 403);
+// collection also accepts a service token, but the bff forwards only the admin's bearer.
 func (c *Client) Resnapshot(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.InternalResnapshotWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -145,9 +136,8 @@ func (c *Client) Resnapshot(ctx context.Context, bearer string) (Result, error) 
 		http.StatusOK, http.StatusForbidden)
 }
 
-// NormalizePlatforms relays POST /internal/normalize-platforms (200
-// sweep summary, 403; collection also accepts a service token, but
-// the bff only ever forwards the admin's own bearer).
+// NormalizePlatforms relays POST /internal/normalize-platforms (200 sweep summary, 403);
+// collection also accepts a service token, but the bff forwards only the admin's bearer.
 func (c *Client) NormalizePlatforms(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.InternalNormalizePlatformsWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -157,8 +147,7 @@ func (c *Client) NormalizePlatforms(ctx context.Context, bearer string) (Result,
 		http.StatusOK, http.StatusForbidden)
 }
 
-// NormalizeRegions relays POST /internal/normalize-regions (200 sweep
-// summary, 403).
+// NormalizeRegions relays POST /internal/normalize-regions (200 sweep summary, 403).
 func (c *Client) NormalizeRegions(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.InternalNormalizeRegionsWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -177,8 +166,7 @@ func (c *Client) ListEntries(ctx context.Context, bearer string, params *collect
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusOK, http.StatusBadRequest)
 }
 
-// CreateEntry relays POST /entries (browser body passes through
-// untouched; the collection service owns its validation).
+// CreateEntry relays POST /entries; browser body passes through untouched, collection owns validation.
 func (c *Client) CreateEntry(ctx context.Context, bearer string, body []byte) (Result, error) {
 	resp, err := c.api.CreateEntryWithBodyWithResponse(ctx, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -236,9 +224,8 @@ func (c *Client) ReorderEntry(ctx context.Context, bearer string, id uuid.UUID, 
 		http.StatusOK, http.StatusBadRequest, http.StatusNotFound, http.StatusConflict)
 }
 
-// BulkUpdateEntries relays POST /entries/bulk-update (browser body
-// passes through untouched; the collection service owns both the
-// bounds/no-action guards and the per-entry tag cap).
+// BulkUpdateEntries relays POST /entries/bulk-update; browser body passes
+// through untouched, collection owns the bounds/no-action guards and the per-entry tag cap.
 func (c *Client) BulkUpdateEntries(ctx context.Context, bearer string, body []byte) (Result, error) {
 	resp, err := c.api.BulkUpdateEntriesWithBodyWithResponse(ctx, "application/json", bytes.NewReader(body), httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -323,8 +310,7 @@ func (c *Client) DeleteView(ctx context.Context, bearer string, id uuid.UUID) (R
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusNoContent, http.StatusNotFound)
 }
 
-// GetDashboard relays GET /dashboard with the already-converted
-// filter params (cached by the collection service, never here).
+// GetDashboard relays GET /dashboard with converted filter params (cached upstream, never here).
 func (c *Client) GetDashboard(ctx context.Context, bearer string, params *collectionapi.GetDashboardParams) (Result, error) {
 	resp, err := c.api.GetDashboardWithResponse(ctx, params, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -333,8 +319,7 @@ func (c *Client) GetDashboard(ctx context.Context, bearer string, params *collec
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusOK, http.StatusBadRequest)
 }
 
-// GetValueHistory relays GET /dashboard/value-history (cached by the
-// collection service, never here).
+// GetValueHistory relays GET /dashboard/value-history (cached upstream, never here).
 func (c *Client) GetValueHistory(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.GetValueHistoryWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -343,8 +328,7 @@ func (c *Client) GetValueHistory(ctx context.Context, bearer string) (Result, er
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusOK)
 }
 
-// PurgeUserData relays DELETE /user-data (account deletion leg: wipes
-// the caller's entries, tags, and saved views).
+// PurgeUserData relays DELETE /user-data (account deletion leg: wipes entries, tags, saved views).
 func (c *Client) PurgeUserData(ctx context.Context, bearer string) (Result, error) {
 	resp, err := c.api.PurgeUserDataWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -353,8 +337,7 @@ func (c *Client) PurgeUserData(ctx context.Context, bearer string) (Result, erro
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusNoContent)
 }
 
-// LibrarySummary is the typed read backing the recommendations
-// composition; it is not relayed to browsers.
+// LibrarySummary is the typed read backing recommendations composition; not relayed to browsers.
 func (c *Client) LibrarySummary(ctx context.Context, bearer string) (collectionapi.LibrarySummary, error) {
 	resp, err := c.api.GetLibrarySummaryWithResponse(ctx, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -366,9 +349,8 @@ func (c *Client) LibrarySummary(ctx context.Context, bearer string) (collectiona
 	return *resp.JSON200, nil
 }
 
-// SharedShelf is the typed read behind the shelf-page composition and
-// the feed/Explore hydration that reuses it; not relayed to browsers
-// verbatim (the bff composes its own page schema around it).
+// SharedShelf is the typed read behind the shelf page and feed/Explore
+// hydration; not relayed verbatim, the bff composes its own page schema.
 func (c *Client) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (collectionapi.SharedShelf, error) {
 	resp, err := c.api.GetSharedShelfWithResponse(ctx, id, httpkit.BearerEditor(bearer))
 	if err != nil {
@@ -383,8 +365,7 @@ func (c *Client) SharedShelf(ctx context.Context, bearer string, id uuid.UUID) (
 	return *resp.JSON200, nil
 }
 
-// SharedShelfBySlug resolves (owner, slug) to a shelf - the
-// profile-shelf page's entry point before a shelf id exists.
+// SharedShelfBySlug resolves (owner, slug) to a shelf, the profile page's entry point pre-id.
 func (c *Client) SharedShelfBySlug(ctx context.Context, bearer string, ownerID uuid.UUID, slug string) (collectionapi.SharedShelf, error) {
 	params := &collectionapi.GetSharedShelfBySlugParams{OwnerId: ownerID, Slug: slug}
 	resp, err := c.api.GetSharedShelfBySlugWithResponse(ctx, params, httpkit.BearerEditor(bearer))
@@ -400,10 +381,8 @@ func (c *Client) SharedShelfBySlug(ctx context.Context, bearer string, ownerID u
 	return *resp.JSON200, nil
 }
 
-// SharedShelfEntries relays GET /shared/shelves/{shelfId}/entries -
-// the composed shelf page's entries tab (the caller resolves
-// visibility via SharedShelf/effectiveShelf first). limit/offset pass
-// straight through; collection applies its own default when nil.
+// SharedShelfEntries relays GET .../entries; callers resolve visibility via
+// SharedShelf/effectiveShelf first. limit/offset pass through; collection defaults when nil.
 func (c *Client) SharedShelfEntries(ctx context.Context, bearer string, id uuid.UUID, limit, offset *int) (Result, error) {
 	params := &collectionapi.ListSharedShelfEntriesParams{Limit: limit, Offset: offset}
 	resp, err := c.api.ListSharedShelfEntriesWithResponse(ctx, id, params, httpkit.BearerEditor(bearer))
@@ -413,14 +392,8 @@ func (c *Client) SharedShelfEntries(ctx context.Context, bearer string, id uuid.
 	return httpkit.Relay(resp.StatusCode(), httpkit.ContentType(resp.HTTPResponse), resp.Body, ErrUpstream, http.StatusOK, http.StatusNotFound)
 }
 
-// ListSharedShelves is the typed read behind a profile page's shelf
-// list and Explore-recent's page-then-gate loop: listed shelves newest
-// publish first, plus the full count beyond this page. A nil or empty
-// ownerIDs pages across every listed owner (Explore-recent); a
-// non-empty one scopes the page to just those owners (the profile
-// page) - collectionapi.ListSharedShelvesParams.OwnerIds only gets set
-// in the latter case, so an unfiltered call omits owner_ids from the
-// request entirely rather than sending an empty list.
+// ListSharedShelves lists newest-publish-first with a full count. Nil or
+// empty ownerIDs lists every owner; non-empty sets OwnerIds and scopes to those owners.
 func (c *Client) ListSharedShelves(ctx context.Context, bearer string, ownerIDs []uuid.UUID, limit, offset int) ([]collectionapi.SharedShelfSummary, int, error) {
 	params := &collectionapi.ListSharedShelvesParams{Limit: &limit, Offset: &offset}
 	if len(ownerIDs) > 0 {
@@ -436,9 +409,8 @@ func (c *Client) ListSharedShelves(ctx context.Context, bearer string, ownerIDs 
 	return resp.JSON200.Shelves, resp.JSON200.TotalCount, nil
 }
 
-// SharedShelvesByIDs batch-resolves shelf summaries for hydration
-// (feed and Explore excerpts); ids without a resolvable (non-private)
-// shelf are absent from the answer.
+// SharedShelvesByIDs batch-resolves shelf summaries; ids without a
+// resolvable (non-private) shelf are absent from the answer.
 func (c *Client) SharedShelvesByIDs(ctx context.Context, bearer string, ids []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
 	resp, err := c.api.GetSharedShelvesByIdsWithResponse(ctx, &collectionapi.GetSharedShelvesByIdsParams{Ids: ids}, httpkit.BearerEditor(bearer))
 	if err != nil {

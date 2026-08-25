@@ -1,5 +1,4 @@
-// The collection surface: entries, tags, saved views, and the
-// dashboard, relayed to the collection service.
+// The collection surface: entries, tags, saved views, and dashboard, relayed to collection.
 
 package server
 
@@ -23,9 +22,7 @@ func castVal[T ~string, U ~string](in *T) *U {
 	return &u
 }
 
-// collectionListParams re-types the mirrored query params for the
-// generated collection client (the two contracts are byte-identical;
-// only the Go package differs).
+// collectionListParams re-types the mirrored query params (byte-identical contracts, different Go package).
 func collectionListParams(p api.ListEntriesParams) *collectionapi.ListEntriesParams {
 	return &collectionapi.ListEntriesParams{
 		ItemType:      p.ItemType,
@@ -46,8 +43,7 @@ func collectionListParams(p api.ListEntriesParams) *collectionapi.ListEntriesPar
 }
 
 // relayCollectionMutation relays a mutating collection answer and, on
-// success, invalidates the caller's recommendations (their library
-// changed under the composition).
+// success, invalidates the caller's recommendations (their library changed).
 func (h *Handlers) relayCollectionMutation(w http.ResponseWriter, r *http.Request, sub string, res collectionclient.Result, err error) {
 	if err == nil && res.Status < http.StatusMultipleChoices {
 		if cerr := h.cache.InvalidateRecs(r.Context(), sub); cerr != nil {
@@ -115,10 +111,8 @@ func (h *Handlers) DeleteEntry(w http.ResponseWriter, r *http.Request, entryId o
 	h.relayCollectionMutation(w, r, claims.Sub, res, err)
 }
 
-// AckEntryRegionMismatch proxies the region-mismatch banner dismiss.
-// A stamp-only ack, not a composition change, so it relays plain
-// (no recommendations invalidation) - the same choice as
-// AckSubmissionResolution below.
+// AckEntryRegionMismatch proxies the region-mismatch banner dismiss: a
+// stamp-only ack, not a composition change, so no recs invalidation (like AckSubmissionResolution).
 func (h *Handlers) AckEntryRegionMismatch(w http.ResponseWriter, r *http.Request, entryId openapi_types.UUID) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -142,11 +136,8 @@ func (h *Handlers) ReorderEntry(w http.ResponseWriter, r *http.Request, entryId 
 	h.relayCollectionMutation(w, r, claims.Sub, res, err)
 }
 
-// BulkUpdateEntries proxies the transactional bulk tag/status/
-// storage-location update (browser body untouched; collection owns
-// the guards, the per-entry tag cap, and the all-or-nothing
-// transaction). A mutation like every other entry write, so it
-// invalidates recommendations the same way.
+// BulkUpdateEntries proxies the transactional bulk tag/status/storage
+// update (collection owns the guards, tag cap, all-or-nothing transaction); invalidates recs like any entry write.
 func (h *Handlers) BulkUpdateEntries(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
@@ -205,14 +196,9 @@ func (h *Handlers) DeleteTag(w http.ResponseWriter, r *http.Request, tagId opena
 	h.relayCollection(w, r, res, err)
 }
 
-// publishIfListed fires the social publish event after a successful
-// view write whose RESULT landed visibility=listed - the response
-// body governs, not the request body: a request that asked for
-// listed but the stored view came back some other way must not fire,
-// and a request that did not ask for listed but the stored view came
-// back listed anyway must. Fail-open: the write itself already
-// succeeded in collection; a lost event costs a feed entry until the
-// next listed transition, never the write.
+// publishIfListed fires the social publish event only when the RESPONSE body
+// (not the request) landed visibility=listed - covers both an unlisted request
+// landing listed and vice versa. Fail-open: a lost event costs a feed entry, never the write.
 func (h *Handlers) publishIfListed(r *http.Request, accessToken string, res collectionclient.Result) {
 	if res.Status < http.StatusOK || res.Status >= http.StatusMultipleChoices {
 		return
@@ -280,9 +266,7 @@ func (h *Handlers) DeleteView(w http.ResponseWriter, r *http.Request, viewId ope
 	h.relayCollection(w, r, res, err)
 }
 
-// collectionDashboardParams re-types the mirrored dashboard filter
-// params for the generated collection client (byte-identical
-// contracts; only the Go package differs).
+// collectionDashboardParams re-types the mirrored filter params (byte-identical contracts, different Go package).
 func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashboardParams {
 	return &collectionapi.GetDashboardParams{
 		ItemType:      p.ItemType,
@@ -297,9 +281,8 @@ func collectionDashboardParams(p api.GetDashboardParams) *collectionapi.GetDashb
 	}
 }
 
-// GetDashboard proxies the collection-composed dashboard (cached by
-// its owner, never here - one staleness authority per data type),
-// forwarding the filter dimensions.
+// GetDashboard proxies the collection-composed dashboard (cached by its
+// owner, never here), forwarding the filter dimensions.
 func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params api.GetDashboardParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -309,9 +292,8 @@ func (h *Handlers) GetDashboard(w http.ResponseWriter, r *http.Request, params a
 	h.relayCollection(w, r, res, err)
 }
 
-// GetValueHistory proxies the collection value-over-time series
-// (single-source: the collection service owns its cache and
-// invalidation; the bff never caches pass-throughs).
+// GetValueHistory proxies the collection value-over-time series (single-
+// source: collection owns its cache, the bff never caches pass-throughs).
 func (h *Handlers) GetValueHistory(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {

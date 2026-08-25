@@ -26,17 +26,14 @@ func newRouterFor(t *testing.T, h *Handlers) http.Handler {
 	return router
 }
 
-// testEnv bundles the session cookie and the raw access token it seals,
-// so a pass-through test can both drive an authenticated request and
-// assert the exact bearer that must ride the proxied call.
+// testEnv bundles the session cookie and its sealed access token, so a
+// pass-through test can drive a request and assert the exact bearer that must ride it.
 type testEnv struct {
 	cookie             *http.Cookie
 	sessionAccessToken string
 }
 
-// newTestHandlersWithEnrichment builds Handlers wired to enrich with a
-// fresh (never-refreshing) session ready to drive the pass-through
-// routes.
+// newTestHandlersWithEnrichment builds Handlers wired to enrich with a fresh, never-refreshing session.
 func newTestHandlersWithEnrichment(t *testing.T, enrich *stubEnrichment) (*Handlers, *testEnv) {
 	t.Helper()
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
@@ -54,8 +51,7 @@ func doAuthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *htt
 	return rec
 }
 
-// doUnauthed drives method/path through h's router with no session
-// cookie at all: the guard must answer before any handler runs.
+// doUnauthed drives method/path with no session cookie: the guard must answer before any handler runs.
 func doUnauthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 	_ = env
@@ -64,9 +60,8 @@ func doUnauthed(t *testing.T, h *Handlers, env *testEnv, method, path string) *h
 	return rec
 }
 
-// doAuthedBody mirrors doAuthed for a mutating request: env's sealed
-// session cookie, an allowed Origin (CheckOrigin runs ahead of the
-// handler), and body as the JSON request body.
+// doAuthedBody mirrors doAuthed for a mutating request: env's sealed cookie,
+// an allowed Origin (CheckOrigin runs first), and body as the JSON request body.
 func doAuthedBody(t *testing.T, h *Handlers, env *testEnv, method, path, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -108,12 +103,8 @@ func TestUnitPassThroughs_RequireSession(t *testing.T) {
 	}
 }
 
-// TestUnitSharedProfilesByIds_RelaysEnvelopeAndForwardsIds proves the
-// batch profile-card hydration marshals the user service's typed
-// cards into the {profiles: [...]} envelope the frontend expects
-// (unlike the pass-through relays above, the upstream answer is typed,
-// not a raw body relay) and forwards the exact ids the browser asked
-// for; no session is 401.
+// TestUnitSharedProfilesByIds_RelaysEnvelopeAndForwardsIds marshals typed
+// cards into {profiles: [...]} (unlike raw-body relays) and forwards the exact ids; no session is 401.
 func TestUnitSharedProfilesByIds_RelaysEnvelopeAndForwardsIds(t *testing.T) {
 	id1, id2 := uuid.New(), uuid.New()
 	var gotIDs []uuid.UUID
@@ -172,10 +163,8 @@ func TestUnitAdminRoutes_NoSession401(t *testing.T) {
 	}
 }
 
-// TestUnitHandlers_OwnSessionGuards calls handlers directly, without
-// the Authenticate middleware in front, to prove each one enforces its
-// own session check: the in-handler guard is defense in depth and must
-// hold even if a handler is ever wired up without the middleware.
+// TestUnitHandlers_OwnSessionGuards calls handlers directly (no Authenticate
+// middleware) to prove each enforces its own session check as defense in depth.
 func TestUnitHandlers_OwnSessionGuards(t *testing.T) {
 	h := newTestHandlers(t, newStubCache(), &stubAuth{})
 	id := uuid.New()

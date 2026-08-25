@@ -24,11 +24,8 @@ func newTestClient(t *testing.T, h http.HandlerFunc) *Client {
 	})
 }
 
-// TestRelayMethods_RouteBearerStatusAndBody drives every Result-returning
-// method against a stub that answers the status the test asks for and
-// echoes a canned body, proving each method reaches the right verb+path,
-// forwards the caller's own bearer, and relays the upstream status,
-// content type, and body verbatim.
+// TestRelayMethods_RouteBearerStatusAndBody checks verb, path, bearer, and
+// relay fidelity across every Result-returning method.
 func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 	id := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	var status int
@@ -150,9 +147,7 @@ func TestRelayMethods_RouteBearerStatusAndBody(t *testing.T) {
 	}
 }
 
-// TestRelay_UndeclaredStatusIsErrUpstream proves the shared relay() gate:
-// a status outside a method's declared allow-list is an infrastructure
-// fault (ErrUpstream), never relayed to the browser.
+// TestRelay_UndeclaredStatusIsErrUpstream: a status outside the allow-list is ErrUpstream, never relayed.
 func TestRelay_UndeclaredStatusIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -162,11 +157,8 @@ func TestRelay_UndeclaredStatusIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestTriggerRematch_ForbiddenIsRelayed proves the admin nuance for the
-// one collection route the bff itself does not role-gate: collection
-// enforces the admin-or-service guard, so its 403 is a relayable user
-// answer, not an infrastructure fault (mirrors enrichmentclient's
-// TestAdminRelays_ForbiddenIsRelayed for TriggerRefresh).
+// TestTriggerRematch_ForbiddenIsRelayed: the bff does not role-gate this
+// route, collection's admin-or-service 403 relays as a user answer.
 func TestTriggerRematch_ForbiddenIsRelayed(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -179,14 +171,9 @@ func TestTriggerRematch_ForbiddenIsRelayed(t *testing.T) {
 	}
 }
 
-// TestTriggerRematch_ConflictIsRelayed proves the single-flight 409:
-// collection's rematch_in_progress problem is a relayable user answer,
-// not an infrastructure fault. The dev stack cannot exercise this
-// path live (its rematch dataset resolves in single-digit
-// milliseconds, faster than two sequential HTTP calls can race it),
-// so this unit test - paired with collection's own
-// TestInternalRematchEntries_ConcurrentTriggerIs409 - is the checked-in
-// proof of the path.
+// TestTriggerRematch_ConflictIsRelayed proves the 409 relays. The dev stack
+// can't race it live (single-digit-ms dataset resolution); paired with
+// collection's TestInternalRematchEntries_ConcurrentTriggerIs409, this is the checked-in proof.
 func TestTriggerRematch_ConflictIsRelayed(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -199,10 +186,7 @@ func TestTriggerRematch_ConflictIsRelayed(t *testing.T) {
 	}
 }
 
-// TestCreateTag_Relays429ForTheUserTagCap pins that CreateTag's
-// allow-list includes 429 (the per-user tag cap's status): it must
-// relay verbatim, not collapse into ErrUpstream like an undeclared
-// status would.
+// TestCreateTag_Relays429ForTheUserTagCap pins that 429 (tag cap) relays verbatim, not ErrUpstream.
 func TestCreateTag_Relays429ForTheUserTagCap(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -218,8 +202,7 @@ func TestCreateTag_Relays429ForTheUserTagCap(t *testing.T) {
 	}
 }
 
-// TestLibrarySummary_DecodesTyped proves the one typed read: it decodes
-// the JSON200 body instead of relaying raw bytes.
+// TestLibrarySummary_DecodesTyped decodes JSON200 instead of relaying raw bytes.
 func TestLibrarySummary_DecodesTyped(t *testing.T) {
 	var gotAuth string
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
@@ -243,8 +226,7 @@ func TestLibrarySummary_DecodesTyped(t *testing.T) {
 	}
 }
 
-// TestLibrarySummary_UpstreamFailureIsErrUpstream covers the non-200
-// branch of the one method that does not go through relay().
+// TestLibrarySummary_UpstreamFailureIsErrUpstream covers the non-200 branch (no relay()).
 func TestLibrarySummary_UpstreamFailureIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -254,8 +236,7 @@ func TestLibrarySummary_UpstreamFailureIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestSharedShelf_DecodesTyped proves the shelf-page composition typed
-// read decodes SharedShelf on 200 and forwards the caller's bearer.
+// TestSharedShelf_DecodesTyped decodes SharedShelf on 200 and forwards the bearer.
 func TestSharedShelf_DecodesTyped(t *testing.T) {
 	id := uuid.New()
 	ownerID := uuid.New()
@@ -282,9 +263,7 @@ func TestSharedShelf_DecodesTyped(t *testing.T) {
 	}
 }
 
-// TestSharedShelf_NotFound proves the 404 sentinel: a parsed
-// problem+json 404 is ErrShelfNotFound, not a raw status check (unknown
-// and private shelves are deliberately indistinguishable).
+// TestSharedShelf_NotFound: a parsed problem+json 404 is ErrShelfNotFound, not a raw status check.
 func TestSharedShelf_NotFound(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -296,8 +275,7 @@ func TestSharedShelf_NotFound(t *testing.T) {
 	}
 }
 
-// TestSharedShelf_NonOKIsErrUpstream covers the fallback branch: a
-// status outside 200/404 (both handled explicitly) is ErrUpstream.
+// TestSharedShelf_NonOKIsErrUpstream: any status outside 200/404 is ErrUpstream.
 func TestSharedShelf_NonOKIsErrUpstream(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -307,9 +285,7 @@ func TestSharedShelf_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestSharedShelfBySlug_DecodesTypedAndForwardsParams proves the
-// profile-shelf entry point resolves (owner, slug) via query params
-// and decodes the same SharedShelf shape.
+// TestSharedShelfBySlug_DecodesTypedAndForwardsParams forwards (owner, slug) as query params and decodes SharedShelf.
 func TestSharedShelfBySlug_DecodesTypedAndForwardsParams(t *testing.T) {
 	id, ownerID := uuid.New(), uuid.New()
 	var gotPath, gotQuery string
@@ -335,8 +311,7 @@ func TestSharedShelfBySlug_DecodesTypedAndForwardsParams(t *testing.T) {
 	}
 }
 
-// TestSharedShelfBySlug_NotFound proves the same 404 sentinel as
-// SharedShelf.
+// TestSharedShelfBySlug_NotFound: same 404 sentinel as SharedShelf.
 func TestSharedShelfBySlug_NotFound(t *testing.T) {
 	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -358,9 +333,8 @@ func TestSharedShelfBySlug_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestSharedShelfEntries_RelaysStatusesAndForwardsPaging proves the
-// entries-tab relay: 200 and 404 both pass through with limit/offset
-// forwarded as query params, and an undeclared status is ErrUpstream.
+// TestSharedShelfEntries_RelaysStatusesAndForwardsPaging: 200/404 relay with
+// limit/offset as query params; else ErrUpstream.
 func TestSharedShelfEntries_RelaysStatusesAndForwardsPaging(t *testing.T) {
 	id := uuid.New()
 	var status int
@@ -403,9 +377,7 @@ func TestSharedShelfEntries_RelaysStatusesAndForwardsPaging(t *testing.T) {
 	}
 }
 
-// TestListSharedShelves_DecodesTypedAndForwardsParams proves the
-// profile-page shelf list forwards owner_ids/limit/offset and decodes
-// both the shelves page and the full total_count.
+// TestListSharedShelves_DecodesTypedAndForwardsParams forwards owner_ids/limit/offset and decodes shelves+total_count.
 func TestListSharedShelves_DecodesTypedAndForwardsParams(t *testing.T) {
 	shelfID, ownerA, ownerB := uuid.New(), uuid.New(), uuid.New()
 	var gotQuery string
@@ -444,9 +416,7 @@ func TestListSharedShelves_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestSharedShelvesByIDs_DecodesTyped proves the feed/Explore hydration
-// batch read decodes the shelves envelope; ids without a resolvable
-// shelf are absent (no error, no placeholder).
+// TestSharedShelvesByIDs_DecodesTyped decodes the shelves envelope; unresolvable ids are absent, not errors or placeholders.
 func TestSharedShelvesByIDs_DecodesTyped(t *testing.T) {
 	shelfID := uuid.New()
 	var gotAuth string
@@ -482,10 +452,8 @@ func TestSharedShelvesByIDs_NonOKIsErrUpstream(t *testing.T) {
 	}
 }
 
-// TestTransportErrorSurfaces proves every method's own transport-error
-// branch: a dead upstream surfaces as a plain wrapped error (never
-// ErrUpstream, which is reserved for an upstream that actually
-// answered outside the relayed contract).
+// TestTransportErrorSurfaces: a dead upstream wraps as a plain error, never
+// ErrUpstream (reserved for an upstream that actually answered outside the contract).
 func TestTransportErrorSurfaces(t *testing.T) {
 	c, err := New("http://127.0.0.1:1")
 	if err != nil {

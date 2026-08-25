@@ -30,6 +30,10 @@ func TestLoginProviderRedirects(t *testing.T) {
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "https://idp.example/authorize?state=s" {
 		t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 	}
+	st := findCookie(rec.Result().Cookies(), session.StateCookieName)
+	if st == nil || st.Value != "s" || !st.HttpOnly {
+		t.Fatalf("state cookie = %+v", st)
+	}
 }
 
 func TestLoginDevSetsCookieAndGoesHome(t *testing.T) {
@@ -92,7 +96,7 @@ func TestCallbackSuccess(t *testing.T) {
 		},
 	})
 	rec := httptest.NewRecorder()
-	newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c1&state=s1", nil))
+	newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c1&state=s1"))
 	if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 		t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 	}
@@ -115,7 +119,7 @@ func TestCallbackFailures(t *testing.T) {
 				},
 			})
 			rec := httptest.NewRecorder()
-			newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+			newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c&state=s"))
 			if rec.Header().Get("Location") != "/login?error="+tc.code {
 				t.Errorf("%v: location=%q", tc.err, rec.Header().Get("Location"))
 			}
@@ -130,6 +134,46 @@ func TestCallbackFailures(t *testing.T) {
 	}
 }
 
+func TestCallbackMissingOrMismatchedStateCookie(t *testing.T) {
+	access := mintAccess(t, "u1", "j1", time.Now().Add(5*time.Minute))
+	newHandlers := func() *Handlers {
+		return newTestHandlers(t, newStubCache(), &stubAuth{
+			callback: func(context.Context, string, string) (authclient.TokenPair, error) {
+				return authclient.TokenPair{AccessToken: access, RefreshToken: "r1",
+					ExpiresIn: 300, RefreshExpiresIn: 2000}, nil
+			},
+		})
+	}
+
+	t.Run("no cookie", func(t *testing.T) {
+		h := newHandlers()
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c1&state=s1", nil))
+		if rec.Header().Get("Location") != "/login?error=login_failed" {
+			t.Fatalf("location=%q", rec.Header().Get("Location"))
+		}
+		if len(rec.Result().Cookies()) != 0 {
+			t.Fatalf("no session must be sealed: %+v", rec.Result().Cookies())
+		}
+	})
+
+	t.Run("mismatched cookie", func(t *testing.T) {
+		h := newHandlers()
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c1&state=s1", nil)
+		req.AddCookie(h.codec.StateCookie("wrong-state", 600))
+		rec := httptest.NewRecorder()
+		newRouterFor(t, h).ServeHTTP(rec, req)
+		if rec.Header().Get("Location") != "/login?error=login_failed" {
+			t.Fatalf("location=%q", rec.Header().Get("Location"))
+		}
+		for _, c := range rec.Result().Cookies() {
+			if c.Name == session.CookieName {
+				t.Fatalf("no session must be sealed: %+v", rec.Result().Cookies())
+			}
+		}
+	})
+}
+
 func TestCallbackLinkOutcomes(t *testing.T) {
 	access := mintAccess(t, "u1", "j1", time.Now().Add(5*time.Minute))
 	google := "google"
@@ -142,15 +186,19 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 			},
 		})
 		rec := httptest.NewRecorder()
-		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c1&state=s1", nil))
+		newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c1&state=s1"))
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?linked=google" {
 			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 		}
 		cs := rec.Result().Cookies()
-		if len(cs) != 1 || cs[0].Name != session.CookieName {
+		if len(cs) != 2 {
+			t.Fatalf("cookies = %+v, want session + cleared state", cs)
+		}
+		sessCookie, clearedState := findCookie(cs, session.CookieName), findCookie(cs, session.StateCookieName)
+		if sessCookie == nil || clearedState == nil || clearedState.MaxAge >= 0 {
 			t.Fatalf("cookies = %+v", cs)
 		}
-		if opened, err := h.codec.Open(cs[0].Value); err != nil || opened.RefreshToken != "r1" {
+		if opened, err := h.codec.Open(sessCookie.Value); err != nil || opened.RefreshToken != "r1" {
 			t.Fatalf("cookie content: %+v err=%v", opened, err)
 		}
 	})
@@ -162,7 +210,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 			},
 		})
 		rec := httptest.NewRecorder()
-		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c&state=s"))
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=conflict" {
 			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 		}
@@ -178,7 +226,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 			},
 		})
 		rec := httptest.NewRecorder()
-		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c&state=s"))
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/account?link_error=email_unverified" {
 			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 		}
@@ -195,7 +243,7 @@ func TestCallbackLinkOutcomes(t *testing.T) {
 			},
 		})
 		rec := httptest.NewRecorder()
-		newRouterFor(t, h).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/auth/callback?code=c&state=s", nil))
+		newRouterFor(t, h).ServeHTTP(rec, oauthStateReq(t, h, "/api/auth/callback?code=c&state=s"))
 		if rec.Code != http.StatusFound || rec.Header().Get("Location") != "/" {
 			t.Fatalf("code=%d location=%q", rec.Code, rec.Header().Get("Location"))
 		}

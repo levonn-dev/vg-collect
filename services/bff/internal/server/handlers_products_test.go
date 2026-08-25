@@ -1,5 +1,4 @@
-// Tests for product-identity administration: worklists, mapping
-// corrections, community minting, and promotion.
+// Tests for product-identity administration: worklists, mapping corrections, community minting, and promotion.
 
 package server
 
@@ -132,8 +131,7 @@ func TestUnitAdminDelete_ReferencedAnswers409BeforeEnrichment(t *testing.T) {
 	col := &stubCollection{answer: func(string) (collectionclient.Result, error) {
 		return collectionclient.Result{Status: 200, ContentType: "application/json", Body: []byte(`{"entry_count":3}`)}, nil
 	}}
-	// deleteProduct stays nil: reaching enrichment would panic, which
-	// is the ordering assertion.
+	// deleteProduct stays nil: reaching enrichment would panic, which is the ordering assertion.
 	h, env := newTestHandlersWithEnrichment(t, &stubEnrichment{})
 	h.collection = col
 	rec := httptest.NewRecorder()
@@ -196,9 +194,7 @@ func TestUnitAdminDelete_NoSession401(t *testing.T) {
 }
 
 // TestUnitPromoteRelays_ParamsAndConflict proves the candidates read
-// forwards its query params (limit/offset/product_id) and the promote
-// mutation relays a conflict (a provider twin already holds the
-// identity) verbatim.
+// forwards limit/offset/product_id, and promote relays an identity-taken conflict verbatim.
 func TestUnitPromoteRelays_ParamsAndConflict(t *testing.T) {
 	var gotParams *enrichapi.ListPromoteCandidatesParams
 	enrich := &stubEnrichment{
@@ -229,10 +225,8 @@ func TestUnitPromoteRelays_ParamsAndConflict(t *testing.T) {
 	}
 }
 
-// TestUnitCreateCommunityProduct_RelaysBodyAndForbidden proves the
-// admin mint forwards the browser's body untouched and relays
-// enrichment's role refusal verbatim (enrichment enforces admin, the
-// bff holds no role logic of its own on admin routes).
+// TestUnitCreateCommunityProduct_RelaysBodyAndForbidden proves the admin
+// mint forwards the body untouched and relays enrichment's role refusal verbatim.
 func TestUnitCreateCommunityProduct_RelaysBodyAndForbidden(t *testing.T) {
 	const problem = `{"type":"about:blank","title":"Forbidden","status":403,"code":"forbidden","detail":"role admin required"}`
 	var gotBody []byte
@@ -251,10 +245,8 @@ func TestUnitCreateCommunityProduct_RelaysBodyAndForbidden(t *testing.T) {
 	}
 }
 
-// TestUnitDismissPromoteCandidate_RelaysBodyAndNotFound proves the
-// candidate dismissal forwards the target id and the browser's body
-// untouched, and relays a not-found verbatim (the candidate left the
-// sweep worklist between page load and dismiss).
+// TestUnitDismissPromoteCandidate_RelaysBodyAndNotFound proves dismissal
+// forwards the target id and body untouched, and relays a not-found verbatim.
 func TestUnitDismissPromoteCandidate_RelaysBodyAndNotFound(t *testing.T) {
 	const problem = `{"type":"about:blank","title":"Not Found","status":404,"code":"not_found"}`
 	pid := uuid.New()

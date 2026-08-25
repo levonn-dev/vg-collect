@@ -1,5 +1,4 @@
-// Tests for catalog discovery: search, FX rates, the platform
-// list, product resolve and read, and recommendations.
+// Tests for catalog discovery: search, FX rates, platform list, product resolve/read, and recommendations.
 
 package server
 
@@ -48,8 +47,7 @@ func TestUnitSearchPassThrough_UpstreamFailureIs502(t *testing.T) {
 	}
 }
 
-// TestUnitFxRelay_SnapshotRelaysVerbatim pins that /api/fx passes the
-// enrichment answer through byte-for-byte with the user's own token.
+// TestUnitFxRelay_SnapshotRelaysVerbatim: /api/fx relays enrichment's answer byte-for-byte with the user's token.
 func TestUnitFxRelay_SnapshotRelaysVerbatim(t *testing.T) {
 	const relayed = `{"base":"USD","date":"2026-07-01","rates":{"EUR":0.5,"JPY":150}}`
 	var gotBearer string
@@ -67,9 +65,8 @@ func TestUnitFxRelay_SnapshotRelaysVerbatim(t *testing.T) {
 	}
 }
 
-// TestUnitFxRelay_UpstreamProblemRelaysVerbatim pins that a 502
-// problem from enrichment (cold fx cache) reaches the browser with
-// status, content type, and body intact.
+// TestUnitFxRelay_UpstreamProblemRelaysVerbatim: a 502 from enrichment
+// (cold fx cache) reaches the browser with status, content type, and body intact.
 func TestUnitFxRelay_UpstreamProblemRelaysVerbatim(t *testing.T) {
 	const problem = `{"type":"about:blank","title":"Bad Gateway","status":502,"code":"upstream_unavailable","detail":"exchange rates are unavailable"}`
 	enrich := &stubEnrichment{fx: func(context.Context, string) (enrichmentclient.Result, error) {
@@ -99,11 +96,8 @@ func TestUnitFxRelay_ClientErrorAnswers502(t *testing.T) {
 	}
 }
 
-// TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim pins that
-// type=pc_listing is not blocked by any bff-side enum check: the
-// generated query binding treats type as an opaque string (enrichment
-// owns validation), so it must reach the stub exactly as sent and the
-// stub's body must round-trip to the client untouched.
+// TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim: type=pc_listing
+// isn't blocked by any bff-side enum check (opaque string, enrichment owns validation).
 func TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim(t *testing.T) {
 	const relayed = `{"degraded":false,"results":[{"type":"pc_listing","pc_product_id":5099,"name":"Super Mario Bros. (NES)"}]}`
 	var gotType, gotQ string
@@ -121,10 +115,8 @@ func TestUnitSearchPassThrough_PcListingTypeRelaysVerbatim(t *testing.T) {
 	}
 }
 
-// TestUnitResolvePassThrough_PcListingBodyRelaysVerbatim pins that a
-// pc_listing resolve body reaches the enrichment stub byte-for-byte -
-// the bff reads and forwards raw bytes, it never decodes into
-// ResolveRequest - and the stub's answer round-trips to the client.
+// TestUnitResolvePassThrough_PcListingBodyRelaysVerbatim: the bff forwards
+// raw bytes to enrichment, never decoding into ResolveRequest; the reply round-trips too.
 func TestUnitResolvePassThrough_PcListingBodyRelaysVerbatim(t *testing.T) {
 	const sent = `{"type":"pc_listing","pc_product_id":5099}`
 	const relayed = `{"id":"22222222-2222-2222-2222-222222222222","type":"pc_listing","pc_product_id":5099}`

@@ -1,5 +1,4 @@
-// Tests for the admin maintenance levers: refresh, rematch,
-// resnapshot, and normalization sweeps.
+// Tests for the admin maintenance levers: refresh, rematch, resnapshot, and normalization sweeps.
 
 package server
 
@@ -24,8 +23,7 @@ func TestUnitAdminRefresh_Relays202(t *testing.T) {
 	}
 }
 
-// TestUnitAdminRematch_Relays202 mirrors TestUnitAdminRefresh_Relays202
-// for the entry-rematch trigger: collection's 202 relays verbatim.
+// TestUnitAdminRematch_Relays202 mirrors the refresh test: collection's 202 relays verbatim.
 func TestUnitAdminRematch_Relays202(t *testing.T) {
 	const accepted = `{"status":"started"}`
 	col := &stubCollection{triggerRematch: func(_ context.Context, bearer string) (collectionclient.Result, error) {
@@ -38,14 +36,9 @@ func TestUnitAdminRematch_Relays202(t *testing.T) {
 	}
 }
 
-// TestUnitAdminRematch_ConflictRelaysVerbatim mirrors
-// TestUnitAdminMapping_RelaysBodyAndConflict's 409-relays-verbatim
-// shape for the rematch route: the live stack cannot exercise this
-// path reliably (the dev rematch dataset resolves faster than two
-// sequential HTTP calls, so a live double-trigger observes 202 twice,
-// never 202-then-409 - see bruno/bff/admin/rematch.bru), so this is
-// the checked-in proof that collection's rematch_in_progress problem
-// reaches the browser unmodified.
+// TestUnitAdminRematch_ConflictRelaysVerbatim: the dev rematch dataset
+// resolves faster than two sequential calls can race it (live double-trigger
+// sees 202 twice, never 202-then-409; see bruno/bff/admin/rematch.bru), so this is the checked-in proof.
 func TestUnitAdminRematch_ConflictRelaysVerbatim(t *testing.T) {
 	const problem = `{"type":"about:blank","title":"Conflict","status":409,"code":"rematch_in_progress","detail":"an entry rematch is already running"}`
 	col := &stubCollection{triggerRematch: func(_ context.Context, bearer string) (collectionclient.Result, error) {
@@ -58,10 +51,8 @@ func TestUnitAdminRematch_ConflictRelaysVerbatim(t *testing.T) {
 	}
 }
 
-// TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer mirrors
-// TestUnitAdminRematch_Relays202 for the platform-canonicalization
-// lever: collection's 200 sweep summary relays verbatim, the caller's
-// own bearer reaches collection, and no session is 401.
+// TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer: collection's 200
+// sweep summary relays verbatim, the caller's bearer reaches collection, no session is 401.
 func TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer(t *testing.T) {
 	const summary = `{"scanned":10,"normalized":3,"skipped":7}`
 	var gotBearer string
@@ -85,8 +76,7 @@ func TestUnitAdminNormalizePlatforms_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
-// TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer mirrors the
-// above for the entry-region normalization lever.
+// TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer mirrors the above for region normalization.
 func TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer(t *testing.T) {
 	const summary = `{"scanned":5,"normalized":2,"skipped":3}`
 	var gotBearer string
@@ -110,8 +100,7 @@ func TestUnitAdminNormalizeRegions_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
-// TestUnitAdminResnapshot_RelaysAndForwardsBearer mirrors the above
-// for the snapshot-field recompute lever.
+// TestUnitAdminResnapshot_RelaysAndForwardsBearer mirrors the above for the snapshot recompute lever.
 func TestUnitAdminResnapshot_RelaysAndForwardsBearer(t *testing.T) {
 	const summary = `{"products_seen":3,"products_failed":1,"entries_updated":2}`
 	var gotBearer string
@@ -135,9 +124,8 @@ func TestUnitAdminResnapshot_RelaysAndForwardsBearer(t *testing.T) {
 	}
 }
 
-// TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer
-// mirrors the above for the community-product region normalization
-// lever, which relays through enrichment instead of collection.
+// TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer mirrors
+// the above for community-product regions, relayed through enrichment instead of collection.
 func TestUnitAdminNormalizeCommunityRegions_RelaysAndForwardsBearer(t *testing.T) {
 	const summary = `{"scanned":4,"normalized":1,"skipped":3}`
 	var gotBearer string

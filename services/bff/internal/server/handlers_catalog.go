@@ -1,5 +1,4 @@
-// Catalog discovery: search, FX rates, the platform list,
-// product resolve and read, and the composed recommendations feed.
+// Catalog discovery: search, FX rates, platform list, product resolve/read, and composed recommendations.
 
 package server
 
@@ -13,8 +12,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/bff/internal/gen/api"
 )
 
-// SearchCatalog proxies catalog discovery search to the enrichment
-// service with the user's own token.
+// SearchCatalog proxies catalog discovery search to enrichment with the user's own token.
 func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params api.SearchCatalogParams) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -24,8 +22,7 @@ func (h *Handlers) SearchCatalog(w http.ResponseWriter, r *http.Request, params 
 	h.relayEnrichment(w, r, res, err)
 }
 
-// GetFx relays the enrichment service's exchange-rate snapshot with
-// the user's own token.
+// GetFx relays enrichment's exchange-rate snapshot with the user's own token.
 func (h *Handlers) GetFx(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -45,8 +42,7 @@ func (h *Handlers) ListPlatforms(w http.ResponseWriter, r *http.Request) {
 	h.relayEnrichment(w, r, res, err)
 }
 
-// ResolveProduct proxies find-or-create; the body passes through
-// untouched (enrichment owns its validation).
+// ResolveProduct proxies find-or-create; body passes through untouched, enrichment owns validation.
 func (h *Handlers) ResolveProduct(w http.ResponseWriter, r *http.Request) {
 	sess, _, ok := h.requireSession(w, r)
 	if !ok {
@@ -70,11 +66,8 @@ func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId 
 	h.relayEnrichment(w, r, res, err)
 }
 
-// GetRecommendations composes the collection library summary with
-// enrichment scoring, cached per user for about an hour. The bff owns
-// this cache because it owns the composition; the user's own entry
-// mutations invalidate it, and a degraded score is never cached (it
-// would pin a bad answer for the whole TTL).
+// GetRecommendations composes collection's library with enrichment scoring,
+// cached per user (~1h); a degraded score is never cached, else it pins a bad answer for the TTL.
 func (h *Handlers) GetRecommendations(w http.ResponseWriter, r *http.Request) {
 	sess, claims, ok := h.requireSession(w, r)
 	if !ok {
