@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Route, Routes } from 'react-router'
 import { ApiError } from './api/client'
+import CrtOverlay from './components/CrtOverlay'
 import Layout from './components/Layout'
 import PublicShell from './components/PublicShell'
 import About from './pages/About'
@@ -73,6 +74,7 @@ export default function App() {
           </Route>
         </Routes>
       </BrowserRouter>
+      <CrtOverlay />
     </QueryClientProvider>
   )
 }
