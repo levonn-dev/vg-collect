@@ -40,18 +40,18 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 
 ## Dev commands
 
-| Command                  | What                                                                                                                                                                                              |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                     |
-| `task test`              | go test every module + frontend vitest. Integration tests share three long-lived datastore containers (started on demand, reused across runs; per-run test databases are swept afterward, even on failure)                                                                              |
-| `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                           |
-| `task gen`               | bundle the authored `api/*.yaml`/`api/common.yaml` contracts into self-contained `api/bundled/` files (redocly) + region/platform tables from `api/domain.yaml` and the frontend's constraint-value facets (`frontend/src/gen/facets.ts`) from that bundle, both via `tools/domaingen` + the shared Go contract module and every service's OpenAPI server stubs/types + Grafana alert rules and golden dashboards from `deploy/observability/` + the frontend's typed API client, including its generated per-enum value arrays (`frontend/src/api/schema.ts`)  |
-| `task tidy`              | go mod tidy every module                                                                                                                                                                          |
-| `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                                                                                                     |
-| `task build`             | compile every module + the frontend bundle                                                                                                                                                        |
-| `task e2e`               | Parallel Playwright browser suite against the running stack; per-run minted dev fixtures; isolation-first                                                                                         |
-| `task run` / `task down` | tilt up / down                                                                                                                                                                                    |
-| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace + the shared test datastore containers (see Teardown)                                                                                       |
+| Command                  | What                                                                                                                                                                                                                                                   |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                                                                          |
+| `task test`              | go test every module + frontend vitest. Integration tests share three long-lived datastore containers (started on demand, reused across runs; per-run test databases are swept afterward, even on failure)                                             |
+| `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                                                                                |
+| `task gen`               | regenerate everything derived from the contracts: bundled contracts, domain tables, server stubs, dashboards and alerts, the frontend's typed client, facets, and locale catalogs. The chain is documented in `api/README.md` and `frontend/README.md` |
+| `task tidy`              | go mod tidy every module                                                                                                                                                                                                                               |
+| `task migrate`           | run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user)                                                                                                                                                          |
+| `task build`             | compile every module + the frontend bundle                                                                                                                                                                                                             |
+| `task e2e`               | Parallel Playwright browser suite against the running stack; per-run minted dev fixtures; isolation-first                                                                                                                                              |
+| `task run` / `task down` | tilt up / down                                                                                                                                                                                                                                         |
+| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace + the shared test datastore containers (see Teardown)                                                                                                                                           |
 
 Note: `task test` / `task test:cover` run the Go integration suites against
 three shared containers; test databases carry a per-package name and a
@@ -66,18 +66,10 @@ task nuke                    # app layer: tilt down + delete the vgkeep namespac
 task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
 ```
 
-Reinstalling the platform mints a fresh dev CA, and cert-manager does not
-reissue previously issued certificates (they still match their Certificate
-specs), so TLS secrets from before a platform-only teardown keep chaining
-to the dead CA until their renewal window. For platform down/up cycles
-prefer `task nuke && task bootstrap:cluster:down`, which drops those secrets
-(and the datastore PVCs) with the vgkeep namespace; 
-`task bootstrap:cluster && task run` then brings everything back from scratch.
-
-Platform teardown removes the monitoring stack's owning helm release, but
-the kps CRDs applied by hand in `task bootstrap:cluster` are not
-helm-managed and remain until deleted by hand; this is harmless, and the
-next `task bootstrap:cluster` re-adopts them.
+For platform down/up cycles prefer `task nuke && task bootstrap:cluster:down`,
+then `task bootstrap:cluster && task run`. What each tier preserves, and why
+a platform-only teardown leaves TLS secrets chaining to a dead dev CA, is in
+the Teardown section of `docs/runbooks/stack.md`.
 
 ## Edge and ports
 
@@ -101,6 +93,9 @@ the other services are reachable in dev only via Tilt port-forwards.
 | 9090  | Prometheus                                                                        |
 | 16686 | Jaeger                                                                            |
 
+The full list, including the per-service Postgres port-forwards, is in the
+Ports section of `docs/runbooks/stack.md`.
+
 ## Frontend
 
 In-cluster, the bff serves the built SPA bundle at the same origin as
@@ -108,48 +103,23 @@ the API, so there is no separate frontend deployment. For SPA iteration,
 trigger the `frontend-dev` Tilt resource (or run `npm run dev` in
 `frontend/`) and open http://localhost:5173; its `/api` requests proxy
 to the gateway on 8090, so login and cookie flows run against the real
-edge. See `frontend/README.md` for the frontend task list.
-
-Site identity (instance name, operator and legal slots, provider
-credit lists) bakes into the bundle at build time from `VITE_SITE_*`
-variables; see the frontend section of `.env.example`. In dev, Tilt
-derives the credit lists from the same `.env` credentials that enable
-the backend providers.
+edge. Site identity bakes into the bundle at build time from
+`VITE_SITE_*` variables (see the frontend section of `.env.example`).
+`frontend/README.md` covers the dev commands, the typed API client and
+generated modules, and the translation workflow.
 
 ## Observability
 
-Every service pushes OTLP straight to a node-local otel-agent collector;
-it forwards to a central otel-gateway, which fans out to Prometheus
-(metrics, with exemplars linking histogram buckets to trace IDs), Loki
-(logs), and Jaeger (traces). Browser telemetry rides the same pipe
+Every service pushes OTLP through a node-local agent collector to a
+central gateway, which fans out to Prometheus (metrics, with exemplars),
+Loki (logs), and Jaeger (traces). Browser telemetry rides the same pipe
 through a session-gated relay on the bff, so one trace stitches the
-browser through the bff and into whichever service and database
-answered the call.
-
-Twelve dashboards are provisioned into the `vgkeep` Grafana folder
-(localhost:3000, anonymous admin in dev). The six service dashboards
-generate from `deploy/observability/` manifests, with panels shared
-across services drawn from named golden blocks; `task lint:obs` checks
-panel geometry and every query expression across all twelve, generated
-and hand-authored alike:
-
-- `vg-overview` - the application overview pane: edge, services, and
-  datastores on one screen, with per-service rate/errors/duration
-- `vg-apisix-edge` - gateway traffic and status codes
-- `vg-datastores` - Postgres/MongoDB/Valkey health
-- `vg-pod-details` - per-pod CPU/memory/restarts
-- `vg-node-details` - node-level pressure and capacity
-- `vg-frontend` - browser telemetry: locale, prose fallback, errors,
-  network failures, web vitals
-- `vg-auth`, `vg-bff`, `vg-collection`, `vg-enrichment`, `vg-social`,
-  `vg-user` - one per service: RED, domain metrics, datastore health
-  from that service's seat, pods, and error logs
-
-Thirty-two alert rules are provisioned alongside them in the same
-`vgkeep` folder; each links a runbook under `docs/runbooks/` via
-its `runbook_url` annotation. The same directory holds an operating
-runbook per service and `docs/runbooks/stack.md` for the application
-as a whole; `docs/runbooks/README.md` indexes them.
+browser through the bff and into whichever service and database answered
+the call. Twelve dashboards and thirty-two alert rules provision into
+the `vgkeep` Grafana folder (localhost:3000, anonymous admin in dev);
+every alert links a runbook under `docs/runbooks/`, indexed by
+`docs/runbooks/README.md`. The dashboard catalog and the telemetry
+pipeline live in `docs/runbooks/stack.md`.
 
 See one stitched trace:
 
@@ -165,23 +135,18 @@ against AWS Secrets Manager in the documented production path.
 
 ## Repo layout
 
-- `api/` OpenAPI contracts
+- `api/` OpenAPI contracts and domain tables; layout and editing flow in
+  `api/README.md`
 - `libs/go/` shared modules (one concern each)
 - `services/` one Go module per service
-- `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff)
-- `deploy/charts/` Helm (per-service + platform + `vg-lib`, the shared
-  library chart)
-- `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`).
-
-Helm: `deploy/charts/vg-lib` holds the templates common to every
-service chart (datastore certificate/pdb/service/servicemonitor/
-statefulset for postgres, valkey, and mongo; the datastore owner-only
-network policies; the per-service pdb, service, and serviceaccount).
-Each service chart keeps its own thin caller file per template, under
-the same file names as before. `task helm:deps` vendors `vg-lib` into
-every service chart and runs automatically from `task lint`,
-`task bootstrap:cluster`, and the Tiltfile, so a fresh clone needs no
-manual step.
+- `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff);
+  see `frontend/README.md`
+- `bruno/` API flows against the dev stack; see `bruno/README.md`
+- `deploy/charts/` Helm: per-service charts, the platform chart, and
+  `vg-lib`, the shared library chart every service chart vendors via
+  `task helm:deps` (runs automatically from `task lint`,
+  `task bootstrap:cluster`, and the Tiltfile)
+- `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`)
 
 Translations: see `docs/translations.md` to contribute a language.
 Regions: `docs/adding-a-region.md` is the graduation checklist for a
@@ -189,18 +154,28 @@ new entry region.
 
 ## Status
 
-All services and features to date are complete and verified end to end
-by Playwright journeys, per-service test suites, and bruno flows: auth
-and user, the APISIX/bff edge, enrichment (catalog, matching, pricing,
-per-region release dates and localized titles), the role-gated admin
-page, catalog submissions (user-submitted custom entries reviewed into
-a shared community catalog, with in-place promotion when providers
-gain the item), with submission-approval banners, user cover images,
-unified search results, and alias-aware platform canonicalization,
-collection, the full SPA, and observability with runbooks. Stub
-provider mode remains the credential-less default; real IGDB and
-PriceCharting keys have been exercised live in dev. Frontend still
-needs style work and cleaner user flows.
+Everything checked off is verified end to end by Playwright journeys,
+per-service test suites, and bruno flows.
+
+- [x] OIDC login and sessions
+- [x] IGDB metadata enrichment
+- [x] PriceCharting market pricing
+- [x] add region support for IGDB and PriceCharting
+- [x] add support for more regions
+- [x] add developer and publisher fields
+- [x] catalog submissions with community promotion
+- [x] social profiles, shelves, likes, comments, feed
+- [x] i18n with English and Japanese
+- [x] Playwright e2e suite
+- [x] observability: dashboards, alerts, runbooks
+- [ ] docs/diagrams pass
+- [ ] frontend style pass and cleaner user flows
+- [ ] price-change notifications
+- [ ] social notifications
+- [ ] support for digital media
+- [ ] digital platform sync (Steam/PSN/Epic)
+- [ ] smarter recommendations (vector similarity, LLM insights)
+- [ ] community translations for native-script names
 
 ## License
 
