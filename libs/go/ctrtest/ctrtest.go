@@ -1,5 +1,5 @@
-// Package ctrtest provides the boot-once-and-cache container singleton shared by pgtest,
-// mongotest, and valkeytest, plus the per-test-binary database naming those kits share.
+// Package ctrtest provides the boot-once-and-cache container singleton shared by pgtest
+// and valkeytest, plus the per-test-binary database naming those kits share.
 // Each kit declares its own package-level Container and boot function, so container types never share a Once.
 package ctrtest
 
@@ -48,7 +48,7 @@ func (c *Container) URL(t *testing.T, boot func(context.Context) (string, error)
 // DBName derives a database name for the test binary whose package lives in dir, isolating
 // it on a shared datastore server. The dir hash separates binaries under go test -p 2;
 // TESTDS_RUN scopes separate concurrent runs. The "t_<scope>_" prefix is the Taskfile clean's
-// contract. 63 bytes is postgres's identifier limit (Mongo allows 64).
+// contract. 63 bytes is postgres's identifier limit.
 func DBName(dir string) string {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(dir)) // fnv's Write never fails

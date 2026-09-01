@@ -14,7 +14,6 @@ env:
   # Shared test datastore containers, one per kind, started once by
   # test:datastores and reused; TESTDS_RUN scopes concurrent runs apart.
   PGTEST_URL: postgres://pgtest:pgtest@127.0.0.1:54329/pgtest?sslmode=disable
-  MONGOTEST_URL: mongodb://127.0.0.1:27019
   VALKEYTEST_URL: redis://127.0.0.1:63790
 
 tasks:
@@ -28,12 +27,16 @@ tasks:
   # ------------------------------ bootstrap ------------------------------
 
   bootstrap:
-    desc: Verify required tools are installed and scaffold .env from .env.example
+    desc: Verify required tools are installed, scaffold .env from .env.example, and sync missing keys into an existing .env
     cmds:
       - for tool in go docker kubectl helm tilt golangci-lint node npm; do
           command -v $tool >/dev/null || { echo "MISSING $tool; see README Prerequisites"; exit 1; };
         done
       - test -f .env || cp .env.example .env
+      - grep -oE '^[A-Za-z_][A-Za-z0-9_]*=' .env.example | while read -r kv; do
+          key=${kv%=};
+          grep -q "^${key}=" .env || { grep "^${key}=" .env.example >> .env; echo "added missing key $key to .env"; };
+        done
       - echo "bootstrap OK"
 
   bootstrap:cluster:
@@ -187,7 +190,7 @@ tasks:
   # ------------------------------- migrate --------------------------------
 
   migrate:
-    desc: 'Run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user; bff has no database). Each reads its own connection env (DATABASE_URL, or MONGO_URL/MONGO_DB for enrichment).'
+    desc: 'Run db:migrate for every migrate-capable service (auth, collection, enrichment, social, user; bff has no database). Each reads its own connection env (DATABASE_URL).'
     cmds:
       - for: [auth, collection, enrichment, social, user]
         task: '{{.ITEM}}:db:migrate'
@@ -237,13 +240,11 @@ tasks:
       - timeout 2 bash -c '</dev/tcp/127.0.0.1/54329' 2>/dev/null || docker start vgkeep-testpg 2>/dev/null ||
           docker run -d --name vgkeep-testpg -p 127.0.0.1:54329:5432
           -e POSTGRES_DB=pgtest -e POSTGRES_USER=pgtest -e POSTGRES_PASSWORD=pgtest postgres:17-alpine
-      - timeout 2 bash -c '</dev/tcp/127.0.0.1/27019' 2>/dev/null || docker start vgkeep-testmongo 2>/dev/null ||
-          docker run -d --name vgkeep-testmongo -p 127.0.0.1:27019:27017 mongo:8
       # --databases 64 = one logical database per test binary, with headroom.
       - timeout 2 bash -c '</dev/tcp/127.0.0.1/63790' 2>/dev/null || docker start vgkeep-testvalkey 2>/dev/null ||
           docker run -d --name vgkeep-testvalkey -p 127.0.0.1:63790:6379 valkey/valkey:8-alpine valkey-server --databases 64
       # Postgres publishes its port only after init, so port-open means ready.
-      - for port in 54329 27019 63790; do
+      - for port in 54329 63790; do
           for i in $(seq 1 180); do
             timeout 2 bash -c "</dev/tcp/127.0.0.1/$port" 2>/dev/null && break;
             test $i -lt 180 || { echo "port $port never became ready"; exit 1; };
@@ -256,8 +257,6 @@ tasks:
     cmds:
       - docker exec vgkeep-testpg psql -U pgtest -d pgtest -Atc "SELECT datname FROM pg_database WHERE datname LIKE 't\_{{if .RUN}}{{.RUN}}\_{{end}}%'" |
           xargs -r -n1 docker exec vgkeep-testpg dropdb -U pgtest --force
-      - docker exec vgkeep-testmongo mongosh --quiet --eval
-          'db.adminCommand({listDatabases:1}).databases.forEach(d => { if (d.name.startsWith("t_{{if .RUN}}{{.RUN}}_{{end}}")) db.getSiblingDB(d.name).dropDatabase() })'
       # Scoped runs flush only the logical databases the valkeytest
       # allocator recorded for them; a direct run wipes the server.
       - >-
@@ -268,8 +267,6 @@ tasks:
     cmds:
       - docker stop vgkeep-testpg
       - docker rm vgkeep-testpg
-      - docker stop vgkeep-testmongo
-      - docker rm vgkeep-testmongo
       - docker stop vgkeep-testvalkey
       - docker rm vgkeep-testvalkey
 

@@ -1,2 +1,2 @@
-# vg-lib is a library chart: renders nothing on its own; reads the consuming chart's postgres/valkey/mongo blocks.
+# vg-lib is a library chart: renders nothing on its own; reads the consuming chart's postgres/valkey blocks.
 {}
