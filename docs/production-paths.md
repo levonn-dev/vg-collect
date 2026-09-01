@@ -15,38 +15,30 @@ through in-cluster PgBouncer is a per-service call: the Go pgx pools
 already in use are fine either way, and a Proxy mainly buys failover
 smoothing.
 
-Every Postgres-backed chart (auth, user, collection, social) already
-carries a `postgres.enabled` flag: turning it off drops the in-cluster
-StatefulSet, its postgres-exporter sidecar, PodDisruptionBudget,
-ServiceMonitor, Certificate, and the pg-scoped NetworkPolicy rule - all
-templated once in the shared `vg-lib` library chart rather than
-duplicated per service. Unlike the Mongo seam below, none of the four
-wires `DATABASE_URL` to a dedicated values key at all - every
-deployment template composes it unconditionally against the chart's
-own `<service>-pg` in-cluster hostname - and the pg-ca volume mount is
-not gated on `postgres.enabled` either, so flipping the flag off alone
+Every Postgres-backed chart (auth, user, collection, social,
+enrichment) already carries a `postgres.enabled` flag: turning it off
+drops the in-cluster StatefulSet, its postgres-exporter sidecar,
+PodDisruptionBudget, ServiceMonitor, Certificate, and the pg-scoped
+NetworkPolicy rule - all templated once in the shared `vg-lib` library
+chart rather than duplicated per service. None of the five wires
+`DATABASE_URL` to a dedicated values key at all - every deployment
+template composes it unconditionally against the chart's own
+`<service>-pg` in-cluster hostname - and the pg-ca volume mount is not
+gated on `postgres.enabled` either, so flipping the flag off alone
 strands the pod on a Certificate secret that no longer renders.
 Pointing at RDS or CloudNativePG today therefore needs a chart change,
-not a values override: a first-class `env.databaseUrl` key (mirroring
-`env.mongoUrl` below) plus gating the pg-ca volume on
-`postgres.enabled` is the natural next step once a real Postgres
-target exists to test it against.
-
-MongoDB moves to MongoDB Atlas on AWS via PrivateLink, explicitly NOT
-DocumentDB: its Mongo 5.0-subset API has no time-series collections,
-and price_snapshots is one. The enrichment chart already carries the
-seam: `mongo.enabled=false` skips the in-cluster mongo and its CA
-volume and requires `env.mongoUrl` (creds-less; MONGO_USERNAME and
-MONGO_PASSWORD keep riding the secret).
+not a values override: a first-class `env.databaseUrl` key plus gating
+the pg-ca volume on `postgres.enabled` is the natural next step once a
+real Postgres target exists to test it against.
 
 Valkey moves to ElastiCache running the Valkey engine, per service.
 
-All three sit in a VPC with private subnets and per-pair security
-groups; Terraform provisions them.
+Both sit in a VPC with private subnets and per-pair security groups;
+Terraform provisions them.
 
 The in-cluster alternative to managed services is CloudNativePG per
-service (replicas, failover, WAL to S3, PITR, Pooler), the Percona
-Server for MongoDB Operator, and Sentinel-managed Valkey.
+service (replicas, failover, WAL to S3, PITR, Pooler) and
+Sentinel-managed Valkey.
 
 ## Secrets
 

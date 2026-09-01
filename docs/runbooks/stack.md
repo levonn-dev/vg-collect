@@ -3,8 +3,8 @@
 vgkeep is a video-game collection tracker: six Go services behind
 an APISIX gateway that publishes only the bff, a React SPA served out
 of the bff binary, and per-service datastores (Postgres for auth,
-user, collection, and social; MongoDB plus Valkey for enrichment;
-Valkey caches for the bff and collection). auth mints every token,
+user, collection, social, and enrichment; Valkey caches for the bff,
+collection, and enrichment). auth mints every token,
 user owns profiles and roles, collection owns what people track,
 social layers follows, likes, comments, and the activity feed on top
 of collection's shelves and user's profiles, enrichment quarantines
@@ -43,7 +43,7 @@ graph LR
     collection --> collectionpg[(collection-pg)]
     collection --> collectionvalkey[(collection-valkey)]
     social --> socialpg[(social-pg)]
-    enrichment --> mongo[(enrichment-mongo)]
+    enrichment --> enrichmentpg[(enrichment-pg)]
     enrichment --> enrichmentvalkey[(enrichment-valkey)]
     auth --> google[Google OIDC]
     auth --> twitch[Twitch OIDC]
@@ -82,7 +82,7 @@ graph LR
 
 Services push OTLP; nothing scrapes them. The exceptions are the
 datastore exporter sidecars (postgres-exporter :9187, redis_exporter
-:9121, mongodb_exporter :9216), which Prometheus scrapes through
+:9121), which Prometheus scrapes through
 ServiceMonitors; their series carry a `service` target label
 (`service="auth-pg"`) while everything a service exports carries the
 `service_name` resource attribute. Browser telemetry enters through
@@ -158,7 +158,7 @@ All dev-tier Tilt port-forwards; in-cluster, every service listens on
 | 5434  | auth-pg (`psql -h localhost -p 5434 -U auth auth`)                                                  |
 | 5435  | collection-pg (`psql -h localhost -p 5435 -U collection collection`)                                |
 | 5436  | social-pg (`psql -h localhost -p 5436 -U social social`)                                            |
-| 27018 | enrichment-mongo                                                                                    |
+| 5437  | enrichment-pg (`psql -h localhost -p 5437 -U enrichment enrichment`)                                |
 
 The three Valkey instances have no port-forward: TLS-only listeners,
 in-cluster callers only (triage goes through `kubectl exec` and
@@ -180,13 +180,13 @@ dashboard.
 | ------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview           | `vg-overview`     | is the application healthy right now: the one pane across edge, services, and datastores; start here                                                                                                     | this document, then the service runbook the failing panel names                                                                                                                          |
 | APISIX Edge        | `vg-apisix-edge`  | what the edge sees: gateway traffic, status codes, 429 rate limiting                                                                                                                                     | [bff.md](bff.md#8-rate-limiting-at-the-gateway)                                                                                                                                          |
-| Datastores         | `vg-datastores`   | server-side health of every Postgres, MongoDB, and Valkey instance                                                                                                                                       | [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high), [enrichment.md](enrichment.md#2-mongo-down) |
+| Datastores         | `vg-datastores`   | server-side health of every Postgres and Valkey instance                                                                                                                                                  | [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) |
 | Pod Details        | `vg-pod-details`  | per-pod CPU, memory, restarts                                                                                                                                                                            | [Pod restart churn](#4-pod-restart-churn-or-oom-kill)                                                                                                                                    |
 | Node Details       | `vg-node-details` | node pressure and capacity                                                                                                                                                                               | [Node pressure](#5-node-under-memory-disk-or-pid-pressure)                                                                                                                               |
 | Auth Service       | `vg-auth`         | logins, token refreshes, signing keys, provider hops, auth-pg                                                                                                                                            | [auth.md](auth.md)                                                                                                                                                                       |
 | Bff Service        | `vg-bff`          | sessions, composition caches, denylist fail-open, bff-valkey                                                                                                                                             | [bff.md](bff.md)                                                                                                                                                                         |
 | Collection Service | `vg-collection`   | pricing composition, submissions queue, collection-pg and its cache                                                                                                                                      | [collection.md](collection.md)                                                                                                                                                           |
-| Enrichment Service | `vg-enrichment`   | search sources, auto-matching, the catalog refresh, mongo and valkey                                                                                                                                     | [enrichment.md](enrichment.md)                                                                                                                                                           |
+| Enrichment Service | `vg-enrichment`   | search sources, auto-matching, the catalog refresh, postgres and valkey                                                                                                                                   | [enrichment.md](enrichment.md)                                                                                                                                                           |
 | Social Service     | `vg-social`       | follow/like/comment rates, feed reads, cap rejections, publish outcomes, social-pg                                                                                                                       | [social.md](social.md)                                                                                                                                                                   |
 | User Service       | `vg-user`         | account upserts, currency seeds, deletions, user-pg                                                                                                                                                      | [user.md](user.md)                                                                                                                                                                       |
 | Frontend Telemetry | `vg-frontend`     | locale boots by source, browser languages hitting fallback, catalog fetch failures, mid-session locale switches, prose pages served in English, uncaught errors, network failures, and web-vitals health | [frontend.md](frontend.md)                                                                                                                                                               |
@@ -244,9 +244,9 @@ relayed through the bff the same way traces are - has its own runbook:
 
 ## Alerting
 
-Thirty-two rules provision from
+Thirty-one rules provision from
 `deploy/charts/platform/files/alerting/vg-rules.yaml` into the same
-`vgkeep` folder, evaluated every 1m. `severity: page` (twelve
+`vgkeep` folder, evaluated every 1m. `severity: page` (eleven
 rules) marks user-visible breakage worth interrupting someone for;
 `severity: warn` (twenty) queues investigation on the next pass. The
 dev tier configures no contact point on purpose, so nothing sends:
@@ -255,14 +255,13 @@ under Alerting > Active alerts. Every rule's `runbook_url` lands on
 the runbook (or the exact failure-mode section) that triages it;
 [README.md](README.md) holds the full alert-to-runbook table.
 
-Eight rules treat missing data as firing because absence is their
-signal: vg-mongo-down (an unreachable exporter usually means an
-unreachable Mongo), vg-enrichment-refresh-stalled (no completed
-catalog refresh in 26h; a brand-new stack fires this until its first
-refresh finishes at 06:00 or by manual trigger), and the six
-vg-{service}-down rules ([Service down](#service-down) below - none of
-the six services has a ServiceMonitor of its own, so the absence of
-its datastore exporter's scrape target is the signal). Every other
+Seven rules treat missing data as firing because absence is their
+signal: vg-enrichment-refresh-stalled (no completed catalog refresh in
+26h; a brand-new stack fires this until its first refresh finishes at
+06:00 or by manual trigger), and the six vg-{service}-down rules
+([Service down](#service-down) below - none of the six services has a
+ServiceMonitor of its own, so the absence of its datastore exporter's
+scrape target is the signal). Every other
 rule sets `noDataState: OK`, so a not-yet-emitting instrument stays
 silent rather than false-firing.
 
@@ -402,7 +401,7 @@ runbooks in:
 | Like/follower counts missing from shelf or profile pages, or feed and social writes failing | [social.md](social.md#1-social-down)                                                                                                                                                     | [social.md](social.md#2-collection-or-user-down) if only writes 502                                                                                                                                                        |
 | A service is completely unresponsive, all pods gone                                         | [Service down](#service-down)                                                                                                                                                            | [Pod restart churn](#4-pod-restart-churn-or-oom-kill) if it is crashlooping rather than clean-down, or that service's own runbook failure modes                                                                            |
 | One service erroring or slow                                                                | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below                                                                               | that service's runbook failure modes                                                                                                                                                                                       |
-| A datastore down or saturated                                                               | [enrichment.md](enrichment.md#2-mongo-down), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius                                                                                                                                                         |
+| A datastore down or saturated                                                               | [enrichment.md](enrichment.md#2-postgres-down-or-saturated), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius                                                                                                                                                         |
 | Dashboards blank, service healthy                                                           | [Telemetry pipeline operations](#telemetry-pipeline-operations) above                                                                                                                    | the four-step walk there, ending at the backend pods                                                                                                                                                                       |
 
 The dependency chain behind most of these: browser -> gateway -> bff
@@ -454,11 +453,11 @@ histogram_quantile(0.99, sum by (le, service_name) (rate(http_server_request_dur
    service; the firing service's own dashboard splits it per route on
    its latency-by-route panel.
 2. Follow a p99 exemplar dot to its Jaeger trace and look for a slow
-   database span; otelpgx, otelmongo and redisotel spans name the
-   operation they ran.
+   database span; otelpgx and redisotel spans name the operation they
+   ran.
 3. Check the Datastores dashboard (vg-datastores) for the same window
-   in case a Postgres, Mongo or Valkey instance is saturated rather
-   than the service itself.
+   in case a Postgres or Valkey instance is saturated rather than the
+   service itself.
 
 ### 3. Error log spike
 
@@ -598,17 +597,16 @@ series of its own, so in practice this tracks that service's datastore
 exporter target: auth, social, and user each have one Postgres
 exporter (`<service>-pg`); bff has one Valkey exporter
 (`bff-valkey`); collection and enrichment have two apiece
-(`<service>-pg` and `<service>-valkey`; `<service>-mongo` and
-`<service>-valkey`). A datastore outage usually takes the service's
-own readiness down with it too, since readiness pings the connection
-pool - by far the most common route to this rule firing.
+(`<service>-pg` and `<service>-valkey`). A datastore outage usually
+takes the service's own readiness down with it too, since readiness
+pings the connection pool - by far the most common route to this rule
+firing.
 
 1. The uid names the affected service directly (vg-collection-down is
    collection, no label lookup needed). Run
    `kubectl -n vgkeep get pods -l app.kubernetes.io/name=<service>`
    and the matching `-l app.kubernetes.io/name=<service>-pg` (or
-   `-valkey`, `-mongo`) to see which side, app or datastore, is
-   actually down.
+   `-valkey`) to see which side, app or datastore, is actually down.
 2. Check that service's own dashboard (vg-<service>) for request-rate
    and latency panels going flat at the same time as the alert; a flat
    dashboard next to a healthy-looking datastore pod points at a
@@ -703,7 +701,7 @@ converge the same way now, and faster: the grafana alerts sidecar (see
 [Rule convergence and retirement](#rule-convergence-and-retirement)
 above) watches the `vg-alerting` ConfigMap on the Kubernetes API and
 reloads Grafana itself within seconds of the ConfigMap landing, no
-manual reload call needed. Count what landed, expecting thirty-two
+manual reload call needed. Count what landed, expecting thirty-one
 rules (the provisioning API requires the basic admin login; anonymous
 access, even with the Admin role, is not accepted there):
 
@@ -728,13 +726,12 @@ for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollou
 ```
 
 Pool gauges emit without traffic, expecting pg series for auth,
-collection, social, user, valkey series for bff, collection,
-enrichment, and a mongo series for enrichment:
+collection, social, user, enrichment, and valkey series for bff,
+collection, enrichment:
 
 ```bash
 curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_pgkit_pool_connections)'
 curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_valkeykit_pool_connections)'
-curl -s http://localhost:9090/api/v1/query --data-urlencode 'query=sum by (service_name) (vg_mongokit_pool_connections)'
 ```
 
 One domain counter through the dev fixture login, expecting a nonzero

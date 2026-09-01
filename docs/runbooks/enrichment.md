@@ -15,7 +15,7 @@ Features as an operator sees them:
 - Catalog search (`GET /search`, kinds game / hardware / pc_listing),
   Valkey-cached 24h, with admin-minted community products interleaved
   into game and hardware results. Provider down: answers degrade to a
-  local Mongo name match, flagged `degraded: true` and never cached.
+  local Postgres name match, flagged `degraded: true` and never cached.
 - Product resolve (`POST /products/resolve`): find-or-create keyed by
   provider identity. No-pick game resolves run the auto-matcher
   against PriceCharting listings, taking the entry region as a
@@ -31,7 +31,7 @@ Features as an operator sees them:
   `IGDB_REFRESH_AFTER` (720h default).
 - Batch prices and price history (`POST /products/prices:batch`,
   `POST /products/price-history:batch`, up to 500 ids each), read
-  straight from Mongo. The collection service is the main caller.
+  straight from Postgres. The collection service is the main caller.
 - Recommendation scoring (`POST /recommendations:score`): user-agnostic
   scoring over the shared `igdb_raw` metadata cache, library up to
   2500 entries, candidate budget 200.
@@ -73,7 +73,7 @@ graph LR
     coll -- "JWT (prices, resolve)" --> svc
     cron -.->|"exchange for a service token"| auth
     cron -- "JWT (service token)" --> svc
-    svc -- "TLS + SCRAM" --> mongo[("enrichment-mongo :27017")]
+    svc -- "TLS verify-full :5432" --> pg[(enrichment-pg)]
     svc -- "TLS, fail-open cache" --> valkey[("enrichment-valkey :6379")]
     svc -- "JWKS fetch" --> auth["auth :8080"]
     svc -- "4 req/s" --> igdb["IGDB api.igdb.com"]
@@ -88,7 +88,7 @@ The NetworkPolicy `enrichment-from-callers-only` admits exactly bff,
 collection and the enrichment-refresh job pods on 8080; the APISIX
 gateway (8090) publishes only the bff and never routes here. The
 datastore policies admit only the enrichment pod plus the vg-platform
-Prometheus (exporter sidecars on 9216 mongo, 9121 valkey).
+Prometheus (exporter sidecars on 9187 postgres, 9121 valkey).
 
 The catalog refresh is the one flow where the HTTP answer and the work
 are decoupled, which trips people up during triage. The CronJob is an
@@ -102,17 +102,17 @@ sequenceDiagram
     participant A as auth
     participant E as enrichment
     participant P as PriceCharting
-    participant M as enrichment-mongo
+    participant D as enrichment-pg
     participant V as enrichment-valkey
     J->>A: POST /internal/service-token (X-Internal-Token)
     A-->>J: 200 service JWT (900s, token_use=service)
     J->>E: POST /internal/refresh (Bearer service JWT)
     E-->>J: 202 started (refresh detaches, 30m budget)
     Note over J: Job success means "trigger accepted", nothing more
-    E->>M: ListPriced
+    E->>D: ListPriced
     loop every mapped product
         E->>P: current prices (1 req/s)
-        E->>M: update current + append snapshot
+        E->>D: update current + append snapshot
         E->>V: invalidate product key
     end
     Note over E: then reprojection, candidate sweep
@@ -122,7 +122,7 @@ sequenceDiagram
 ## Running it
 
 Dev stack is Tilt (`task run`). The Tilt resource `enrichment` depends
-on `secret-store`, `enrichment-mongo`, `enrichment-valkey` and `auth`;
+on `secret-store`, `enrichment-pg`, `enrichment-valkey` and `auth`;
 `enrichment-refresh` depends on `enrichment`. Image builds from
 `services/enrichment/Dockerfile` with only `libs/go` and
 `services/enrichment` in context, so edits elsewhere do not roll it.
@@ -130,7 +130,7 @@ on `secret-store`, `enrichment-mongo`, `enrichment-valkey` and `auth`;
 | Where       | What                                                                                                |
 | ----------- | --------------------------------------------------------------------------------------------------- |
 | Service     | localhost:8084 -> pod 8080 (Tilt port-forward)                                                      |
-| Mongo       | localhost:27018 -> 27017                                                                            |
+| enrichment-pg | localhost:5437 -> pod 5432                                                                        |
 | Valkey      | no port-forward (TLS-only, in-cluster callers)                                                      |
 | Gateway     | not published; call 8084 directly with a JWT                                                        |
 | Bruno flows | `bruno/enrichment/` (search, resolve, prices, history, recommendations, admin refresh, admin remap, normalize community regions) |
@@ -141,16 +141,16 @@ Task targets: root `task lint`, `task build`, `task test:short`,
 in `services/enrichment/`: `task gen` regenerates
 `internal/gen/api/server.gen.go` from `api/enrichment.yaml`, and
 `task db:migrate` runs `go run ./cmd/enrichment migrate` against
-`MONGO_URL`/`MONGO_DB` (also runs under root `task migrate`, alongside
-every other migrate-capable service).
+`DATABASE_URL` (also runs under root `task migrate`, alongside every
+other migrate-capable service).
 
 Health endpoints, outside JWT auth:
 
 - `GET /healthz` answers 200 whenever the process is up.
-- `GET /readyz` pings Mongo primary via mongokit.Health and nothing
-  else. Mongo is the hard dependency; Valkey is deliberately absent
-  because every cache call fails open. A Mongo outage therefore takes
-  the pod out of Service endpoints after the probe's failure
+- `GET /readyz` pings Postgres via pgkit.Health and nothing else.
+  Postgres is the hard dependency; Valkey is deliberately absent
+  because every cache call fails open. A Postgres outage therefore
+  takes the pod out of Service endpoints after the probe's failure
   threshold.
 
 `POST /internal/refresh` sits behind the same blanket JWT middleware
@@ -161,15 +161,14 @@ and only a service token minted by auth's `/internal/service-token`
 passes. The NetworkPolicy stays the outer layer.
 
 Migrate mode: `enrichment migrate` loads the full config, runs the
-embedded migrations via mongokit.Migrate (golang-migrate, mongodb
-driver, JSON arrays of runCommand documents in
-`services/enrichment/migrations/`) and exits. The deployment runs it
-as an init container with the same env anchor as the app, so every
-rollout migrates before serving.
+embedded migrations via pgkit.Migrate and exits. One migration to
+date (`000001_schema`, embedded in `services/enrichment/migrations/`).
+The deployment runs it as an init container with the same env anchor
+as the app, so every rollout migrates before serving.
 
-Startup order matters at boot only: main connects and pings Mongo,
+Startup order matters at boot only: main connects and pings Postgres,
 then Valkey, and exits on either failure (crash loop with backoff
-until both answer). At runtime Mongo stays hard (readyz) and Valkey
+until both answer). At runtime Postgres stays hard (readyz) and Valkey
 soft (per-request fail-open).
 
 ## Configuration
@@ -182,10 +181,8 @@ ExternalSecret `enrichment-secrets` (refreshInterval 1m) -> pod env.
 | Env var                       | Value / source                                                                                                                                                                  |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `HTTP_ADDR`                   | code default `:8080` (chart does not set it)                                                                                                                                    |
-| `MONGO_URL`                   | chart-composed: `mongodb://enrichment-mongo:27017/enrichment?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin`                                                       |
-| `MONGO_DB`                    | chart `mongo.database` = `enrichment`                                                                                                                                           |
-| `MONGO_USERNAME`              | chart `mongo.username` = `enrichment`                                                                                                                                           |
-| `MONGO_PASSWORD`              | secret key `enrichment/mongo-password` (.env `MONGO_ENRICHMENT_PASSWORD`)                                                                                                       |
+| `DATABASE_URL`                | chart-composed: `postgres://enrichment:$(PG_PASSWORD)@enrichment-pg:5432/enrichment?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`                                       |
+| `PG_PASSWORD`                 | secret `enrichment-pg-credentials` key `password`, filled by the ExternalSecret from ClusterSecretStore `vg-fake` key `enrichment/pg-password` (.env `PG_ENRICHMENT_PASSWORD`)  |
 | `VALKEY_URL`                  | chart `env.valkeyUrl` = `rediss://enrichment-valkey:6379/0`                                                                                                                     |
 | `VALKEY_CA_FILE`              | `/etc/vg/valkey-ca/ca.crt` when `valkey.enabled`; config refuses a `rediss://` URL without it                                                                                   |
 | `JWKS_URL`                    | `http://auth:8080/.well-known/jwks.json`                                                                                                                                        |
@@ -204,8 +201,7 @@ credential-less checkout runs the whole feature set deterministically.
 Tilt flips `igdb.mode` / `pricecharting.mode` to real only when the
 full credential set is present in .env; flipping by hand on a partial
 set points the ExternalSecret at store keys that were never published
-and wedges the secret sync. Config validation also refuses one of
-`MONGO_USERNAME`/`MONGO_PASSWORD` without the other, and real modes
+and wedges the secret sync. Config validation also refuses real modes
 without their credentials. This service holds no shared secret of its
 own anymore: every caller, human or machine, authenticates with a JWT
 (see auth.md for `INTERNAL_SERVICE_SECRETS`, the CronJob-facing
@@ -213,66 +209,72 @@ secret's new home).
 
 ## Datastores
 
-MongoDB (`enrichment-mongo`, StatefulSet, mongo:8, 1Gi PVC) holds four
-collections. `products` is one document per catalog product; identity
+Postgres (`enrichment-pg`, StatefulSet, postgres:17-alpine, 1Gi PVC)
+holds four tables. `products` is one row per catalog product; identity
 is enforced by three unique partial indexes: `products_game_identity`
-on (type, igdb.game_id, platform.igdb_id, pricecharting.pc_product_id)
-and `products_hardware_identity` on (type, pricecharting.pc_product_id,
-region, edition, variant), both scoped to `origin: "provider"`, and
-`products_pc_listing_identity` on pricecharting.pc_product_id (partial
-filter type: "pc_listing", unscoped by origin - a community product
-can never be type pc_listing), plus a plain `products_name` index for
-the degraded local search and `products_unmatched_worklist` on
-(origin, pricecharting, updated_at, _id) covering the admin unmatched
-worklist's filter+sort so a growing backlog cannot outgrow Mongo's
-in-memory sort cap. Community products (`origin: "community"`) sit
-outside the origin-scoped identity indexes on purpose: their identity
-is the curated name, and the promote flow re-enters them through the
-index.
+on (igdb_game_id, platform_igdb_id, pc_product_id) `NULLS NOT DISTINCT`
+scoped to `type = 'game' AND origin = 'provider'`,
+`products_hardware_identity` on (pc_product_id, region, edition,
+variant) `NULLS NOT DISTINCT` scoped to `type IN ('console',
+'accessory') AND origin = 'provider'`, and `products_pc_listing_identity`
+on (pc_product_id) scoped to `type = 'pc_listing'` (unscoped by origin -
+a community product can never be type pc_listing); the three
+identity-bearing columns (`igdb_game_id`, `platform_igdb_id`,
+`pc_product_id`) are `GENERATED ALWAYS AS ... STORED` projections off
+the `igdb`/`platform`/`pricecharting` jsonb columns, so the indexes
+stay plain btrees over generated scalars rather than expression
+indexes over jsonb paths. A plain `products_name` index backs the
+degraded local search, and `products_unmatched_worklist` on
+(updated_at, id) filtered to `origin = 'provider' AND pricecharting IS
+NULL` covers the admin unmatched worklist's filter+sort. Community
+products (`origin = 'community'`) sit outside the origin-scoped
+identity indexes on purpose: their identity is the curated name, and
+the promote flow re-enters them through the index.
 `igdb_raw` is the shared raw-payload cache (recommendations and
-reprojection read it; every provider fetch populates it
-backwards). `platforms` caches the IGDB platform catalog wholesale.
-`price_snapshots` is append-only, keyed (product_id, captured_at);
-snapshots survive product mapping changes by design. Seven migrations
-to date; the down files exist and are exercised by the migrate
-tooling, not by hand.
+reprojection read it; every provider fetch populates it backwards).
+`platforms` caches the IGDB platform catalog wholesale.
+`price_snapshots` is range-partitioned on `captured_at`: one partition
+per year (2026 through 2036 today) plus a `price_snapshots_default`
+catch-all, primary key (product_id, captured_at), and
+`product_id REFERENCES products(id) ON DELETE CASCADE` - append-only in
+practice, and snapshots survive product mapping changes by design. One
+migration to date (`000001_schema`); the down file exists and is
+exercised by the migrate tooling, not by hand.
 
-Connection facts: TLS is required (`--tlsMode requireTLS`) with a
-cert-manager-issued cert; clients verify against the CA mounted at
-`/etc/vg/mongo-ca/ca.crt` and authenticate SCRAM as root user
-`enrichment` with `authSource=admin`. No client certificates. The
-percona mongodb_exporter sidecar serves 9216, scraped via
-ServiceMonitor every 30s (`service` label `enrichment-mongo`).
+Connection facts: TLS verify-full against the in-cluster CA (secret
+`enrichment-pg-tls`), same shape as every other Postgres-backed
+service in this stack. The postgres-exporter sidecar serves 9187,
+scraped via ServiceMonitor every 30s (`service` label `enrichment-pg`).
 
 Valkey (`enrichment-valkey`, StatefulSet, valkey:8-alpine) is a pure
 cache: TLS-only listener on 6379, no client cert auth, no persistence
 (`--save ""`, `--appendonly no`, emptyDir), so a restart starts cold
-and everything rebuilds from providers and Mongo. Keys:
+and everything rebuilds from providers and Postgres. Keys:
 `search:v3:<kind>:<sha256(query)>` (24h), `product:v1:<uuid>` (5m),
 `platforms:v1` (24h). The redis_exporter sidecar serves 9121
 (`service` label `enrichment-valkey`).
 
-Pool metrics: the mongokit and valkeykit clients each register the
-shared pool instruments, scoped to this service by the `service_name`
+Pool metrics: the pgkit and valkeykit clients each register the shared
+pool instruments, scoped to this service by the `service_name`
 resource attribute:
 
-| OTel name                            | Prometheus name                      | Answers                                                |
-| ------------------------------------ | ------------------------------------ | ------------------------------------------------------ |
-| `vg.mongokit.pool.connections`       | `vg_mongokit_pool_connections`       | open connections                                       |
-| `vg.mongokit.pool.connections.idle`  | `vg_mongokit_pool_connections_idle`  | idle headroom                                          |
-| `vg.mongokit.pool.connections.max`   | `vg_mongokit_pool_connections_max`   | configured pool ceiling                                |
-| `vg.mongokit.pool.acquires`          | `vg_mongokit_pool_acquires_total`    | cumulative successful checkouts                        |
-| `vg.mongokit.pool.cleared`           | `vg_mongokit_pool_cleared_total`     | pool-cleared events (network error or topology change) |
-| `vg.valkeykit.pool.hits`             | `vg_valkeykit_pool_hits_total`       | acquires served by a free connection                   |
-| `vg.valkeykit.pool.misses`           | `vg_valkeykit_pool_misses_total`     | acquires that dialed a new connection                  |
-| `vg.valkeykit.pool.timeouts`         | `vg_valkeykit_pool_timeouts_total`   | callers that gave up waiting (hard saturation)         |
-| `vg.valkeykit.pool.connections`      | `vg_valkeykit_pool_connections`      | open connections                                       |
-| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle` | idle headroom                                          |
+| OTel name                            | Prometheus name                            | Answers                                                |
+| ------------------------------------ | ------------------------------------------ | ------------------------------------------------------ |
+| `vg.pgkit.pool.connections`          | `vg_pgkit_pool_connections`                | open connections                                       |
+| `vg.pgkit.pool.connections.idle`     | `vg_pgkit_pool_connections_idle`           | idle headroom                                          |
+| `vg.pgkit.pool.connections.max`      | `vg_pgkit_pool_connections_max`            | configured pool ceiling                                |
+| `vg.pgkit.pool.acquires`             | `vg_pgkit_pool_acquires_total`             | cumulative successful checkouts                        |
+| `vg.pgkit.pool.empty_acquires`       | `vg_pgkit_pool_empty_acquires_total`       | checkouts that found no idle connection waiting        |
+| `vg.pgkit.pool.acquire_wait`         | `vg_pgkit_pool_acquire_wait_seconds_total` | cumulative time callers spent waiting for a connection |
+| `vg.valkeykit.pool.hits`             | `vg_valkeykit_pool_hits_total`             | acquires served by a free connection                   |
+| `vg.valkeykit.pool.misses`           | `vg_valkeykit_pool_misses_total`           | acquires that dialed a new connection                  |
+| `vg.valkeykit.pool.timeouts`         | `vg_valkeykit_pool_timeouts_total`         | callers that gave up waiting (hard saturation)         |
+| `vg.valkeykit.pool.connections`      | `vg_valkeykit_pool_connections`            | open connections                                       |
+| `vg.valkeykit.pool.connections.idle` | `vg_valkeykit_pool_connections_idle`       | idle headroom                                          |
 
-There are no `vg.pgkit.pool.*` series for this service: enrichment has
-no Postgres. Server-side `mongodb_ss_connections{conn_type="current"}`
-from the exporter covers the same connection counting from the
-server's point of view.
+Server-side `pg_stat_activity_count{service="enrichment-pg"}` from the
+exporter covers the same connection counting from the server's point
+of view.
 
 ## Telemetry
 
@@ -280,9 +282,9 @@ The pipeline is libs/go/otel `Setup()`: OTLP traces, metrics and logs
 to otel-agent -> otel-gateway -> Prometheus (remote write, exemplars
 on), Loki and Jaeger, plus slog JSON on stdout with trace ids
 attached. Traces already cover the full request path: otelhttp server
-spans (route-labeled), otelmongo command spans, redisotel command
-spans, and otelhttp client spans for IGDB, PriceCharting, frankfurter
-and the Twitch token endpoint.
+spans (route-labeled), otelpgx client spans per query, redisotel
+command spans, and otelhttp client spans for IGDB, PriceCharting,
+frankfurter and the Twitch token endpoint.
 
 Emitted today (Prometheus-side names):
 
@@ -290,9 +292,9 @@ Emitted today (Prometheus-side names):
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------------------------------------------------------------------------------- | ------------------------ |
 | `http_server_request_duration_seconds_{count,sum,bucket}`                                                                                    | otelhttp middleware          | `http_route`, `http_response_status_code` (+ `service_name="enrichment"` resource attr) | RED for every route      |
 | `go_goroutine_count`, `go_memory_used_bytes`                                                                                                 | otel runtime instrumentation | `service_name`                                                                          | runtime health           |
-| `vg_mongokit_pool_*` (table above)                                                                                                           | mongokit                     | none                                                                                    | client pool health       |
+| `vg_pgkit_pool_*` (table above)                                                                                                              | pgkit                        | none                                                                                    | client pool health       |
 | `vg_valkeykit_pool_*` (table above)                                                                                                          | valkeykit                    | none                                                                                    | client pool health       |
-| `mongodb_up`, `mongodb_ss_opcounters`, `mongodb_ss_connections`, `mongodb_ss_mem_resident`                                                   | mongo exporter sidecar       | `service="enrichment-mongo"`                                                            | server-side Mongo health |
+| `pg_stat_activity_count`, `pg_settings_max_connections`, `pg_stat_database_xact_commit`, `pg_stat_database_xact_rollback`                    | postgres-exporter sidecar    | `service="enrichment-pg"`                                                               | server-side Postgres health |
 | `redis_memory_used_bytes`, `redis_keyspace_hits_total`, `redis_keyspace_misses_total`, `redis_evicted_keys_total`, `redis_connected_clients` | redis exporter sidecar       | `service="enrichment-valkey"`                                                           | server-side cache health |
 
 Domain instruments, meter
@@ -561,24 +563,47 @@ Catalog refresh and sweeps:
     sum by (outcome) (increase(vg_enrichment_normalize_regions_total[24h]))
     ```
 
-Mongo:
+PostgreSQL (from this service's seat):
 
-17. "Mongo up" - stat, short; state thresholds: red below 1, green at
-    1 and above
+17. "PG pool connections" - timeseries, short, legends `in pool` /
+    `idle` / `max`
 
     ```promql
-    mongodb_up{service="enrichment-mongo"}
+    vg_pgkit_pool_connections{service_name="enrichment"}
+    vg_pgkit_pool_connections_idle{service_name="enrichment"}
+    vg_pgkit_pool_connections_max{service_name="enrichment"}
     ```
 
-18. "Mongo operations" - timeseries, ops, legend `{{legacy_op_type}}`
+18. "PG pool mean acquire wait" - timeseries, s
 
     ```promql
-    sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service="enrichment-mongo"}[$__rate_interval]))
+    rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name="enrichment"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="enrichment"}[5m])
+    ```
+
+19. "PG pool empty acquires" - timeseries, short
+
+    ```promql
+    increase(vg_pgkit_pool_empty_acquires_total{service_name="enrichment"}[5m])
+    ```
+
+20. "PG server connections vs max" - timeseries, short, legends
+    `connections` / `max`
+
+    ```promql
+    sum(pg_stat_activity_count{service="enrichment-pg"})
+    max(pg_settings_max_connections{service="enrichment-pg"})
+    ```
+
+21. "PG transactions" - timeseries, ops, legends `commit` / `rollback`
+
+    ```promql
+    sum(rate(pg_stat_database_xact_commit{service="enrichment-pg",datname!~"template.*"}[$__rate_interval]))
+    sum(rate(pg_stat_database_xact_rollback{service="enrichment-pg",datname!~"template.*"}[$__rate_interval]))
     ```
 
 Valkey:
 
-19. "Valkey pool connections" - timeseries, short, legends
+22. "Valkey pool connections" - timeseries, short, legends
     `open` / `idle`
 
     ```promql
@@ -586,7 +611,7 @@ Valkey:
     vg_valkeykit_pool_connections_idle{service_name="enrichment"}
     ```
 
-20. "Valkey pool acquire outcomes" - timeseries, ops, legends `hits` /
+23. "Valkey pool acquire outcomes" - timeseries, ops, legends `hits` /
     `misses` / `timeouts`
 
     ```promql
@@ -595,19 +620,19 @@ Valkey:
     rate(vg_valkeykit_pool_timeouts_total{service_name="enrichment"}[$__rate_interval])
     ```
 
-21. "Valkey pool reuse ratio" - timeseries, percentunit
+24. "Valkey pool reuse ratio" - timeseries, percentunit
 
     ```promql
     rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) / (rate(vg_valkeykit_pool_hits_total{service_name="enrichment"}[5m]) + rate(vg_valkeykit_pool_misses_total{service_name="enrichment"}[5m]))
     ```
 
-22. "Valkey server memory" - timeseries, bytes
+25. "Valkey server memory" - timeseries, bytes
 
     ```promql
     redis_memory_used_bytes{service="enrichment-valkey"}
     ```
 
-23. "Valkey evictions and clients" - timeseries, short, legends
+26. "Valkey evictions and clients" - timeseries, short, legends
     `evictions` / `clients`
 
     ```promql
@@ -615,13 +640,13 @@ Valkey:
     redis_connected_clients{service="enrichment-valkey"}
     ```
 
-24. "Valkey keyspace hit ratio" - timeseries, percentunit
+27. "Valkey keyspace hit ratio" - timeseries, percentunit
 
     ```promql
     rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) / (rate(redis_keyspace_hits_total{service="enrichment-valkey"}[5m]) + rate(redis_keyspace_misses_total{service="enrichment-valkey"}[5m]))
     ```
 
-25. "Valkey fail-open events by op" - timeseries, short, legend `{{op}}`
+28. "Valkey fail-open events by op" - timeseries, short, legend `{{op}}`
 
     ```promql
     sum by (op) (increase(vg_enrichment_cache_fail_open_total[5m]))
@@ -629,35 +654,35 @@ Valkey:
 
 Runtime:
 
-26. "Goroutines" - timeseries, short, legend `goroutines`
+29. "Goroutines" - timeseries, short, legend `goroutines`
 
     ```promql
     go_goroutine_count{service_name="enrichment"}
     ```
 
-27. "Heap used" - timeseries, bytes, legend `heap`
+30. "Heap used" - timeseries, bytes, legend `heap`
 
     ```promql
     go_memory_used_bytes{service_name="enrichment"}
     ```
 
 Pods (the `container="enrichment"` selector scopes to the app pod
-only; mongo, valkey and the refresh job's own "trigger" container all
-carry different container names):
+only; postgres, valkey and the refresh job's own "trigger" container
+all carry different container names):
 
-28. "CPU by pod" - timeseries, short, legend `{{pod}}`
+31. "CPU by pod" - timeseries, short, legend `{{pod}}`
 
     ```promql
     sum by (pod) (rate(container_cpu_usage_seconds_total{namespace="vgkeep", container="enrichment"}[$__rate_interval]))
     ```
 
-29. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
+32. "Working-set memory by pod" - timeseries, bytes, legend `{{pod}}`
 
     ```promql
     sum by (pod) (container_memory_working_set_bytes{namespace="vgkeep", container="enrichment"})
     ```
 
-30. "Restarts and OOM kills by pod (15m)" - timeseries, short, legend
+33. "Restarts and OOM kills by pod (15m)" - timeseries, short, legend
     `restarts {{pod}}` / `oom {{pod}}`
 
     ```promql
@@ -667,7 +692,7 @@ carry different container names):
 
 Logs:
 
-31. "Recent error and warn logs" - logs panel, Loki datasource
+34. "Recent error and warn logs" - logs panel, Loki datasource
 
     ```logql
     {service_name="enrichment"} | severity_text=~"ERROR|WARN"
@@ -693,39 +718,45 @@ Telemetry above - `op` names the failing operation; 29 call sites
 share 28 distinct op values, one pair deliberately alike.) Enrichment
 specifics: a 500 burst on
 `GET /products/{productId}` and `POST /products/prices:batch` with
-"Mongo up" at 0 means Mongo (failure mode 2); 502s are not 5xx-of-ours
-in spirit but count in the ratio, and mean a provider outage (failure
-mode 3). Latency triage:
+`/readyz` failing means Postgres (failure mode 2); 502s are not
+5xx-of-ours in spirit but count in the ratio, and mean a provider
+outage (failure mode 3). Latency triage:
 [stack.md](stack.md#2-service-p99-latency-above-500ms); use the
 exemplars on "Latency by route (p95/p99)" to jump into Jaeger traces.
 
-### 2. Mongo down
+### 2. Postgres down or saturated
 
-The vg-mongo-down rule (severity page) fires when mongodb_up reads
-below 1, or produces no data at all, for 2 minutes; it treats missing
-data the same as down, because an unreachable exporter usually means
-an unreachable Mongo. The "Mongo up" stat shows the same series:
+Down: `/readyz` fails (pgkit.Health), the pod goes NotReady, and
+enrichment leaves Service endpoints once the readiness probe's failure
+threshold trips.
 
-```promql
-mongodb_up
-```
-
-1. Run `kubectl -n vgkeep get pods enrichment-mongo-0` to see
+1. Run `kubectl -n vgkeep get pods enrichment-pg-0` to see
    whether the pod is down, crash-looping or just unready.
 2. Read the container logs
-   (`kubectl -n vgkeep logs enrichment-mongo-0 -c mongo`) for the
+   (`kubectl -n vgkeep logs enrichment-pg-0 -c postgres`) for the
    startup or crash reason.
 3. Read how far enrichment's error rate has climbed on this
-   dashboard's "5xx ratio" panel: while Mongo is down, enrichment
+   dashboard's "5xx ratio" panel: while Postgres is down, enrichment
    stays graceful only for reads its caches still hold.
 
-The enrichment-side sequence:
-cache-warm product reads keep answering up to 5 minutes, search keeps
-answering from the 24h cache with the community lane failing open,
-everything cache-cold 500s, and within about 30s (three failed 10s
-readyz probes) the pod leaves Service endpoints entirely, at which
-point callers see connection failures rather than 500s. After Mongo
-returns the pod re-readies on its own; no restart needed.
+The enrichment-side sequence: cache-warm product reads keep answering
+up to 5 minutes, search keeps answering from the 24h cache with the
+community lane failing open, everything cache-cold 500s, and within
+about 30s (three failed 10s readyz probes, kubernetes defaults) the
+pod leaves Service endpoints entirely, at which point callers see
+connection failures rather than 500s. After Postgres returns the pod
+re-readies on its own; no restart needed.
+
+Saturated: [stack.md's Postgres saturation
+triage](stack.md#6-postgres-connections-above-80-percent-of-max)
+covers the cluster-wide rule (vg-pg-saturation already watches every
+pg instance, enrichment-pg included). This service's own "PG pool
+connections" and "PG pool mean acquire wait" panels show whether the
+client pool itself is the bottleneck; the contention share is
+
+```promql
+rate(vg_pgkit_pool_empty_acquires_total{service_name="enrichment"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name="enrichment"}[5m])
+```
 
 ### 3. Search degraded
 
@@ -832,7 +863,7 @@ the stopped-early warn appears:
 {service_name="enrichment"} |= "price refresh stopped early: context done"
 ```
 
-A failed share tracks provider or Mongo trouble mid-refresh; individual
+A failed share tracks provider or Postgres trouble mid-refresh; individual
 products are skipped, the refresh finishes what it can, and the next
 night retries, so occasional failures are self-healing noise. A
 stopped-early warn means the 30m budget expired: PriceCharting's 1
@@ -853,8 +884,8 @@ nonzero `timeouts` series on the "Valkey pool acquire outcomes" panel
 means callers waited for the pool and gave up - a saturated pool or a
 wedged Valkey. A Valkey restart empties the
 cache (no persistence): expect a cold-start burst of provider calls
-bounded by the client limiters, and product reads hitting Mongo until
-the 5m cache refills. Boot-time exception: the service requires
+bounded by the client limiters, and product reads hitting Postgres
+until the 5m cache refills. Boot-time exception: the service requires
 Valkey at startup, so enrichment pods crash-loop if Valkey is absent
 during a deploy.
 
@@ -981,8 +1012,8 @@ This service holds no internal secret of its own to rotate.
 One replica (`replicas: 1`), requests 50m CPU / 64Mi, memory limit
 128Mi, no CPU limit. The heaviest allocation path is recommendation
 scoring (2500-entry libraries, 200 candidates); watch "Working-set
-memory by pod" before trimming the limit. Mongo: 100m / 256Mi
-requests, 512Mi limit, 1Gi PVC. Valkey: 50m / 64Mi requests, 128Mi
+memory by pod" before trimming the limit. Postgres: 50m / 128Mi
+requests, 256Mi limit, 1Gi PVC. Valkey: 50m / 64Mi requests, 128Mi
 limit.
 
 PDBs set `minAvailable: 1` on all three workloads. With single
@@ -992,12 +1023,13 @@ accept the eviction being refused.
 
 Probes: liveness `/healthz`, readiness `/readyz`, chart sets no
 explicit timings so kubernetes defaults apply (10s period, 3-failure
-threshold); mongo and valkey ready-check via their own CLIs every 5s.
+threshold); postgres and valkey ready-check via their own CLIs every
+5s.
 
 A rollout surges: deployment defaults round to maxSurge 1 /
 maxUnavailable 0 at one replica, so the new pod starts, runs the
-migrate init container, and must pass readyz (Mongo ping) before the
-old pod terminates. Traffic never drops as long as the new pod goes
+migrate init container, and must pass readyz (Postgres ping) before
+the old pod terminates. Traffic never drops as long as the new pod goes
 ready. Two things do not survive the swap: the Valkey-independent
 in-process refresh guard, and any detached refresh mid-flight - the
 refresh dies unlogged with the old process, so re-trigger the refresh
@@ -1016,7 +1048,7 @@ under `set -e -o pipefail`, so a failed token exchange (the `sed`
 after the curl piping into it) aborts the job instead of running the
 later hops on an empty token.
 
-Datastore restarts: Mongo restarting takes enrichment unready until
+Datastore restarts: Postgres restarting takes enrichment unready until
 the ping passes again (failure mode 2). Valkey restarting costs
 only cache warmth. Neither requires restarting enrichment itself
 except the boot-time Valkey dependency noted earlier.

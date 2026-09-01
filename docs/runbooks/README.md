@@ -46,7 +46,7 @@ and triage, admin levers, capacity and rollout.
 
 ## Alert rules
 
-The thirty-two rules live in
+The thirty-one rules live in
 `deploy/charts/platform/files/alerting/vg-rules.yaml`, provisioned
 into the `vgkeep` folder and evaluated every 1m. Each rule's
 `runbook_url` annotation deep-links the runbook section below; that
@@ -63,7 +63,6 @@ from Alerting > Alert rules in Grafana (localhost:3000).
 | vg-node-pressure - Node under memory, disk or PID pressure                                  | page     | [stack.md](stack.md#5-node-under-memory-disk-or-pid-pressure)        |
 | vg-pg-saturation - Postgres connections above 80 percent of max                             | warn     | [stack.md](stack.md#6-postgres-connections-above-80-percent-of-max)  |
 | vg-valkey-pressure - Valkey evicting keys or memory unusually high                          | warn     | [stack.md](stack.md#7-valkey-evicting-keys-or-memory-unusually-high) |
-| vg-mongo-down - MongoDB unreachable                                                         | page     | [enrichment.md](enrichment.md#2-mongo-down)                          |
 | vg-collector-drops - OTel collector dropping telemetry                                      | warn     | [stack.md](stack.md#telemetry-pipeline-operations)                   |
 | vg-denylist-failopen - BFF denylist failing open                                            | page     | [bff.md](bff.md#1-valkey-unreachable)                                |
 | vg-loki-errors - Error log spike                                                            | warn     | [stack.md](stack.md#3-error-log-spike)                               |
@@ -94,5 +93,5 @@ from Alerting > Alert rules in Grafana (localhost:3000).
 `warn` is everything else worth investigating on the next pass. The
 dev tier has no contact point configured on purpose, so nothing here
 pages out: alerts are read from the Grafana UI (Alerting > Alert
-rules for the current state of all thirty-two, Alerting > Active
+rules for the current state of all thirty-one, Alerting > Active
 alerts for what is firing right now).

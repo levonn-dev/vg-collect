@@ -6,7 +6,7 @@
 </picture>
 
 Video-game collection tracker with granular per-item detail: OIDC login, IGDB metadata enrichment, PriceCharting market
-pricing, per-service Postgres/MongoDB/Valkey datastores, full observability.
+pricing, per-service Postgres/Valkey datastores, full observability.
 
 ## Prerequisites
 

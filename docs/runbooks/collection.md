@@ -632,9 +632,9 @@ Or in Loki:
 
 The 502 face shows on the 5xx alert path
 ([stack.md](stack.md#1-service-5xx-ratio-above-5-percent)).
-Then move to enrichment's own dashboards; if enrichment's Mongo is the
-cause, [enrichment.md](enrichment.md#2-mongo-down) owns the trail.
-Nothing to do on the collection
+Then move to enrichment's own dashboards; if enrichment's Postgres is
+the cause, [enrichment.md](enrichment.md#2-postgres-down-or-saturated)
+owns the trail. Nothing to do on the collection
 side: both faces recover on their own when enrichment returns.
 
 ### 2. Postgres down or saturated
