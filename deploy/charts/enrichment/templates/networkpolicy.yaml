@@ -1,4 +1,4 @@
-{{ include "vg-lib.mongo.ownerOnly" . }}
+{{ include "vg-lib.pg.ownerOnly" . }}
 {{ include "vg-lib.valkey.ownerOnly" . }}
 # Enrichment's callers: bff (search/resolve/product pass-throughs), collection (product snapshots at entry
 # creation, batch prices for values/dashboard), and the refresh CronJob (JWT via auth, then a normal bearer here; this is the outer admission layer).

@@ -1,8 +1,8 @@
-// Package migrations embeds this service's schema migrations (JSON
-// runCommand arrays) for mongokit.Migrate, run via the `migrate` subcommand.
+// Package migrations embeds this service's schema migrations for
+// pgkit.Migrate (run via the `migrate` subcommand / init container).
 package migrations
 
 import "embed"
 
-//go:embed *.json
+//go:embed *.sql
 var FS embed.FS

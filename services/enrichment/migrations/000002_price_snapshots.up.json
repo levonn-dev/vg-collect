@@ -1,6 +1,0 @@
-[
-  {
-    "create": "price_snapshots",
-    "timeseries": { "timeField": "captured_at", "metaField": "product_id", "granularity": "hours" }
-  }
-]

@@ -11,8 +11,8 @@ import (
 
 	"github.com/levonn-dev/vgkeep/libs/go/httpkit"
 	"github.com/levonn-dev/vgkeep/libs/go/jwtauth"
-	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
 	vgotel "github.com/levonn-dev/vgkeep/libs/go/otel"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/cache"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/config"
@@ -39,13 +39,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	mongoURL, err := mongokit.ComposeURL(cfg.MongoURL, cfg.MongoUsername, cfg.MongoPassword)
-	if err != nil {
-		return err
-	}
 
 	if len(os.Args) > 1 && os.Args[1] == "migrate" {
-		return mongokit.Migrate(ctx, mongoURL, cfg.MongoDB, migrations.FS, ".")
+		return pgkit.Migrate(cfg.DatabaseURL, migrations.FS, ".")
 	}
 
 	shutdown, err := vgotel.Setup(ctx, vgotel.Config{ServiceName: "enrichment", Version: cfg.Version})
@@ -54,11 +50,11 @@ func run() error {
 	}
 	defer func() { _ = shutdown(context.Background()) }()
 
-	client, err := mongokit.Connect(ctx, mongoURL)
+	pool, err := pgkit.Connect(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = client.Disconnect(context.Background()) }()
+	defer pool.Close()
 
 	// Valkey is required at startup (deploy-ordering); runtime outages fail open.
 	rdb, err := valkeykit.ConnectFromConfig(ctx, cfg.ValkeyURL, cfg.ValkeyCAFile)
@@ -95,7 +91,7 @@ func run() error {
 		}
 	}
 
-	st := store.New(client.Database(cfg.MongoDB))
+	st := store.New(pool)
 	v := jwtauth.NewValidator(cfg.JWKSURL, cfg.JWTIssuer, cfg.JWTAudience)
 	h := server.New(st, games, prices, rates, cache.New(rdb), server.Options{
 		SearchCacheTTL:   cfg.SearchCacheTTL,
@@ -103,10 +99,10 @@ func run() error {
 		IGDBRefreshAfter: cfg.IGDBRefreshAfter,
 		Logger:           slog.Default(),
 	})
-	// Readiness = Mongo only: the catalog is a hard dependency, the
+	// Readiness = Postgres only: the catalog is a hard dependency, the
 	// cache fails open per-request.
 	router, err := server.NewRouter(h, v, slog.Default(),
-		func(c context.Context) error { return mongokit.Health(c, client) })
+		func(c context.Context) error { return pgkit.Health(c, pool) })
 	if err != nil {
 		return err
 	}

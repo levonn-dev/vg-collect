@@ -14,6 +14,6 @@ tasks:
       - go tool oapi-codegen -config ../../api/oapi.server.yaml ../../api/enrichment.yaml
 
   db:migrate:
-    desc: Run migrations against MONGO_URL/MONGO_DB
+    desc: Run migrations against DATABASE_URL
     cmds:
       - go run ./cmd/enrichment migrate

@@ -1,6 +1,6 @@
 apiVersion: v2
 name: enrichment
-description: vgkeep enrichment service (catalog + pricing) with its MongoDB and Valkey
+description: vgkeep enrichment service (catalog + pricing) with its Postgres and Valkey
 type: application
 version: 0.1.0
 appVersion: "0.1.0"

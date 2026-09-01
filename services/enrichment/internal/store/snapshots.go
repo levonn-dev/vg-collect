@@ -5,24 +5,27 @@ import (
 	"fmt"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/jackc/pgx/v5"
 )
 
 // Snapshot is one point in the price_snapshots time-series, keyed by
-// our product id (the metaField); appends are the only write shape.
+// our product id; appends are the only write shape.
 type Snapshot struct {
-	ProductID  string    `bson:"product_id"`
-	CapturedAt time.Time `bson:"captured_at"`
-	LooseCents *int64    `bson:"loose_cents,omitempty"`
-	CIBCents   *int64    `bson:"cib_cents,omitempty"`
-	NewCents   *int64    `bson:"new_cents,omitempty"`
+	ProductID  string
+	CapturedAt time.Time
+	LooseCents *int64
+	CIBCents   *int64
+	NewCents   *int64
 }
 
-// AppendSnapshot inserts one time-series point.
+// AppendSnapshot inserts one snapshot row. A duplicate (product_id,
+// captured_at) is dropped: identical-instant re-appends carry no new fact.
 func (s *Store) AppendSnapshot(ctx context.Context, snap Snapshot) error {
-	snap.CapturedAt = snap.CapturedAt.UTC().Truncate(time.Millisecond)
-	if _, err := s.db.Collection(colSnapshots).InsertOne(ctx, snap); err != nil {
+	if _, err := s.pool.Exec(ctx, `INSERT INTO price_snapshots
+		(product_id, captured_at, loose_cents, cib_cents, new_cents)
+		VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
+		snap.ProductID, snap.CapturedAt.UTC().Truncate(time.Millisecond),
+		snap.LooseCents, snap.CIBCents, snap.NewCents); err != nil {
 		return fmt.Errorf("store: append snapshot: %w", err)
 	}
 	return nil
@@ -35,15 +38,17 @@ func (s *Store) SnapshotsSince(ctx context.Context, ids []string, since time.Tim
 	if len(ids) == 0 {
 		return out, nil
 	}
-	cur, err := s.db.Collection(colSnapshots).Find(ctx,
-		bson.M{"product_id": bson.M{"$in": ids}, "captured_at": bson.M{"$gte": since.UTC()}},
-		options.Find().SetSort(bson.D{{Key: "captured_at", Value: 1}}))
+	snaps, err := queryAll(ctx, s.pool, `SELECT product_id, captured_at, loose_cents, cib_cents, new_cents
+		FROM price_snapshots WHERE product_id = ANY($1) AND captured_at >= $2
+		ORDER BY captured_at`, []any{ids, since.UTC()},
+		func(rows pgx.Rows) (Snapshot, error) {
+			var sn Snapshot
+			err := rows.Scan(&sn.ProductID, &sn.CapturedAt, &sn.LooseCents, &sn.CIBCents, &sn.NewCents)
+			sn.CapturedAt = sn.CapturedAt.UTC()
+			return sn, err
+		}, "snapshots since")
 	if err != nil {
-		return nil, fmt.Errorf("store: snapshots since: %w", err)
-	}
-	var snaps []Snapshot
-	if err := cur.All(ctx, &snaps); err != nil {
-		return nil, fmt.Errorf("store: decode snapshots: %w", err)
+		return nil, err
 	}
 	for _, sn := range snaps {
 		out[sn.ProductID] = append(out[sn.ProductID], sn)

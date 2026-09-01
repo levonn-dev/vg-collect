@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
-
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
@@ -53,8 +51,8 @@ func TestRaw_UpsertReplaceAndMissingAbsent(t *testing.T) {
 	}
 }
 
-// The release_dates sentinel is load-bearing: bson-absent reads as
-// pre-feature "never fetched", so a nil table normalizes to empty before persisting.
+// The release_dates sentinel is load-bearing: an absent table reads as
+// pre-feature "never fetched", so a nil slice normalizes to empty before persisting.
 func TestRaw_UpsertNormalizesNilReleaseDatesToEmpty(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -77,19 +75,18 @@ func TestRaw_UpsertNormalizesNilReleaseDatesToEmpty(t *testing.T) {
 	}
 }
 
+// TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement pins that the
+// upsert overwrites the whole game jsonb column rather than merging keys.
 func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
 
-	// Seed a field RawGame doesn't define (stand-in for a dropped
-	// schema field); ReplaceOneModel replaces the whole doc, not $set-merges, so it must vanish.
-	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
-		{Key: "_id", Value: int64(1011)},
-		{Key: "game", Value: bson.D{{Key: "id", Value: int64(1011)}, {Key: "name", Value: "Chrono Trigger"}}},
-		{Key: "fetched_at", Value: at},
-		{Key: "legacy_unused_field", Value: "must not survive a replace"},
-	}); err != nil {
+	// Seed a key igdb.Game doesn't define (stand-in for a dropped
+	// schema field), inserted directly so it bypasses the struct shape.
+	seed := []byte(`{"id":1011,"name":"Chrono Trigger","legacy_unused_field":"must not survive a replace"}`)
+	if _, err := pool.Exec(ctx, `INSERT INTO igdb_raw (id, game, fetched_at, fields_version) VALUES ($1,$2,$3,$4)`,
+		int64(1011), seed, at, 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -97,19 +94,19 @@ func TestRaw_UpsertReplaceDropsFieldsAbsentFromReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var raw bson.M
-	if err := mdb.Collection("igdb_raw").FindOne(ctx, bson.D{{Key: "_id", Value: int64(1011)}}).Decode(&raw); err != nil {
+	var raw map[string]any
+	if err := pool.QueryRow(ctx, "SELECT game FROM igdb_raw WHERE id = $1", int64(1011)).Scan(&raw); err != nil {
 		t.Fatal(err)
 	}
 	if _, present := raw["legacy_unused_field"]; present {
-		t.Fatalf("ReplaceOneModel must drop fields absent from the replacement document: %+v", raw)
+		t.Fatalf("UPDATE SET game = EXCLUDED.game must drop fields absent from the replacement: %+v", raw)
 	}
 }
 
-// FieldsVersion lets reprojection tell a raw doc fetched under the
+// FieldsVersion lets reprojection tell a raw row fetched under the
 // current gameFields generation from one that predates it (refetch, not reproject).
 func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
 	at := time.Date(2026, 7, 1, 6, 0, 0, 0, time.UTC)
 
@@ -125,13 +122,10 @@ func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
 		t.Fatalf("want fields_version %d, got %+v", store.RawFieldsVersion, got)
 	}
 
-	// A doc predating this field (no fields_version key) reads back
-	// zero: the sentinel the refetch sweep keys on.
-	if _, err := mdb.Collection("igdb_raw").InsertOne(ctx, bson.D{
-		{Key: "_id", Value: int64(3002)},
-		{Key: "game", Value: bson.D{{Key: "id", Value: int64(3002)}, {Key: "name", Value: "Legacy Game"}}},
-		{Key: "fetched_at", Value: at},
-	}); err != nil {
+	// A row inserted directly with fields_version 0 stands in for a
+	// pre-feature payload: the sentinel the refetch sweep keys on.
+	if _, err := pool.Exec(ctx, `INSERT INTO igdb_raw (id, game, fetched_at, fields_version) VALUES ($1,$2,$3,$4)`,
+		int64(3002), []byte(`{"id":3002,"name":"Legacy Game"}`), at, 0); err != nil {
 		t.Fatal(err)
 	}
 	got, err = s.RawByIDs(ctx, []int64{3002})
@@ -139,7 +133,7 @@ func TestRaw_UpsertStampsFieldsVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0].FieldsVersion != 0 {
-		t.Fatalf("pre-feature doc must read back fields_version 0, got %+v", got)
+		t.Fatalf("pre-feature row must read back fields_version 0, got %+v", got)
 	}
 }
 

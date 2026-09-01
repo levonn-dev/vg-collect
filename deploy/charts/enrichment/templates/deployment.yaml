@@ -33,19 +33,11 @@ spec:
             capabilities: { drop: [ALL] }
             readOnlyRootFilesystem: true
           env: &appEnv
-            - name: MONGO_USERNAME
-              value: {{ .Values.mongo.username | quote }}
-            - name: MONGO_PASSWORD
+            - name: PG_PASSWORD
               valueFrom:
-                secretKeyRef: { name: enrichment-secrets, key: mongo-password }
-            - name: MONGO_URL
-            {{- if .Values.mongo.enabled }}
-              value: "mongodb://{{ include "enrichment.mongoHost" . }}:27017/{{ .Values.mongo.database }}?tls=true&tlsCAFile=/etc/vg/mongo-ca/ca.crt&authSource=admin"
-            {{- else }}
-              value: {{ required "env.mongoUrl is required when mongo.enabled is false" .Values.env.mongoUrl | quote }}
-            {{- end }}
-            - name: MONGO_DB
-              value: {{ .Values.mongo.database | quote }}
+                secretKeyRef: { name: enrichment-pg-credentials, key: password }
+            - name: DATABASE_URL
+              value: "postgres://{{ .Values.postgres.username }}:$(PG_PASSWORD)@{{ include "enrichment.pgHost" . }}:5432/{{ .Values.postgres.database }}?sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt"
             - name: VALKEY_URL
               value: {{ .Values.env.valkeyUrl | quote }}
             {{- if .Values.valkey.enabled }}
@@ -90,19 +82,15 @@ spec:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.otel.exporterEndpoint | quote }}
             {{- end }}
-          {{- if or .Values.mongo.enabled .Values.valkey.enabled }}
           volumeMounts: &caMounts
-            {{- if .Values.mongo.enabled }}
-            - name: mongo-ca
-              mountPath: /etc/vg/mongo-ca
+            - name: pg-ca
+              mountPath: /etc/vg/pg-ca
               readOnly: true
-            {{- end }}
             {{- if .Values.valkey.enabled }}
             - name: valkey-ca
               mountPath: /etc/vg/valkey-ca
               readOnly: true
             {{- end }}
-          {{- end }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -111,26 +99,20 @@ spec:
             - { name: http, containerPort: 8080 }
           securityContext: *appSecCtx
           env: *appEnv
-          {{- if or .Values.mongo.enabled .Values.valkey.enabled }}
           volumeMounts: *caMounts
-          {{- end }}
           livenessProbe:
             httpGet: { path: /healthz, port: http }
           readinessProbe:
             httpGet: { path: /readyz, port: http }
           resources: {{- toYaml .Values.resources | nindent 12 }}
-      {{- if or .Values.mongo.enabled .Values.valkey.enabled }}
       volumes:
-        {{- if .Values.mongo.enabled }}
-        - name: mongo-ca
+        - name: pg-ca
           secret:
-            secretName: enrichment-mongo-tls
+            secretName: enrichment-pg-tls
             items: [{ key: ca.crt, path: ca.crt }]
-        {{- end }}
         {{- if .Values.valkey.enabled }}
         - name: valkey-ca
           secret:
             secretName: enrichment-valkey-tls
             items: [{ key: ca.crt, path: ca.crt }]
         {{- end }}
-      {{- end }}

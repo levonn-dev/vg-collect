@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
@@ -71,7 +70,8 @@ func TestRefresh_InternalWalksCatalogAndSnapshots(t *testing.T) {
 	reqtest.WaitFor(t, 10*time.Second, func() bool {
 		// Each matched product got its resolve-time snapshot plus one
 		// refresh snapshot; Terranigma got none.
-		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
+		var n int64
+		err := s.pool.QueryRow(ctx, "SELECT count(*) FROM price_snapshots").Scan(&n)
 		return err == nil && n == 4
 	})
 	got, err := s.store.GetProduct(ctx, matched.Id.String())
@@ -101,7 +101,8 @@ func TestRefresh_WalksPCListingProducts(t *testing.T) {
 	ctx := context.Background()
 	reqtest.WaitFor(t, 10*time.Second, func() bool {
 		// The create-time snapshot plus one refresh snapshot.
-		n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{})
+		var n int64
+		err := s.pool.QueryRow(ctx, "SELECT count(*) FROM price_snapshots").Scan(&n)
 		return err == nil && n == 2
 	})
 
@@ -516,18 +517,19 @@ func TestReprojection_HealsBelowVersionRaw(t *testing.T) {
 	const platformID = 8801
 	naDate := time.Date(2001, time.June, 20, 0, 0, 0, 0, time.UTC)
 
-	// Hand-write the raw doc: release_dates is real, but fields_version
+	// Hand-write the raw row: release_dates is real, but fields_version
 	// and the newer-generation localization arrays are absent (the below-version case).
-	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
-		"_id": gid,
-		"game": bson.M{
-			"id":            gid,
-			"name":          "Regional Quest",
-			"platforms":     []bson.M{{"id": platformID, "name": "Test Platform"}},
-			"release_dates": []bson.M{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
-		},
-		"fetched_at": time.Now().UTC(),
-	}); err != nil {
+	game, err := json.Marshal(map[string]any{
+		"id":            gid,
+		"name":          "Regional Quest",
+		"platforms":     []map[string]any{{"id": platformID, "name": "Test Platform"}},
+		"release_dates": []map[string]any{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO igdb_raw (id, game, fetched_at, fields_version) VALUES ($1,$2,$3,$4)`,
+		int64(gid), game, time.Now().UTC(), 0); err != nil {
 		t.Fatal(err)
 	}
 	prod, err := s.store.CreateProduct(ctx, store.Product{

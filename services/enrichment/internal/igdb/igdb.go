@@ -15,49 +15,49 @@ import (
 // Named is any IGDB reference expanded to {id, name} (genres, themes,
 // franchises, platforms, companies).
 type Named struct {
-	ID   int64  `json:"id" bson:"id"`
-	Name string `json:"name" bson:"name"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // Cover carries the image id used to build image URLs.
 type Cover struct {
-	ImageID string `json:"image_id" bson:"image_id"`
+	ImageID string `json:"image_id"`
 }
 
 // InvolvedCompany links a company with its role flags.
 type InvolvedCompany struct {
-	Company   Named `json:"company" bson:"company"`
-	Developer bool  `json:"developer" bson:"developer"`
-	Publisher bool  `json:"publisher" bson:"publisher"`
+	Company   Named `json:"company"`
+	Developer bool  `json:"developer"`
+	Publisher bool  `json:"publisher"`
 }
 
 // ReleaseDate is one row of the per-platform, per-region release
 // table; Platform and Region arrive as raw IGDB ids (Region via RegionName).
 type ReleaseDate struct {
-	Date     int64 `json:"date,omitempty" bson:"date,omitempty"`
-	Platform int64 `json:"platform,omitempty" bson:"platform,omitempty"`
-	Region   int   `json:"release_region,omitempty" bson:"release_region,omitempty"`
+	Date     int64 `json:"date,omitempty"`
+	Platform int64 `json:"platform,omitempty"`
+	Region   int   `json:"release_region,omitempty"`
 }
 
 // AlternativeName is one alternate title with IGDB's free-text
 // comment taxonomy ("Japanese title - romanization", "Acronym", ...).
 type AlternativeName struct {
-	Name    string `json:"name" bson:"name"`
-	Comment string `json:"comment,omitempty" bson:"comment,omitempty"`
+	Name    string `json:"name"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // LocalizationRegion arrives identifier-expanded (ja-JP, EU, ko-KR):
 // self-describing, so no enum map can go stale when IGDB adds rows.
 type LocalizationRegion struct {
-	Identifier string `json:"identifier" bson:"identifier"`
+	Identifier string `json:"identifier"`
 }
 
 // GameLocalization is one region's presentation of a game; name and
 // cover are independently optional (rows are sparse).
 type GameLocalization struct {
-	Name   string             `json:"name,omitempty" bson:"name,omitempty"`
-	Region LocalizationRegion `json:"region" bson:"region"`
-	Cover  *Cover             `json:"cover,omitempty" bson:"cover,omitempty"`
+	Name   string             `json:"name,omitempty"`
+	Region LocalizationRegion `json:"region"`
+	Cover  *Cover             `json:"cover,omitempty"`
 }
 
 // CoverURL builds the t_cover_big URL for the localization's own box
@@ -72,31 +72,31 @@ func (l GameLocalization) CoverURL() string {
 // Game is the projection this service requests from /v4/games (and the
 // shape igdb_raw persists). Expanded references always include ids.
 type Game struct {
-	ID                int64              `json:"id" bson:"id"`
-	Name              string             `json:"name" bson:"name"`
-	Cover             *Cover             `json:"cover,omitempty" bson:"cover,omitempty"`
-	Genres            []Named            `json:"genres,omitempty" bson:"genres,omitempty"`
-	Themes            []Named            `json:"themes,omitempty" bson:"themes,omitempty"`
-	Franchises        []Named            `json:"franchises,omitempty" bson:"franchises,omitempty"`
-	SimilarGames      []int64            `json:"similar_games,omitempty" bson:"similar_games,omitempty"`
-	InvolvedCompanies []InvolvedCompany  `json:"involved_companies,omitempty" bson:"involved_companies,omitempty"`
-	FirstReleaseDate  int64              `json:"first_release_date,omitempty" bson:"first_release_date,omitempty"`
-	ReleaseDates      []ReleaseDate      `json:"release_dates" bson:"release_dates"`
-	Platforms         []Named            `json:"platforms,omitempty" bson:"platforms,omitempty"`
-	AlternativeNames  []AlternativeName  `json:"alternative_names,omitempty" bson:"alternative_names,omitempty"`
-	GameLocalizations []GameLocalization `json:"game_localizations,omitempty" bson:"game_localizations,omitempty"`
-	TotalRating       float64            `json:"total_rating,omitempty" bson:"total_rating,omitempty"`
-	TotalRatingCount  int                `json:"total_rating_count,omitempty" bson:"total_rating_count,omitempty"`
+	ID                int64              `json:"id"`
+	Name              string             `json:"name"`
+	Cover             *Cover             `json:"cover,omitempty"`
+	Genres            []Named            `json:"genres,omitempty"`
+	Themes            []Named            `json:"themes,omitempty"`
+	Franchises        []Named            `json:"franchises,omitempty"`
+	SimilarGames      []int64            `json:"similar_games,omitempty"`
+	InvolvedCompanies []InvolvedCompany  `json:"involved_companies,omitempty"`
+	FirstReleaseDate  int64              `json:"first_release_date,omitempty"`
+	ReleaseDates      []ReleaseDate      `json:"release_dates"`
+	Platforms         []Named            `json:"platforms,omitempty"`
+	AlternativeNames  []AlternativeName  `json:"alternative_names,omitempty"`
+	GameLocalizations []GameLocalization `json:"game_localizations,omitempty"`
+	TotalRating       float64            `json:"total_rating,omitempty"`
+	TotalRatingCount  int                `json:"total_rating_count,omitempty"`
 }
 
 // Platform is the /v4/platforms projection, persisted as-is into the
-// platforms collection (bson _id = the IGDB platform id).
+// platforms table (ID is the IGDB platform id).
 type Platform struct {
-	ID           int64  `json:"id" bson:"_id"`
-	Name         string `json:"name" bson:"name"`
-	Abbreviation string `json:"abbreviation,omitempty" bson:"abbreviation,omitempty"`
-	Generation   int    `json:"generation,omitempty" bson:"generation,omitempty"`
-	PlatformLogo *Cover `json:"platform_logo,omitempty" bson:"platform_logo,omitempty"`
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Abbreviation string `json:"abbreviation,omitempty"`
+	Generation   int    `json:"generation,omitempty"`
+	PlatformLogo *Cover `json:"platform_logo,omitempty"`
 }
 
 const imageBase = "https://images.igdb.com/igdb/image/upload/"

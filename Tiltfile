@@ -59,7 +59,7 @@ SECRET_KEYS = {k: v for k, v in {
     'auth/internal-service-token': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN', ''),
     'auth/internal-service-token-previous': ENV.get('AUTH_INTERNAL_SERVICE_TOKEN_PREVIOUS', ''),
     'bff/cookie-key': ENV.get('BFF_COOKIE_KEY', ''),
-    'enrichment/mongo-password': ENV.get('MONGO_ENRICHMENT_PASSWORD', ''),
+    'enrichment/pg-password': ENV.get('PG_ENRICHMENT_PASSWORD', ''),
     'enrichment/igdb-client-id': ENV.get('IGDB_CLIENT_ID', ''),
     'enrichment/igdb-client-secret': ENV.get('IGDB_CLIENT_SECRET', ''),
     'enrichment/pricecharting-api-key': ENV.get('PRICECHARTING_API_KEY', ''),
@@ -197,8 +197,8 @@ if ENV.get('PRICECHARTING_API_KEY', '') != '':
     _enrichment_set.append('pricecharting.mode=real')
 k8s_yaml(helm('deploy/charts/enrichment', name='enrichment', namespace='vgkeep', set=_enrichment_set))
 k8s_resource('enrichment', port_forwards=['8084:8080'],
-             resource_deps=['secret-store', 'enrichment-mongo', 'enrichment-valkey', 'auth'], labels=['services'])
-k8s_resource('enrichment-mongo', port_forwards=['27018:27017'], labels=['datastores'])
+             resource_deps=['secret-store', 'enrichment-pg', 'enrichment-valkey', 'auth'], labels=['services'])
+k8s_resource('enrichment-pg', port_forwards=['5437:5432'], labels=['datastores'])
 k8s_resource('enrichment-valkey', labels=['datastores'])
 k8s_resource('enrichment-refresh', resource_deps=['enrichment'], labels=['services'])
 

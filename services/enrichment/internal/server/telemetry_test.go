@@ -336,13 +336,13 @@ func TestUnitTelemetry_RefreshItemsPrices(t *testing.T) {
 		listPriced: func(context.Context) ([]store.Product, error) { return prods, nil },
 		setCurrentPrices: func(_ context.Context, id string, _ store.PriceQuote, _ time.Time) error {
 			if id == "p-write-fail" {
-				return errors.New("mongo down")
+				return errors.New("store down")
 			}
 			return nil
 		},
 		appendSnapshot: func(_ context.Context, s store.Snapshot) error {
 			if s.ProductID == "p-snap-fail" {
-				return errors.New("mongo down")
+				return errors.New("store down")
 			}
 			return nil
 		},
@@ -394,7 +394,7 @@ func TestUnitTelemetry_RefreshItemsReprojection(t *testing.T) {
 		upsertRaw: func(context.Context, []igdb.Game, time.Time) error { return nil },
 		setIGDB: func(_ context.Context, id string, _ store.IGDBMeta) error {
 			if id == "p-write-fail" {
-				return errors.New("mongo down")
+				return errors.New("store down")
 			}
 			return nil
 		},
@@ -433,7 +433,7 @@ func TestUnitTelemetry_RefreshItemsSweep(t *testing.T) {
 		listCommunityProducts: func(context.Context) ([]store.Product, error) { return comm, nil },
 		replacePromoteCandidates: func(_ context.Context, id string, _ []store.PromoteCandidate) error {
 			if id == "c-store-fail" {
-				return errors.New("mongo down")
+				return errors.New("store down")
 			}
 			return nil
 		},
@@ -481,7 +481,7 @@ func TestUnitTelemetry_NormalizeCommunityRegions(t *testing.T) {
 		},
 		setCommunityRegion: func(_ context.Context, id, _ string) error {
 			if id == "p-write-fail" {
-				return errors.New("mongo down")
+				return errors.New("store down")
 			}
 			return nil
 		},
@@ -552,7 +552,7 @@ func TestUnitTelemetry_RefreshStepDurationPerStep(t *testing.T) {
 // series is the refresh-happened signal for the stalled-refresh alert.
 func TestUnitTelemetry_RefreshStepDurationRecordedOnAbort(t *testing.T) {
 	reader := metrictest.Install(t)
-	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, errors.New("mongo down") }}
+	st := &stubStore{listPriced: func(context.Context) ([]store.Product, error) { return nil, errors.New("store down") }}
 	h := newUnitHandlers(st, nil, nil, newStubCache())
 
 	h.runRefresh(context.Background())
@@ -659,7 +659,7 @@ func TestUnitTelemetry_CatalogRefreshStartedLogsTrigger(t *testing.T) {
 // the client never sees.
 func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 	env := newAuthEnv(t)
-	boom := errors.New("mongo exploded")
+	boom := errors.New("store exploded")
 	st := &stubStore{productsByIDs: func(context.Context, []string) ([]store.Product, error) {
 		return nil, boom
 	}}
@@ -687,7 +687,7 @@ func TestUnitInternalErrorLogCarriesCause(t *testing.T) {
 
 	logged := buf.String()
 	if !strings.Contains(logged, `"msg":"handler error"`) || !strings.Contains(logged, `"level":"ERROR"`) ||
-		!strings.Contains(logged, `"op":"batch_prices"`) || !strings.Contains(logged, "mongo exploded") {
+		!strings.Contains(logged, `"op":"batch_prices"`) || !strings.Contains(logged, "store exploded") {
 		t.Fatalf("handler error log line missing or wrong shape: %s", logged)
 	}
 }

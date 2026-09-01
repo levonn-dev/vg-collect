@@ -788,7 +788,7 @@ func TestUnitPromoteHardware_UnknownPCProductIs404(t *testing.T) {
 }
 
 // Pins the promote game branch's non-resolveErr fallthrough to 500:
-// a raw-read Mongo fault is internal, never the 502 a provider outage earns.
+// a raw-read store fault is internal, never the 502 a provider outage earns.
 func TestUnitPromoteGame_RawFaultIsInternal(t *testing.T) {
 	env := newAuthEnv(t)
 	admin := env.token(t, uuid.NewString(), []string{"user", "admin"})
@@ -797,7 +797,7 @@ func TestUnitPromoteGame_RawFaultIsInternal(t *testing.T) {
 	// a non-resolveErr; games/prices stay empty since reaching a provider would be wrong.
 	st := &stubStore{
 		getProduct: func(context.Context, string) (store.Product, error) { return comm, nil },
-		rawByIDs:   func(context.Context, []int64) ([]store.RawGame, error) { return nil, errors.New("mongo unreachable") },
+		rawByIDs:   func(context.Context, []int64) ([]store.RawGame, error) { return nil, errors.New("store unreachable") },
 	}
 	h := newUnitHandlers(st, &stubGames{}, &stubPrices{}, newStubCache())
 

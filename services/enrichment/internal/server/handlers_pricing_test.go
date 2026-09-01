@@ -173,7 +173,7 @@ func TestUnitBatchPriceHistoryStoreFailureIs500(t *testing.T) {
 	tok := env.token(t, "u1", []string{"user"})
 	st := &stubStore{
 		snapshotsSince: func(context.Context, []string, time.Time) (map[string][]store.Snapshot, error) {
-			return nil, errors.New("mongo down")
+			return nil, errors.New("store down")
 		},
 	}
 	h := newUnitHandlers(st, nil, nil, newStubCache())

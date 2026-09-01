@@ -46,7 +46,7 @@ func TestRoutes_HealthOutsideAuth(t *testing.T) {
 }
 
 func TestRoutes_ReadyzReportsNotReady(t *testing.T) {
-	router, _ := newBareRouter(t, func(context.Context) error { return errors.New("mongo down") })
+	router, _ := newBareRouter(t, func(context.Context) error { return errors.New("store down") })
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {

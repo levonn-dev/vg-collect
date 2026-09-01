@@ -9,9 +9,6 @@ env:
   jwksUrl: http://auth:8080/.well-known/jwks.json
   jwtIssuer: vgkeep-auth
   jwtAudience: vgkeep
-  # External MongoDB URL (creds-less, e.g. mongodb+srv://...), read only when mongo.enabled is false;
-  # credentials still ride MONGO_USERNAME (mongo.username) + MONGO_PASSWORD (secret), composed service-side.
-  mongoUrl: ""
   valkeyUrl: rediss://enrichment-valkey:6379/0
   searchCacheTtl: 24h
   productCacheTtl: 5m
@@ -36,16 +33,16 @@ resources:
   requests: { cpu: 50m, memory: 64Mi }
   limits: { memory: 128Mi }
 
-mongo:
-  enabled: true            # false = bring your own MongoDB (e.g. Atlas): set env.mongoUrl; the in-cluster mongo and its CA volume are not rendered
-  image: mongo:8
+postgres:
+  enabled: true            # the prod-path seam: disable + point DATABASE_URL at RDS/CNPG
+  image: postgres:17-alpine
   database: enrichment
   username: enrichment
   storage: 1Gi
-  exporterImage: percona/mongodb_exporter:0.51.0
+  exporterImage: quay.io/prometheuscommunity/postgres-exporter:v0.20.0
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { memory: 512Mi }
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 256Mi }
   exporterResources:
     requests: { cpu: 10m, memory: 16Mi }
     limits: { memory: 32Mi }
@@ -69,7 +66,7 @@ secretStore:
   name: vg-fake
   kind: ClusterSecretStore
   keys:
-    mongoPassword: enrichment/mongo-password
+    pgPassword: enrichment/pg-password
     internalServiceToken: auth/internal-service-token
     igdbClientId: enrichment/igdb-client-id
     igdbClientSecret: enrichment/igdb-client-secret

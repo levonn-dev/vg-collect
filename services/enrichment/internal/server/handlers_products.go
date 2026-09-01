@@ -24,7 +24,7 @@ import (
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 )
 
-// GetProduct is the identity lookup: Valkey, then Mongo, refetching a
+// GetProduct is the identity lookup: Valkey, then the store, refetching a
 // stale IGDB projection best-effort (serves stale if the provider is down).
 func (h *Handlers) GetProduct(w http.ResponseWriter, r *http.Request, productId openapi_types.UUID) {
 	ctx := r.Context()

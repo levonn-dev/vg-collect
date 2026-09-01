@@ -185,7 +185,7 @@ func TestUnitSearch_DegradedFallsBackToCatalog(t *testing.T) {
 }
 
 // Pins that the degraded fallback scopes by kind before its row
-// limit, not after (mirrors the real Mongo query's filter-then-$limit
+// limit, not after (mirrors the real store query's filter-then-limit
 // order). A top-N window stuffed with 20 hardware matches must still
 // surface the one game match once the handler passes kind-scoped types.
 func TestUnitSearch_DegradedDoesNotStarveRequestedKind(t *testing.T) {

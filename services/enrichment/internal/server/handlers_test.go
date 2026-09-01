@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
-	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
+	"github.com/levonn-dev/vgkeep/libs/go/pgkit"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeykit"
 	"github.com/levonn-dev/vgkeep/libs/go/valkeytest"
@@ -451,8 +451,8 @@ func doAuthedFxRequest(t *testing.T, rates FXProvider) *httptest.ResponseRecorde
 	return serveUnit(t, h, env, http.MethodGet, "/fx/latest", tok, nil)
 }
 
-// Integration stack: real Mongo + Valkey + fixture providers behind
-// the real router. Skipped under -short.
+// Integration stack: real Postgres + Valkey + fixture providers
+// behind the real router. Skipped under -short.
 
 type stack struct {
 	t      *testing.T
@@ -460,19 +460,19 @@ type stack struct {
 	env    *authEnv
 	h      *Handlers
 	store  *store.Store
-	mdb    *mongo.Database
+	pool   *pgxpool.Pool
 	client *http.Client
 }
 
-// newStack shares one MongoDB container across the package via
-// mongotest.FreshDB (Valkey shares similarly via valkeytest.URL);
-// FreshDB resets each test to a fresh migrated db.
+// newStack shares one Postgres container across the package via
+// pgtest.FreshPool (Valkey shares similarly via valkeytest.URL);
+// FreshPool resets each test to a fresh migrated db.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	ctx := context.Background()
 
-	mdb := mongotest.FreshDB(t, migrations.FS, ".")
-	st := store.New(mdb)
+	pool := pgtest.FreshPool(t, migrations.FS, ".")
+	st := store.New(pool)
 
 	rdb, err := valkeykit.Connect(ctx, valkeytest.URL(t))
 	if err != nil {
@@ -505,14 +505,14 @@ func newStack(t *testing.T) *stack {
 		Logger:           slog.New(slog.DiscardHandler),
 	})
 	router, err := NewRouter(h, env.validator(), slog.New(slog.DiscardHandler),
-		func(c context.Context) error { return mongokit.Health(c, mdb.Client()) })
+		func(c context.Context) error { return pgkit.Health(c, pool) })
 	if err != nil {
 		t.Fatal(err)
 	}
 	srv := httptest.NewServer(router)
 	t.Cleanup(srv.Close)
 
-	return &stack{t: t, srv: srv, env: env, h: h, store: st, mdb: mdb, client: srv.Client()}
+	return &stack{t: t, srv: srv, env: env, h: h, store: st, pool: pool, client: srv.Client()}
 }
 
 func (s *stack) userToken() string {

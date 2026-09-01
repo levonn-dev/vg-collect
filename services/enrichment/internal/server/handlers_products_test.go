@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.mongodb.org/mongo-driver/bson"
 
 	"github.com/levonn-dev/vgkeep/libs/go/reqtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/gen/api"
@@ -253,8 +252,8 @@ func TestResolve_GameCreatesMatchedProductIdempotently(t *testing.T) {
 
 	// The initial snapshot landed.
 	ctx := context.Background()
-	n, err := s.mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{"product_id": p.Id.String()})
-	if err != nil || n != 1 {
+	var n int64
+	if err := s.pool.QueryRow(ctx, "SELECT count(*) FROM price_snapshots WHERE product_id = $1", p.Id.String()).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("initial snapshot: %d, %v", n, err)
 	}
 	// And the raw payload is shared state for recommendations.
@@ -459,15 +458,16 @@ func TestResolve_HealsPreFeatureRawReleaseDates(t *testing.T) {
 	// Bypass UpsertRaw's normalization: insert directly, omitting
 	// release_dates so it decodes nil, not the fetched-but-none marker.
 	const staleGameID = 93340
-	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
-		"_id": staleGameID,
-		"game": bson.M{
-			"id":        staleGameID,
-			"name":      "Pre-Feature Game",
-			"platforms": []bson.M{{"id": platformID, "name": "Test Platform"}},
-		},
-		"fetched_at": time.Now().UTC(),
-	}); err != nil {
+	game, err := json.Marshal(map[string]any{
+		"id":        staleGameID,
+		"name":      "Pre-Feature Game",
+		"platforms": []map[string]any{{"id": platformID, "name": "Test Platform"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO igdb_raw (id, game, fetched_at, fields_version) VALUES ($1,$2,$3,$4)`,
+		int64(staleGameID), game, time.Now().UTC(), 0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -542,18 +542,19 @@ func TestResolve_HealsBelowVersionRaw(t *testing.T) {
 	const platformID = 8802
 	naDate := time.Date(2003, time.September, 9, 0, 0, 0, 0, time.UTC)
 
-	// Hand-write the raw doc: release_dates is real, but fields_version
+	// Hand-write the raw row: release_dates is real, but fields_version
 	// and the newer-generation localization arrays are absent (the below-version case).
-	if _, err := s.mdb.Collection("igdb_raw").InsertOne(ctx, bson.M{
-		"_id": gid,
-		"game": bson.M{
-			"id":            gid,
-			"name":          "Regional Quest II",
-			"platforms":     []bson.M{{"id": platformID, "name": "Test Platform"}},
-			"release_dates": []bson.M{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
-		},
-		"fetched_at": time.Now().UTC(),
-	}); err != nil {
+	game, err := json.Marshal(map[string]any{
+		"id":            gid,
+		"name":          "Regional Quest II",
+		"platforms":     []map[string]any{{"id": platformID, "name": "Test Platform"}},
+		"release_dates": []map[string]any{{"date": naDate.Unix(), "platform": platformID, "release_region": 2}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `INSERT INTO igdb_raw (id, game, fetched_at, fields_version) VALUES ($1,$2,$3,$4)`,
+		int64(gid), game, time.Now().UTC(), 0); err != nil {
 		t.Fatal(err)
 	}
 	// Pre-warm the platform catalog: platformLogoFor otherwise reaches
@@ -609,8 +610,8 @@ func TestResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 	if p.Igdb == nil || p.Igdb.GameId != 1011 {
 		t.Fatalf("still a full game product: %+v", p.Igdb)
 	}
-	n, err := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": p.Id.String()})
-	if err != nil || n != 1 {
+	var n int64
+	if err := s.pool.QueryRow(context.Background(), "SELECT count(*) FROM price_snapshots WHERE product_id = $1", p.Id.String()).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("initial snapshot: %d, %v", n, err)
 	}
 
@@ -620,7 +621,7 @@ func TestResolve_GameManualMatchMintsExactAnchor(t *testing.T) {
 	if again.Id != p.Id {
 		t.Fatalf("must converge: %s vs %s", again.Id, p.Id)
 	}
-	n, _ = s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": p.Id.String()})
+	_ = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM price_snapshots WHERE product_id = $1", p.Id.String()).Scan(&n)
 	if n != 1 {
 		t.Fatalf("repeat resolve must not snapshot again, got %d", n)
 	}
@@ -712,7 +713,8 @@ func TestResolve_UnmatchedFixtureStaysUnmatched(t *testing.T) {
 		t.Fatalf("Terranigma must stay unmatched: %+v", p.Pricecharting)
 	}
 	// Unmatched means no snapshot either.
-	n, _ := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": p.Id.String()})
+	var n int64
+	_ = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM price_snapshots WHERE product_id = $1", p.Id.String()).Scan(&n)
 	if n != 0 {
 		t.Fatalf("unmatched products must not snapshot, got %d", n)
 	}
@@ -1350,7 +1352,8 @@ func TestAdminMapping_CorrectVerifyClearAndErrors(t *testing.T) {
 		mapped.Pricecharting.LooseCents == nil {
 		t.Fatalf("mapping: %+v", mapped.Pricecharting)
 	}
-	n, _ := s.mdb.Collection("price_snapshots").CountDocuments(context.Background(), map[string]any{"product_id": id})
+	var n int64
+	_ = s.pool.QueryRow(context.Background(), "SELECT count(*) FROM price_snapshots WHERE product_id = $1", id).Scan(&n)
 	if n != 1 {
 		t.Fatalf("mapping snapshot: %d", n)
 	}

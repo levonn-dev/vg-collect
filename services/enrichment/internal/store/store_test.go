@@ -2,30 +2,26 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/golang-migrate/migrate/v4"
-	mongodriver "github.com/golang-migrate/migrate/v4/database/mongodb"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
+	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/levonn-dev/vgkeep/libs/go/mongokit"
-	"github.com/levonn-dev/vgkeep/libs/go/mongotest"
+	"github.com/levonn-dev/vgkeep/libs/go/pgtest"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/igdb"
 	"github.com/levonn-dev/vgkeep/services/enrichment/internal/store"
 	"github.com/levonn-dev/vgkeep/services/enrichment/migrations"
 )
 
-// newTestStore returns a Store plus the raw db handle, on a freshly
-// migrated database (mongotest.FreshDB resets between tests; skips under -short).
-func newTestStore(t *testing.T) (*store.Store, *mongo.Database) {
+// newTestStore returns a Store plus the raw pool, on a freshly
+// migrated database (pgtest.FreshPool resets between tests; skips under -short).
+func newTestStore(t *testing.T) (*store.Store, *pgxpool.Pool) {
 	t.Helper()
-	mdb := mongotest.FreshDB(t, migrations.FS, ".")
-	return store.New(mdb), mdb
+	pool := pgtest.FreshPool(t, migrations.FS, ".")
+	return store.New(pool), pool
 }
 
 func gameProduct(gameID, platformID int64, name, platformName, variant string) store.Product {
@@ -141,7 +137,7 @@ func TestProduct_GameMembersAreListingKeyed(t *testing.T) {
 // Concurrent resolves of one identity must converge on a single
 // product (unique index + duplicate-key re-find in CreateProduct).
 func TestProduct_ConcurrentCreate_SingleWinner(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
 
 	const n = 10
@@ -165,8 +161,8 @@ func TestProduct_ConcurrentCreate_SingleWinner(t *testing.T) {
 			t.Fatalf("racers diverged: %s vs %s", ids[i], ids[0])
 		}
 	}
-	count, err := mdb.Collection("products").CountDocuments(ctx, map[string]any{"type": "game"})
-	if err != nil {
+	var count int64
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM products WHERE type = $1", "game").Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -298,28 +294,34 @@ func TestProduct_MappingWritesHoldAndIdentityTaken(t *testing.T) {
 
 // ListIGDBProducts returns every igdb-bearing product, including ones
 // with a release table already (unfiltered so a future projection
-// change still revisits them), excludes hardware, sorted by _id.
+// change still revisits them), excludes hardware, sorted by id.
 func TestProduct_ListIGDBProducts(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
+
+	// Fixed low ids so ascending id order matches insertion order,
+	// mirroring the original's "id-1/2/3" naming for the same purpose.
+	id1 := "00000000-0000-0000-0000-000000000001"
+	id2 := "00000000-0000-0000-0000-000000000002"
+	id3 := "00000000-0000-0000-0000-000000000003"
 
 	withDates := func(id string, gameID int64) {
 		t.Helper()
 		now := time.Now().UTC().Truncate(time.Millisecond)
-		_, err := mdb.Collection("products").InsertOne(ctx, bson.D{
-			{Key: "_id", Value: id}, {Key: "type", Value: "game"},
-			{Key: "name", Value: "Game " + id},
-			{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: int64(19)}, {Key: "name", Value: "SNES"}}},
-			{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
-			{Key: "igdb", Value: bson.D{
-				{Key: "game_id", Value: gameID}, {Key: "name", Value: "Game " + id},
-				{Key: "fetched_at", Value: now},
-				{Key: "release_dates", Value: bson.A{
-					bson.D{{Key: "region", Value: "japan"}, {Key: "date", Value: now}},
-				}},
-			}},
-			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+		platform, err := json.Marshal(store.Platform{IGDBID: 19, Name: "SNES"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		igdbMeta, err := json.Marshal(map[string]any{
+			"game_id": gameID, "name": "Game " + id, "fetched_at": now,
+			"release_dates": []map[string]any{{"region": "japan", "date": now}},
 		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = pool.Exec(ctx, `INSERT INTO products (id, type, origin, name, platform, igdb, created_at, updated_at)
+			VALUES ($1, 'game', 'provider', $2, $3, $4, $5, $5)`,
+			id, "Game "+id, platform, igdbMeta, now)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,9 +329,9 @@ func TestProduct_ListIGDBProducts(t *testing.T) {
 
 	// Two products already carrying a release table, one pre-feature
 	// (release_dates absent), one hardware product with no igdb subdoc.
-	withDates("id-1-withdates", 3001)
-	seedPreFeatureProduct(t, mdb, "id-2-prefeature", 3002, 4, time.Now().UTC().Add(-time.Hour))
-	withDates("id-3-withdates", 3003)
+	withDates(id1, 3001)
+	seedPreFeatureProduct(t, pool, id2, 3002, 4, time.Now().UTC().Add(-time.Hour))
+	withDates(id3, 3003)
 	if _, err := s.CreateProduct(ctx, store.Product{Type: "console", Name: "Nintendo 64 Console"}); err != nil {
 		t.Fatal(err)
 	}
@@ -338,36 +340,37 @@ func TestProduct_ListIGDBProducts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantIDs := []string{"id-1-withdates", "id-2-prefeature", "id-3-withdates"}
+	wantIDs := []string{id1, id2, id3}
 	if len(got) != len(wantIDs) {
 		t.Fatalf("want %d igdb-bearing products (hardware excluded), got %d: %+v", len(wantIDs), len(got), got)
 	}
 	for i, id := range wantIDs {
 		if got[i].ID != id {
-			t.Fatalf("position %d: want _id %s, got %s", i, id, got[i].ID)
+			t.Fatalf("position %d: want id %s, got %s", i, id, got[i].ID)
 		}
 	}
 }
 
 // seedPreFeatureProduct inserts a game product whose igdb subdoc
 // predates the release-dates feature (release_dates key absent, not
-// empty), bypassing SetIGDB via a direct collection insert.
-func seedPreFeatureProduct(t *testing.T, mdb *mongo.Database, id string, gameID, platformID int64, fetchedAt time.Time) {
+// empty), bypassing SetIGDB via a direct SQL insert.
+func seedPreFeatureProduct(t *testing.T, pool *pgxpool.Pool, id string, gameID, platformID int64, fetchedAt time.Time) {
 	t.Helper()
 	now := time.Now().UTC().Truncate(time.Millisecond)
-	_, err := mdb.Collection("products").InsertOne(context.Background(), bson.D{
-		{Key: "_id", Value: id}, {Key: "type", Value: "game"},
-		{Key: "name", Value: "Pre-Feature " + id},
-		{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: platformID}, {Key: "name", Value: "Seed Platform"}}},
-		{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
-		{Key: "igdb", Value: bson.D{
-			{Key: "game_id", Value: gameID},
-			{Key: "name", Value: "Pre-Feature " + id},
-			{Key: "fetched_at", Value: fetchedAt},
-			// release_dates deliberately absent: the pre-feature sentinel.
-		}},
-		{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
+	platform, err := json.Marshal(store.Platform{IGDBID: platformID, Name: "Seed Platform"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	igdbMeta, err := json.Marshal(map[string]any{
+		"game_id": gameID, "name": "Pre-Feature " + id, "fetched_at": fetchedAt,
+		// release_dates deliberately absent: the pre-feature sentinel.
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pool.Exec(context.Background(), `INSERT INTO products (id, type, origin, name, platform, igdb, created_at, updated_at)
+		VALUES ($1, 'game', 'provider', $2, $3, $4, $5, $5)`,
+		id, "Pre-Feature "+id, platform, igdbMeta, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,27 +441,39 @@ func TestSnapshotsSinceWindowsAndOrders(t *testing.T) {
 	base := time.Date(2026, time.July, 1, 12, 0, 0, 0, time.UTC)
 	cents := func(v int64) *int64 { return &v }
 
+	// price_snapshots.product_id carries a foreign key to products, so
+	// each snapshot needs a real product behind its id.
+	prodA, err := s.CreateProduct(ctx, gameProduct(9701, 6, "Snap A", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prodB, err := s.CreateProduct(ctx, gameProduct(9702, 6, "Snap B", "SNES", ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prodMissing := "11111111-1111-1111-1111-111111111111"
+
 	// Product A: one point outside the window, two inside (inserted
 	// newest-first, to prove the read sorts); product B has one point.
 	for _, snap := range []store.Snapshot{
-		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -40), LooseCents: cents(1000)},
-		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -1), LooseCents: cents(1300)},
-		{ProductID: "prod-a", CapturedAt: base.AddDate(0, 0, -10), LooseCents: cents(1200)},
-		{ProductID: "prod-b", CapturedAt: base.AddDate(0, 0, -5), CIBCents: cents(4200)},
+		{ProductID: prodA.ID, CapturedAt: base.AddDate(0, 0, -40), LooseCents: cents(1000)},
+		{ProductID: prodA.ID, CapturedAt: base.AddDate(0, 0, -1), LooseCents: cents(1300)},
+		{ProductID: prodA.ID, CapturedAt: base.AddDate(0, 0, -10), LooseCents: cents(1200)},
+		{ProductID: prodB.ID, CapturedAt: base.AddDate(0, 0, -5), CIBCents: cents(4200)},
 	} {
 		if err := s.AppendSnapshot(ctx, snap); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := s.SnapshotsSince(ctx, []string{"prod-a", "prod-b", "prod-missing"}, base.AddDate(0, 0, -30))
+	got, err := s.SnapshotsSince(ctx, []string{prodA.ID, prodB.ID, prodMissing}, base.AddDate(0, 0, -30))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("want series for 2 products, got %d", len(got))
 	}
-	a := got["prod-a"]
+	a := got[prodA.ID]
 	if len(a) != 2 {
 		t.Fatalf("prod-a: want 2 in-window points, got %d", len(a))
 	}
@@ -468,10 +483,10 @@ func TestSnapshotsSinceWindowsAndOrders(t *testing.T) {
 	if *a[0].LooseCents != 1200 || *a[1].LooseCents != 1300 {
 		t.Fatalf("prod-a values wrong: %d, %d", *a[0].LooseCents, *a[1].LooseCents)
 	}
-	if len(got["prod-b"]) != 1 || *got["prod-b"][0].CIBCents != 4200 {
-		t.Fatalf("prod-b series wrong: %+v", got["prod-b"])
+	if len(got[prodB.ID]) != 1 || *got[prodB.ID][0].CIBCents != 4200 {
+		t.Fatalf("prod-b series wrong: %+v", got[prodB.ID])
 	}
-	if _, ok := got["prod-missing"]; ok {
+	if _, ok := got[prodMissing]; ok {
 		t.Fatal("id with no snapshots must be absent, not empty")
 	}
 
@@ -685,234 +700,6 @@ func TestIGDBMeta_SameProjection(t *testing.T) {
 	}
 }
 
-// Deletes only game products whose region/edition/variant forked
-// identity; clean games and hardware survive; rebuilt index enforces the singleton.
-func TestMigration_ListingKeyedIdentityDeletesTupleResidue(t *testing.T) {
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
-	ctx := context.Background()
-	client, err := mongokit.Connect(ctx, mongotest.URL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	// Needs a virgin database, not just a virgin server: drop it so the
-	// pinned partial migrate below starts clean.
-	db := mongotest.DBName(t)
-	if err := client.Database(db).Drop(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
-		DatabaseName: db,
-		Locking:      mongodriver.Locking{Enabled: true},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := iofs.New(migrations.FS, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := migrate.NewWithInstance("iofs", src, db, driver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Migrate(3); err != nil {
-		t.Fatalf("migrate to pre-listing-keyed state: %v", err)
-	}
-
-	col := client.Database(db).Collection("products")
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	seed := func(id, typ, region, edition, variant string, gameID, platformID int64) {
-		t.Helper()
-		_, err := col.InsertOne(ctx, bson.D{
-			{Key: "_id", Value: id}, {Key: "type", Value: typ},
-			{Key: "name", Value: "Seed " + id},
-			{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: platformID}, {Key: "name", Value: "Seed"}}},
-			{Key: "region", Value: region}, {Key: "edition", Value: edition}, {Key: "variant", Value: variant},
-			{Key: "igdb", Value: bson.D{{Key: "game_id", Value: gameID}, {Key: "name", Value: "Seed " + id}}},
-			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	seed("keeper-game", "game", "", "", "", 1011, 19)
-	seed("residue-variant", "game", "", "", "not for resale", 1011, 19)
-	seed("residue-region", "game", "pal", "", "", 1005, 4)
-	seed("keeper-hardware", "console", "pal", "", "", 0, 19)
-
-	// Pinned to version 4, not Up(): Up() would also run later
-	// migrations and change what the duplicate-key assertion below exercises.
-	if err := m.Migrate(4); err != nil {
-		t.Fatalf("migrate to listing-keyed state: %v", err)
-	}
-
-	for id, want := range map[string]int64{
-		"keeper-game": 1, "keeper-hardware": 1,
-		"residue-variant": 0, "residue-region": 0,
-	} {
-		n, err := col.CountDocuments(ctx, bson.D{{Key: "_id", Value: id}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if n != want {
-			t.Fatalf("%s: want %d docs, got %d", id, want, n)
-		}
-	}
-
-	// The rebuilt index enforces the null singleton per family.
-	_, err = col.InsertOne(ctx, bson.D{
-		{Key: "_id", Value: "second-unmatched"}, {Key: "type", Value: "game"},
-		{Key: "name", Value: "Seed dup"},
-		{Key: "platform", Value: bson.D{{Key: "igdb_id", Value: int64(19)}, {Key: "name", Value: "Seed"}}},
-		{Key: "region", Value: ""}, {Key: "edition", Value: ""}, {Key: "variant", Value: ""},
-		{Key: "igdb", Value: bson.D{{Key: "game_id", Value: int64(1011)}, {Key: "name", Value: "Seed dup"}}},
-		{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
-	})
-	if !mongo.IsDuplicateKeyError(err) {
-		t.Fatalf("want duplicate-key on the second unmatched member, got %v", err)
-	}
-}
-
-// Pins migration 000006: a community product's top-level region
-// moves to community.region, a sibling community fact survives
-// untouched, and untouched paths (already-empty region, no region
-// key, provider docs) come out matching the always-present shape rule.
-func TestMigration_CommunityRegionMovesIntoBlock(t *testing.T) {
-	if testing.Short() {
-		t.Skip("requires docker")
-	}
-	ctx := context.Background()
-	client, err := mongokit.Connect(ctx, mongotest.URL(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = client.Disconnect(context.Background()) })
-	// Needs a virgin database, not just a virgin server: drop it so the
-	// pinned partial migrate below starts clean.
-	db := mongotest.DBName(t)
-	if err := client.Database(db).Drop(ctx); err != nil {
-		t.Fatal(err)
-	}
-
-	driver, err := mongodriver.WithInstance(client, &mongodriver.Config{
-		DatabaseName: db,
-		Locking:      mongodriver.Locking{Enabled: true},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	src, err := iofs.New(migrations.FS, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	m, err := migrate.NewWithInstance("iofs", src, db, driver)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Pinned to version 5: seeds the pre-000006 mint shape so migrating
-	// to 6 exercises the rename against real old documents, not new ones.
-	if err := m.Migrate(5); err != nil {
-		t.Fatalf("migrate to pre-region-block state: %v", err)
-	}
-
-	col := client.Database(db).Collection("products")
-	now := time.Now().UTC().Truncate(time.Millisecond)
-	seed := func(doc bson.D) {
-		t.Helper()
-		base := bson.D{
-			{Key: "type", Value: "game"},
-			{Key: "created_at", Value: now}, {Key: "updated_at", Value: now},
-		}
-		if _, err := col.InsertOne(ctx, append(base, doc...)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	seed(bson.D{
-		{Key: "_id", Value: "with-region"}, {Key: "name", Value: "Seed With Region"},
-		{Key: "origin", Value: "community"}, {Key: "region", Value: "ntsc_j"},
-		{Key: "community", Value: bson.D{{Key: "platform_name", Value: "SNES"}}},
-	})
-	seed(bson.D{
-		{Key: "_id", Value: "empty-region"}, {Key: "name", Value: "Seed Empty Region"},
-		{Key: "origin", Value: "community"}, {Key: "region", Value: ""},
-	})
-	seed(bson.D{
-		{Key: "_id", Value: "missing-region"}, {Key: "name", Value: "Seed Missing Region"},
-		{Key: "origin", Value: "community"},
-	})
-	seed(bson.D{
-		{Key: "_id", Value: "provider-hardware"}, {Key: "name", Value: "Seed Provider"},
-		{Key: "origin", Value: "provider"}, {Key: "region", Value: "pal"},
-	})
-
-	if err := m.Migrate(6); err != nil {
-		t.Fatalf("migrate to region-block state: %v", err)
-	}
-
-	mustFind := func(id string) bson.M {
-		t.Helper()
-		var d bson.M
-		if err := col.FindOne(ctx, bson.D{{Key: "_id", Value: id}}).Decode(&d); err != nil {
-			t.Fatalf("%s: %v", id, err)
-		}
-		return d
-	}
-
-	withRegion := mustFind("with-region")
-	if withRegion["region"] != "" {
-		t.Fatalf("with-region: top-level region must be renamed away, got %+v", withRegion["region"])
-	}
-	comm, _ := withRegion["community"].(bson.M)
-	if comm == nil || comm["region"] != "ntsc_j" {
-		t.Fatalf("with-region: community.region wrong: %+v", withRegion["community"])
-	}
-	if comm["platform_name"] != "SNES" {
-		t.Fatalf("with-region: sibling community fact must survive untouched: %+v", comm)
-	}
-
-	emptyRegion := mustFind("empty-region")
-	if emptyRegion["region"] != "" {
-		t.Fatalf("empty-region: region must stay empty, got %+v", emptyRegion["region"])
-	}
-	if _, ok := emptyRegion["community"]; ok {
-		t.Fatalf("empty-region: must not fabricate a community block, got %+v", emptyRegion["community"])
-	}
-
-	missingRegion := mustFind("missing-region")
-	if missingRegion["region"] != "" {
-		t.Fatalf("missing-region: shape-stability step must set region to \"\", got %+v", missingRegion["region"])
-	}
-
-	providerHardware := mustFind("provider-hardware")
-	if providerHardware["region"] != "pal" {
-		t.Fatalf("provider-hardware: provider region must be untouched, got %+v", providerHardware["region"])
-	}
-	if _, ok := providerHardware["community"]; ok {
-		t.Fatalf("provider-hardware: must not gain a community block, got %+v", providerHardware["community"])
-	}
-
-	// down.json must undo the rename: confirms the reverse dotted-path
-	// rename restores the top-level field, not split across both.
-	if err := m.Migrate(5); err != nil {
-		t.Fatalf("down to pre-region-block state: %v", err)
-	}
-	reverted := mustFind("with-region")
-	if reverted["region"] != "ntsc_j" {
-		t.Fatalf("down: top-level region must be restored, got %+v", reverted["region"])
-	}
-	revertedComm, _ := reverted["community"].(bson.M)
-	if revertedComm == nil || revertedComm["platform_name"] != "SNES" {
-		t.Fatalf("down: sibling community fact must survive, got %+v", reverted["community"])
-	}
-	if _, ok := revertedComm["region"]; ok {
-		t.Fatalf("down: community.region must be removed after rename-back, got %+v", revertedComm)
-	}
-}
-
 func TestListUnmatchedProducts(t *testing.T) {
 	s, _ := newTestStore(t)
 	ctx := context.Background()
@@ -971,30 +758,20 @@ func TestListUnmatchedProducts(t *testing.T) {
 // TestListUnmatchedProducts_Indexed pins the migration-backed index
 // so a growing worklist cannot regress into an unindexed sort.
 func TestListUnmatchedProducts_Indexed(t *testing.T) {
-	_, mdb := newTestStore(t)
+	_, pool := newTestStore(t)
 	ctx := context.Background()
 
-	cur, err := mdb.Collection("products").Indexes().List(ctx)
+	var name string
+	err := pool.QueryRow(ctx,
+		"SELECT indexname FROM pg_indexes WHERE tablename = 'products' AND indexname = $1",
+		"products_unmatched_worklist").Scan(&name)
 	if err != nil {
-		t.Fatal(err)
-	}
-	var found bool
-	for cur.Next(ctx) {
-		var idx bson.M
-		if err := cur.Decode(&idx); err != nil {
-			t.Fatal(err)
-		}
-		if idx["name"] == "products_unmatched_worklist" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("products_unmatched_worklist index missing")
+		t.Fatalf("products_unmatched_worklist index missing: %v", err)
 	}
 }
 
 func TestDeleteUnmatchedProduct(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
 
 	orphan, err := s.CreateProduct(ctx, gameProduct(9401, 6, "Delete Me", "SNES", ""))
@@ -1024,8 +801,8 @@ func TestDeleteUnmatchedProduct(t *testing.T) {
 	if _, err := s.GetProduct(ctx, orphan.ID); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("orphan must be gone, got %v", err)
 	}
-	n, err := mdb.Collection("price_snapshots").CountDocuments(ctx, map[string]any{"product_id": orphan.ID})
-	if err != nil || n != 0 {
+	var n int64
+	if err := pool.QueryRow(ctx, "SELECT count(*) FROM price_snapshots WHERE product_id = $1", orphan.ID).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("orphan snapshots must be gone: n=%d err=%v", n, err)
 	}
 
@@ -1134,7 +911,7 @@ func TestListCommunityProductsPage(t *testing.T) {
 	ctx := context.Background()
 
 	// Creation order fixes updated_at order; the sleep guards a
-	// same-millisecond tie (updated_at truncates to ms, _id is a random UUID).
+	// same-millisecond tie (updated_at truncates to ms, id is a random UUID).
 	communityA, err := s.CreateProduct(ctx, store.Product{Type: "game", Name: "Community Alpha", Origin: "community"})
 	if err != nil {
 		t.Fatal(err)
@@ -1462,7 +1239,7 @@ func TestStore_SetCommunityRegion(t *testing.T) {
 // race guard: a doc promoted to provider between list and write must
 // not have community.region rewritten (would be silent residue).
 func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
-	s, mdb := newTestStore(t)
+	s, pool := newTestStore(t)
 	ctx := context.Background()
 
 	created, err := s.CreateProduct(ctx, store.Product{
@@ -1475,8 +1252,7 @@ func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
 
 	// Stand-in for a promote landing mid-write: flip origin directly
 	// rather than exercising the real promote path (irrelevant here).
-	if _, err := mdb.Collection("products").UpdateByID(ctx, created.ID,
-		bson.D{{Key: "$set", Value: bson.D{{Key: "origin", Value: "provider"}}}}); err != nil {
+	if _, err := pool.Exec(ctx, "UPDATE products SET origin = 'provider' WHERE id = $1", created.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1490,5 +1266,44 @@ func TestStore_SetCommunityRegion_OriginLeftCommunityIsNoOp(t *testing.T) {
 	}
 	if got.Community == nil || got.Community.Region != "Japan" {
 		t.Fatalf("region = %+v, want unchanged Japan (origin left community, write must no-op)", got.Community)
+	}
+}
+
+// Zero PCProductID addresses a hardware family's unmatched member the
+// same way it does for games, so clear-collision holder lookups and
+// find-or-create both reach it.
+func TestProduct_HardwareZeroKeyAddressesUnmatchedMember(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+
+	unmatched, err := s.CreateProduct(ctx, store.Product{
+		Type: "console", Name: "Super Famicom", Region: "ntsc_j",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapped := store.Product{
+		Type: "console", Name: "Super Famicom", Region: "ntsc_j",
+		PriceCharting: &store.PCMeta{
+			PCProductID: 7788, PCName: "Super Famicom", ConsoleName: "Super Famicom",
+			MatchConfidence: 1.0, Verified: true,
+			AsOf: time.Now().UTC().Truncate(time.Millisecond),
+		},
+	}
+	if _, err := s.CreateProduct(ctx, mapped); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.FindProduct(ctx, store.ProductKey{Type: "console", Region: "ntsc_j"})
+	if err != nil {
+		t.Fatalf("zero key must find the unmatched member, got %v", err)
+	}
+	if got.ID != unmatched.ID {
+		t.Fatalf("zero key found %s, want the unmatched member %s", got.ID, unmatched.ID)
+	}
+
+	byListing, err := s.FindProduct(ctx, store.ProductKey{Type: "console", PCProductID: 7788, Region: "ntsc_j"})
+	if err != nil || byListing.PriceCharting == nil || byListing.PriceCharting.PCProductID != 7788 {
+		t.Fatalf("listing key: %+v, %v", byListing, err)
 	}
 }

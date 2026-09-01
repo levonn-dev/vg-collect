@@ -1,1 +1,0 @@
-{{ include "vg-lib.mongo.certificate" . }}

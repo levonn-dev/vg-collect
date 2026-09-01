@@ -15,14 +15,8 @@ import (
 type Config struct {
 	HTTPAddr string `env:"HTTP_ADDR" envDefault:":8080"`
 
-	// Mongo connection URL (TLS via tls=true&tlsCAFile=... params) and
-	// database name.
-	MongoURL string `env:"MONGO_URL,required,notEmpty"`
-	MongoDB  string `env:"MONGO_DB"  envDefault:"enrichment"`
-	// Optional credential pair composed into MongoURL's userinfo (see
-	// mongokit.ComposeURL); must be both set or both empty.
-	MongoUsername string `env:"MONGO_USERNAME"`
-	MongoPassword string `env:"MONGO_PASSWORD"`
+	// Postgres connection URL (TLS via sslmode/sslrootcert params).
+	DatabaseURL string `env:"DATABASE_URL,required,notEmpty"`
 
 	ValkeyURL string `env:"VALKEY_URL,required,notEmpty"`
 	// CA bundle for rediss:// against the in-cluster CA-issued cert.
@@ -56,9 +50,6 @@ func Load() (Config, error) {
 	cfg, err := libconfig.Load[Config]()
 	if err != nil {
 		return Config{}, err
-	}
-	if (cfg.MongoUsername == "") != (cfg.MongoPassword == "") {
-		return Config{}, errors.New("config: MONGO_USERNAME and MONGO_PASSWORD must both be set or both be empty")
 	}
 	switch cfg.IGDBMode {
 	case "stub":
