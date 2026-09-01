@@ -86,7 +86,7 @@ paths:
       operationId: getProduct
       summary: Fetch a product (read-through with per-type staleness)
       description: >
-        Valkey (5m) in front of Mongo; an IGDB projection older than 30
+        Valkey (5m) in front of Postgres; an IGDB projection older than 30
         days is refetched inline best-effort (stale data is served when
         the provider is down). Prices refresh on the daily cadence
         only, never per-read.
