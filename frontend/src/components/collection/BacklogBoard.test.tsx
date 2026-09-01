@@ -86,8 +86,10 @@ it('on a non-edge page, a drag to the top slot sends no request', async () => {
   // Second dragged onto First's slot computes after_id: null, a page-local
   // top here, not the backlog's true front.
   dragHandle('Drag Second', -50)
-  // Same async onMutate hop a real submit needs, so a regression would have time to show up.
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // >50ms: dnd-kit's own detach() removes its document click-swallower on
+  // a setTimeout(_, 50) (not just the async onMutate hop a real submit
+  // needs); a shorter wait here leaves it armed to eat the next test's click.
+  await new Promise((resolve) => setTimeout(resolve, 60))
   expect(fetchMock).not.toHaveBeenCalled()
 })
 
@@ -163,9 +165,13 @@ function stubRowRects() {
 
 function dragHandle(name: string, deltaY: number) {
   const handle = screen.getByRole('button', { name })
+  // dnd-kit's PointerSensor binds move/up straight to the activator
+  // element (survives it leaving the DOM mid-drag), not document; firing
+  // there on document left every drag's listeners stuck live past the
+  // test, corrupting whichever test ran next.
   fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, button: 0, clientX: 0, clientY: 0 })
-  fireEvent.pointerMove(document, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
-  fireEvent.pointerUp(document, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
+  fireEvent.pointerMove(handle, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
+  fireEvent.pointerUp(handle, { pointerId: 1, isPrimary: true, clientX: 0, clientY: deltaY })
 }
 
 it('a drag submitted while a reorder is pending is a no-op', async () => {
@@ -176,8 +182,10 @@ it('a drag submitted while a reorder is pending is a no-op', async () => {
   dragHandle('Drag First', 100)
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
   dragHandle('Drag First', 100)
-  // Same async onMutate hop the first attempt needed, so a regression would have time to show up.
-  await new Promise((resolve) => setTimeout(resolve, 20))
+  // >50ms: dnd-kit's own detach() removes its document click-swallower on
+  // a setTimeout(_, 50) (not just the async onMutate hop the first attempt
+  // needed); a shorter wait here leaves it armed to eat the next test's click.
+  await new Promise((resolve) => setTimeout(resolve, 60))
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
 

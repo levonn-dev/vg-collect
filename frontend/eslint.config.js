@@ -36,4 +36,12 @@ export default defineConfig([
   // no-unlocalized-strings off: all false positives here (route paths,
   // classNames, API field names).
   lingui.configs['flat/recommended'],
+  {
+    // unbound-method flags expect(window.confirm)/window.fetch/window.matchMedia
+    // reads in test doubles; none are called with a wrong `this`.
+    files: ['**/*.test.{ts,tsx}', 'src/test/setup.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
 ])

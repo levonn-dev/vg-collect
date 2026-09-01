@@ -2,7 +2,7 @@ import { context, propagation, trace } from '@opentelemetry/api'
 import { AggregationTemporality, InMemoryMetricExporter, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics'
 import type { DataPoint, Histogram } from '@opentelemetry/sdk-metrics'
 import { InMemorySpanExporter, SimpleSpanProcessor } from '@opentelemetry/sdk-trace-web'
-import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions'
+import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION, ATTR_URL_FULL } from '@opentelemetry/semantic-conventions'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Well beyond any test run: PeriodicExportingMetricReader starts this
@@ -60,7 +60,7 @@ describe('initTelemetry', () => {
     await fetch('/api/entries')
     await vi.waitFor(() => expect(exporter.getFinishedSpans().length).toBe(1))
     const span = exporter.getFinishedSpans()[0]
-    expect(span.attributes['http.url']).toContain('/api/entries')
+    expect(span.attributes[ATTR_URL_FULL]).toContain('/api/entries')
     expect(headersOf(fetchStub.mock.calls[0]).get('traceparent')).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-/)
   })
 
