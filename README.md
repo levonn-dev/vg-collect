@@ -148,6 +148,7 @@ Everything checked off is verified end to end by Playwright journeys, per-servic
 - [x] i18n with English and Japanese
 - [x] Playwright e2e suite
 - [x] observability: dashboards, alerts, runbooks
+- [x] remove MongoDB
 - [ ] docs/diagrams pass
 - [ ] frontend style pass and cleaner user flows
 - [ ] price-change notifications
