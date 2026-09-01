@@ -100,7 +100,7 @@
       "id": 6,
       "type": "stat",
       "title": "PG connections",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 16 },
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -126,7 +126,7 @@
       "id": 7,
       "type": "stat",
       "title": "Valkey memory",
-      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 16 },
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -152,7 +152,7 @@
       "id": 8,
       "type": "stat",
       "title": "Valkey hit ratio",
-      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 16 },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -169,35 +169,6 @@
           "refId": "A",
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "rate(redis_keyspace_hits_total[5m]) / (rate(redis_keyspace_hits_total[5m]) + rate(redis_keyspace_misses_total[5m]))",
-          "legendFormat": "{{service}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "type": "stat",
-      "title": "Mongo up",
-      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 16 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "mongodb_up",
           "legendFormat": "{{service}}",
           "exemplar": false
         }

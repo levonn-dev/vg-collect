@@ -7,7 +7,7 @@ sections:
   HTTP: 5
   Search and matching: 22
   Catalog refresh and sweeps: 47
-  Mongo: 64
+  PostgreSQL: 64
   Valkey: 81
   Runtime: 106
   Pods: 115
@@ -15,7 +15,7 @@ sections:
 golden_blocks:
   stat_row: 1
   http: 6
-  mongo: 73
+  pg: 65
   valkey: 82
   fail_open: 98
   runtime: 107
@@ -154,52 +154,6 @@ custom_panels:
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "sum by (outcome) (increase(vg_enrichment_normalize_regions_total[24h]))",
           "legendFormat": "regions/{{outcome}}",
-          "exemplar": false
-        }
-      ]
-    }
-  - |
-    {
-      "type": "stat",
-      "title": "Mongo up",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 65 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "green", "value": 1 }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "mongodb_up{service=\"enrichment-mongo\"}",
-          "legendFormat": "{{service}}",
-          "exemplar": false
-        }
-      ]
-    }
-  - |
-    {
-      "type": "timeseries",
-      "title": "Mongo operations",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 65 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service=\"enrichment-mongo\"}[$__rate_interval]))",
-          "legendFormat": "{{legacy_op_type}}",
           "exemplar": false
         }
       ]

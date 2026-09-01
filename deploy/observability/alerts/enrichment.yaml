@@ -3,18 +3,6 @@ golden:
   availability: {}
   pdb_budget: {}
 alerts:
-  - uid: vg-mongo-down
-    title: MongoDB unreachable
-    expr: mongodb_up
-    condition: lt 1
-    instant: true
-    range: 5m
-    for: 2m
-    noDataState: Alerting
-    execErrState: Error
-    severity: page
-    summary: enrichment-mongo is down or its exporter cannot reach it
-    runbook: enrichment.md#2-mongo-down
   - uid: vg-enrichment-refresh-stalled
     title: Enrichment nightly catalog refresh has not completed in 26h
     expr: time() - max(last_over_time(vg_enrichment_refresh_last_completed_seconds{step="prices"}[26h]))

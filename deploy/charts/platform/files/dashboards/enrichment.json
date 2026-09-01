@@ -685,97 +685,18 @@
       },
       "id": 21,
       "panels": [],
-      "title": "Mongo",
+      "title": "PostgreSQL",
       "type": "row"
     },
     {
       "id": 22,
-      "type": "stat",
-      "title": "Mongo up",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 65
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "mongodb_up{service=\"enrichment-mongo\"}",
-          "legendFormat": "{{service}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 23,
       "type": "timeseries",
-      "title": "Mongo operations",
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 65
-      },
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops"
-        },
-        "overrides": []
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (legacy_op_type) (rate(mongodb_ss_opcounters{service=\"enrichment-mongo\"}[$__rate_interval]))",
-          "legendFormat": "{{legacy_op_type}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 24,
-      "type": "timeseries",
-      "title": "Mongo pool connections",
+      "title": "PG pool connections",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 73
+        "y": 65
       },
       "datasource": {
         "type": "prometheus",
@@ -794,8 +715,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "vg_mongokit_pool_connections{service_name=\"enrichment\"}",
-          "legendFormat": "open",
+          "expr": "vg_pgkit_pool_connections{service_name=\"enrichment\"}",
+          "legendFormat": "in pool",
           "exemplar": false
         },
         {
@@ -804,7 +725,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "vg_mongokit_pool_connections_idle{service_name=\"enrichment\"}",
+          "expr": "vg_pgkit_pool_connections_idle{service_name=\"enrichment\"}",
           "legendFormat": "idle",
           "exemplar": false
         },
@@ -814,21 +735,21 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "vg_mongokit_pool_connections_max{service_name=\"enrichment\"}",
+          "expr": "vg_pgkit_pool_connections_max{service_name=\"enrichment\"}",
           "legendFormat": "max",
           "exemplar": false
         }
       ]
     },
     {
-      "id": 25,
+      "id": 23,
       "type": "timeseries",
-      "title": "Mongo pool acquire rate",
+      "title": "PG pool mean acquire wait",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 73
+        "y": 65
       },
       "datasource": {
         "type": "prometheus",
@@ -836,7 +757,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "ops"
+          "unit": "s"
         },
         "overrides": []
       },
@@ -847,20 +768,53 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(vg_mongokit_pool_acquires_total{service_name=\"enrichment\"}[$__rate_interval])",
-          "legendFormat": "acquires",
+          "expr": "rate(vg_pgkit_pool_acquire_wait_seconds_total{service_name=\"enrichment\"}[5m]) / rate(vg_pgkit_pool_acquires_total{service_name=\"enrichment\"}[5m])",
+          "legendFormat": "mean wait",
           "exemplar": false
         }
       ]
     },
     {
-      "id": 26,
+      "id": 24,
       "type": "timeseries",
-      "title": "Mongo pool cleared events",
+      "title": "PG pool empty acquires",
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
+        "y": 65
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "increase(vg_pgkit_pool_empty_acquires_total{service_name=\"enrichment\"}[5m])",
+          "legendFormat": "empty acquires",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "timeseries",
+      "title": "PG server connections vs max",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
         "y": 73
       },
       "datasource": {
@@ -880,8 +834,61 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "increase(vg_mongokit_pool_cleared_total{service_name=\"enrichment\"}[5m])",
-          "legendFormat": "cleared",
+          "expr": "sum(pg_stat_activity_count{service=\"enrichment-pg\"})",
+          "legendFormat": "connections",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "max(pg_settings_max_connections{service=\"enrichment-pg\"})",
+          "legendFormat": "max",
+          "exemplar": false
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "timeseries",
+      "title": "PG transactions",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 73
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(pg_stat_database_xact_commit{service=\"enrichment-pg\",datname!~\"template.*\"}[$__rate_interval]))",
+          "legendFormat": "commit",
+          "exemplar": false
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum(rate(pg_stat_database_xact_rollback{service=\"enrichment-pg\",datname!~\"template.*\"}[$__rate_interval]))",
+          "legendFormat": "rollback",
           "exemplar": false
         }
       ]

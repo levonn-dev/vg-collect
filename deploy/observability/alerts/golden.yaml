@@ -9,7 +9,7 @@ services: [auth, bff, collection, enrichment, social, user]
 external_metric_prefixes: [kube_, node_, up]
 templates:
   # summary uses datastore-neutral wording ("metrics exporters", not "postgres exporter") since bff (Valkey
-  # only) and enrichment (Mongo+Valkey) also instantiate this template without Postgres; alerts/social.yaml overrides it with social's own wording.
+  # only) also instantiates this template without Postgres; alerts/social.yaml overrides it with social's own wording.
   # runbook and panel_ref point at the shared golden-block section, not a per-service one (dashboards/golden.yaml's Availability panel; stack.md's "Service down" section).
   availability:
     uid: vg-{service}-down

@@ -131,7 +131,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Valkey evictions + clients",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
       "targets": [
@@ -147,64 +147,6 @@
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "redis_connected_clients",
           "legendFormat": "clients {{service}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 8,
-      "type": "stat",
-      "title": "Mongo up",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "mongodb_up",
-          "legendFormat": "{{service}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 9,
-      "type": "timeseries",
-      "title": "Mongo operations",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "ops" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "sum by (legacy_op_type) (rate(mongodb_ss_opcounters[$__rate_interval]))",
-          "legendFormat": "{{legacy_op_type}}",
-          "exemplar": false
-        }
-      ]
-    },
-    {
-      "id": 10,
-      "type": "timeseries",
-      "title": "Mongo connections / resident MB",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "mongodb_ss_connections{conn_type=\"current\"}",
-          "legendFormat": "connections {{service}}",
-          "exemplar": false
-        },
-        {
-          "refId": "B",
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "expr": "mongodb_ss_mem_resident",
-          "legendFormat": "resident {{service}}",
           "exemplar": false
         }
       ]
