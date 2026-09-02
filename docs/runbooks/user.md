@@ -1,8 +1,8 @@
 # User service
 
-Profile and RBAC source of truth. It owns two tables (`users`,
-`user_roles`) and seven routes: four self/service routes plus three
-cross-user profile routes (see
+Profile and RBAC source of truth. It owns the `users` and
+`user_roles` tables and a small route surface: self/service routes
+plus cross-user profile routes (see
 [Shared profile routes](#shared-profile-routes)). The auth service
 calls it on every login to find-or-create the profile and on every
 token refresh to re-read roles, so its availability gates logins for
@@ -10,11 +10,15 @@ the whole stack even though no browser ever talks to it directly.
 Roles travel as JWT claims minted by auth from this service's answers;
 downstream RBAC is stateless.
 
+The developer view (packages, data model, flows, configuration
+defaults) is [services/user/README.md](../../services/user/README.md).
+
 What an operator sees it doing:
 
-- Create a profile at first login (`POST /internal/users/upsert`,
-  service role only). The same call runs on every subsequent login and
-  returns the existing profile untouched.
+- Create a profile when a first-seen identity signs in
+  (`POST /internal/users/upsert`, service role with subject `svc:auth`
+  only). Returning logins skip the upsert: auth re-reads roles with
+  `GET /users/{id}` instead.
 - Seed `preferred_currency` for new accounts from the login request's
   Accept-Language hint (`de-DE` becomes EUR); unmapped or absent hints
   default to USD. The SPA converts market values into this currency.
@@ -69,21 +73,22 @@ sequenceDiagram
     participant U as user
     participant P as user-pg
     B->>A: login callback (or refresh)
-    A->>U: POST /internal/users/upsert (login) / GET /users/id (refresh)
+    A->>U: POST /internal/users/upsert (first-seen identity) / GET /users/id (returning login, refresh)
     U->>P: INSERT ... ON CONFLICT DO NOTHING + role grant + role read
     P-->>U: profile row + roles
     U-->>A: id + roles
     A-->>B: JWT with role claims
 ```
 
-Note the login leg writes even for existing accounts (the conflicting
-insert plus an idempotent role grant), so a read-only Postgres fails
-every login while profile reads stay green. Failure mode 1 below
-covers it.
+Note only the first-seen-identity leg writes (the conflicting insert
+plus an idempotent role grant); returning logins and refreshes read.
+A read-only Postgres therefore fails first-time sign-ins while
+returning logins, refreshes, and profile reads stay green. Failure
+mode 1 below covers it.
 
 ## Shared profile routes
 
-Three routes under `/shared/profiles` serve cross-user reads: any
+The routes under `/shared/profiles` serve cross-user reads: any
 valid bearer may call them, with no self-scoping, so the caller can be
 looking up anyone.
 
@@ -153,6 +158,7 @@ before the listener opens.
 | `HTTP_ADDR`                   | no             | `:8080`       | binary default                                                                                      |                                                                                                           |
 | `DATABASE_URL`                | yes            | none          | composed in `deploy/charts/user/templates/deployment.yaml` from chart values plus `$(PG_PASSWORD)`  | carries `sslmode=verify-full&sslrootcert=/etc/vg/pg-ca/ca.crt`                                            |
 | `PG_PASSWORD`                 | chart-internal | none          | secret `user-pg-credentials`, key `password`                                                        | filled by the ExternalSecret; only ever referenced inside `DATABASE_URL`                                  |
+| `HANDLE_CHANGE_COOLDOWN`      | no             | `24h`         | chart value `env.handleChangeCooldown`; Tilt overrides it to `5s` for the dev loop                  | minimum wait between handle changes per user                                                              |
 | `JWKS_URL`                    | yes            | none          | chart value `env.jwksUrl`, default `http://auth:8080/.well-known/jwks.json`                         | keys fetched lazily and cached by kid; unknown-kid refetch at most every 30s                              |
 | `JWT_ISSUER`                  | no             | `vgkeep-auth` | chart value `env.jwtIssuer`                                                                         |                                                                                                           |
 | `JWT_AUDIENCE`                | no             | `vgkeep`      | chart value `env.jwtAudience`                                                                       |                                                                                                           |
@@ -180,7 +186,7 @@ avatar_url, profile_visibility checked to `private | unlisted |
 listed`, preferred_currency with a `^[A-Z]{3}$` check, landing_page
 checked to `collection | feed | explore`, timestamps) and `user_roles`
 (user_id FK cascade-delete, role checked to `user | admin`, composite
-PK). Five migrations so far (`000001_init`, `000002_preferred_currency`,
+PK). The migrations so far (`000001_init`, `000002_preferred_currency`,
 `000003_handle`, `000004_landing_page`, `000005_listed_index`),
 embedded in the binary and applied by the init container or
 `task user:db:migrate`.
@@ -230,11 +236,11 @@ it):
 
 | Metric                    | Prometheus name                 | Instrument | Unit     | Labels (bounded)                    | Answers                                                                                                                                                                        |
 | ------------------------- | ------------------------------- | ---------- | -------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `vg.user.account.upserts` | `vg_user_account_upserts_total` | counter    | {upsert} | `outcome` = `created` \| `existing` | signup rate vs returning-login rate; the counter mirrors login volume from the profile side, so zero here while auth still handles logins means the auth-to-user leg is broken |
+| `vg.user.account.upserts` | `vg_user_account_upserts_total` | counter    | {upsert} | `outcome` = `created` \| `existing` | signup rate from the profile side (`created`); `existing` is an upsert converging on an already-present row. Only first-seen identities upsert - returning logins read instead - so a quiet counter under steady login traffic is normal; zero `created` while first-time sign-ins are happening means the auth-to-user leg is broken |
 | `vg.user.currency.seeds`  | `vg_user_currency_seeds_total`  | counter    | {seed}   | `source` = `locale` \| `fallback`   | is the Accept-Language to preferred_currency plumbing alive; a fallback share of 100 percent means auth stopped forwarding locale hints or the mapping regressed               |
 | `vg.user.account.deletes` | `vg_user_account_deletes_total` | counter    | {delete} | `outcome` = `deleted` \| `noop`     | account-deletion leg health; a noop is a retry converging on an already-deleted row                                                                                            |
 
-Emission sites, precisely: all three counters are fields on
+Emission sites, precisely: every counter is a field on
 `server.Handlers`, created in `server.New` (registration failure is
 logged and does not stop startup, matching the bff's counter).
 `UpsertUser` increments `account.upserts` after the store call, with
@@ -464,11 +470,12 @@ Logs:
 
 ### 1. Logins fail at the upsert leg
 
-Symptom: users cannot log in anywhere; auth logs upsert errors. The
-login path writes even for existing accounts, so a read-only or
-disk-full Postgres kills all logins while `GET /users/{id}` (refresh)
-stays green and the whole-service 5xx ratio can stay under the
-service-wide alert threshold. Confirm on "4xx and 5xx by route and
+Symptom: first-time sign-ins fail; auth logs upsert errors. Only a
+first-seen identity runs the upsert write, so a read-only or
+disk-full Postgres fails those sign-ins while returning logins,
+refreshes, and profile reads (`GET /users/{id}`) stay green and the
+whole-service 5xx ratio can stay under the service-wide alert
+threshold. Confirm on "4xx and 5xx by route and
 status" with
 
 ```promql
