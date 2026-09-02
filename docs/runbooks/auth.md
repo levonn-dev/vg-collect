@@ -9,6 +9,9 @@ its JWKS; nothing else in the system signs a token. It listens on 8080
 in-cluster, is never published by the gateway, and keeps all its state
 in its own Postgres (auth-pg).
 
+This is the operator's view; the developer's view (package layout, flow
+logic, schema design) is [services/auth/README.md](../../services/auth/README.md).
+
 What it serves, as an operator sees it:
 
 - Login with Google or Twitch: `POST /oauth/start` hands out the
@@ -36,8 +39,9 @@ What it serves, as an operator sees it:
   caller's identities and revokes every refresh family (self only).
 - `GET /providers` reports which login buttons can succeed right now.
 - `GET /.well-known/jwks.json` serves every non-retired Ed25519 public
-  key; consumed by bff, user, enrichment, collection, and social via
-  jwtauth.
+  key; consumed by user, enrichment, collection, and social via
+  jwtauth. The bff never fetches it: the sealed session cookie is the
+  trust boundary there.
 - `POST /internal/service-token` mints a short-lived (900s) machine
   credential for the catalog-refresh and entry-rematch CronJobs:
   machine-to-machine bootstrap, gated by a static internal secret
@@ -60,7 +64,7 @@ one call here is the exchange leg), on 8080.
 
 ```mermaid
 graph LR
-    browser[Browser SPA] -->|"/api/auth/* 20 req/min per IP"| apisix[APISIX :8090]
+    browser[Browser SPA] -->|"/api/auth/* rate-limited per IP"| apisix[APISIX :8090]
     apisix --> bff[bff]
     bff -->|"login, refresh, revoke, identities"| auth[auth :8080]
     user[user] -.->|"JWKS"| auth
@@ -201,7 +205,7 @@ What happens when optional pieces are absent:
 
 ## Datastore: auth-pg
 
-Four tables, all owned by `internal/store` (no other package writes
+All tables are owned by `internal/store` (no other package writes
 this schema):
 
 - `identities`: (provider, provider_subject) -> user_id, plus a stable
@@ -340,8 +344,8 @@ port-forward. It follows the structural conventions shared by every
 vgkeep dashboard: schemaVersion 39, tags `["vgkeep"]`, timezone
 `browser`, refresh `30s`, an explicit datasource object per target
 (uid `prometheus`, or `loki` for the logs panel). No dual-axis panels;
-Grafana default palette; state thresholds on five panels - the four stat
-panels noted, plus a reference line on Availability.
+Grafana default palette; state thresholds on the stat panels noted,
+plus a reference line on Availability.
 
 **Overview**
 
@@ -591,7 +595,7 @@ rollback.
 ### 4. Postgres down or saturated
 
 Symptom: every route 500s, `/readyz` answers 503, `handler error`
-logs; the four Postgres panels ("PG pool connections", "PG pool mean
+logs; the Postgres panels ("PG pool connections", "PG pool mean
 acquire wait", "PG server connections vs max", "PG transactions")
 flatline or spike. auth-pg is single-replica: while
 it restarts, login, refresh, logout, linking, and JWKS reads all fail,
