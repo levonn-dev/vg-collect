@@ -89,7 +89,7 @@ paths:
         "503": { $ref: "#/components/responses/ServiceUnavailable" }
     patch:
       operationId: updateMe
-      summary: Edit the signed-in user's profile (handle, avatar URL)
+      summary: Edit the signed-in user's profile
       requestBody:
         required: true
         content:

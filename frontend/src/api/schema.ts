@@ -90,7 +90,7 @@ export interface paths {
         delete: operations["deleteMe"];
         options?: never;
         head?: never;
-        /** Edit the signed-in user's profile (handle, avatar URL) */
+        /** Edit the signed-in user's profile */
         patch: operations["updateMe"];
         trace?: never;
     };

@@ -4,8 +4,9 @@ info:
   version: 0.1.0
   description: >
     Cluster-internal catalog and pricing service. All third-party data
-    (IGDB metadata, PriceCharting prices) is quarantined behind this
-    API; no other service talks to those providers. Every operation
+    (IGDB metadata, PriceCharting prices, frankfurter.dev exchange
+    rates) is quarantined behind this API; no other service talks to
+    those providers. Every operation
     requires a Bearer access JWT validated against the auth service's
     JWKS; /admin/* operations additionally require the admin role.
     The daily catalog-refresh trigger used by the in-cluster CronJob
@@ -86,9 +87,9 @@ paths:
       operationId: getProduct
       summary: Fetch a product (read-through with per-type staleness)
       description: >
-        Valkey (5m) in front of Postgres; an IGDB projection older than 30
-        days is refetched inline best-effort (stale data is served when
-        the provider is down). Prices refresh on the daily cadence
+        Valkey (5m) in front of Postgres; an IGDB projection older than
+        IGDB_REFRESH_AFTER (default 720h) is refetched inline best-effort
+        (stale data is served when the provider is down). Prices refresh on the daily cadence
         only, never per-read.
       parameters:
         - name: productId
@@ -183,7 +184,7 @@ paths:
   /fx/latest:
     get:
       operationId: getFxLatest
-      summary: Latest USD-based exchange rates (cached daily snapshot)
+      summary: Latest USD-based exchange rates (cached, refreshed hourly)
       description: >
         Rates are target-units-per-USD from the ECB reference set via
         frankfurter.dev (embedded fixtures in stub mode). Snapshots

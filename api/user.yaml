@@ -49,7 +49,7 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     patch:
       operationId: updateUser
-      summary: Self-service profile update (handle, avatar URL, currency, visibility)
+      summary: Self-service profile update
       parameters:
         - name: userId
           in: path

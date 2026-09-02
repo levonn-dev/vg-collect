@@ -3,7 +3,7 @@ info:
   title: vgkeep auth service
   version: 0.1.0
   description: |
-    OIDC relying party and first-party token issuer. The login, refresh, revoke, and JWKS endpoints carry no bearerAuth security scheme on purpose: they are where tokens come from, or must stay readable by every service, and the service is cluster-internal, so network reachability is the access control. The self-service endpoints below (link start, dev link) do require bearerAuth: they act on "my account", which only a token this same service already issued can name.
+    OIDC relying party and first-party token issuer. The login, refresh, revoke, and JWKS endpoints carry no bearerAuth security scheme on purpose: they are where tokens come from, or must stay readable by every service, and the service is cluster-internal, so network reachability is the access control. The self-service endpoints below do require bearerAuth: they act on "my account", which only a token this same service already issued can name.
 paths:
   /oauth/start:
     post:

@@ -3,7 +3,7 @@ info:
   title: vgkeep enrichment service
   version: 0.1.0
   description: |
-    Cluster-internal catalog and pricing service. All third-party data (IGDB metadata, PriceCharting prices) is quarantined behind this API; no other service talks to those providers. Every operation requires a Bearer access JWT validated against the auth service's JWKS; /admin/* operations additionally require the admin role. The daily catalog-refresh trigger used by the in-cluster CronJob (POST /internal/refresh) rides the same JWT boundary, gated to a service token (token_use=service, minted by auth's /internal/service-token) rather than the admin role - the CronJob has no human session, so it authenticates as a machine caller instead. The NetworkPolicy stays the outer layer.
+    Cluster-internal catalog and pricing service. All third-party data (IGDB metadata, PriceCharting prices, frankfurter.dev exchange rates) is quarantined behind this API; no other service talks to those providers. Every operation requires a Bearer access JWT validated against the auth service's JWKS; /admin/* operations additionally require the admin role. The daily catalog-refresh trigger used by the in-cluster CronJob (POST /internal/refresh) rides the same JWT boundary, gated to a service token (token_use=service, minted by auth's /internal/service-token) rather than the admin role - the CronJob has no human session, so it authenticates as a machine caller instead. The NetworkPolicy stays the outer layer.
 security:
   - bearerAuth: []
 paths:
@@ -68,7 +68,7 @@ paths:
       operationId: getProduct
       summary: Fetch a product (read-through with per-type staleness)
       description: |
-        Valkey (5m) in front of Postgres; an IGDB projection older than 30 days is refetched inline best-effort (stale data is served when the provider is down). Prices refresh on the daily cadence only, never per-read.
+        Valkey (5m) in front of Postgres; an IGDB projection older than IGDB_REFRESH_AFTER (default 720h) is refetched inline best-effort (stale data is served when the provider is down). Prices refresh on the daily cadence only, never per-read.
       parameters:
         - name: productId
           in: path
@@ -168,7 +168,7 @@ paths:
   /fx/latest:
     get:
       operationId: getFxLatest
-      summary: Latest USD-based exchange rates (cached daily snapshot)
+      summary: Latest USD-based exchange rates (cached, refreshed hourly)
       description: |
         Rates are target-units-per-USD from the ECB reference set via frankfurter.dev (embedded fixtures in stub mode). Snapshots refresh at most hourly; an upstream failure serves the last good snapshot, so only a cold cache answers 502. Rates power display-side conversion only; nothing stored depends on them.
       responses:

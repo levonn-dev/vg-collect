@@ -103,7 +103,7 @@ paths:
           $ref: '#/components/responses/InternalError'
     patch:
       operationId: updateMe
-      summary: Edit the signed-in user's profile (handle, avatar URL)
+      summary: Edit the signed-in user's profile
       requestBody:
         required: true
         content:

@@ -60,7 +60,7 @@ paths:
           $ref: '#/components/responses/InternalError'
     patch:
       operationId: updateUser
-      summary: Self-service profile update (handle, avatar URL, currency, visibility)
+      summary: Self-service profile update
       parameters:
         - name: userId
           in: path

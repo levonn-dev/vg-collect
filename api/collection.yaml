@@ -8,9 +8,9 @@ info:
     fractional-index backlog ordering, and a dashboard composing SQL
     aggregates with batched enrichment prices. Every operation requires
     a Bearer access JWT validated against the auth service's JWKS and
-    is scoped to the token's subject - except the one admin read, the
-    product-references count backing the catalog's guarded product
-    delete (role admin). Catalog facts (item type, display name, platform, release
+    is scoped to the token's subject - except the admin reads and
+    verdicts (role admin) and the /internal levers (role admin or a
+    service token; not subject-scoped). Catalog facts (item type, display name, platform, release
     date) are snapshotted onto an entry at creation from the enrichment
     product; current prices are composed at read time and never stored.
 security:
@@ -79,7 +79,8 @@ paths:
         free-text platform_name and first_release_date; pricing_mode
         defaults to disabled and auto is invalid (no own product) -
         pick a catalog product as the price source via pricing_mode
-        proxy + pricing_product_id. A backlog entry receives a
+        proxy + pricing_product_id, or carry an owner-entered value via
+        pricing_mode custom + custom_value_cents. A backlog entry receives a
         backlog_rank at the end of the backlog. Errors: 404 code
         unknown_product (product_id) or unknown_pricing_product
         (pricing_product_id) or tag_not_found; 502 code
@@ -705,12 +706,13 @@ paths:
       description: >
         Counts and spend come from SQL; total value composes each
         entry's effective pricing product (auto uses the entry's own
-        product, proxy the override, disabled is excluded) with the
+        product, proxy the override, custom its stored custom_value_cents,
+        disabled is excluded) with the
         packaging-appropriate price field. The entries-list filter
         dimensions narrow every aggregate exactly as they narrow the
         list (AND across dimensions, OR within one, tag_id requiring
         ALL listed tags). Only the unfiltered dashboard is cached
-        (about five minutes, invalidated by the caller's own entry
+        (DASHBOARD_CACHE_TTL, default 5m, invalidated by the caller's own entry
         mutations); filtered requests are computed live. When
         enrichment is unreachable the dashboard still answers with
         pricing.available=false (and the degraded result is not
