@@ -8,6 +8,8 @@
 Video-game collection tracker with granular per-item detail: OIDC login, IGDB metadata enrichment, PriceCharting market
 pricing, per-service Postgres/Valkey datastores, full observability.
 
+Architecture and diagrams live in `docs/architecture.md`; the documentation index is `docs/README.md`.
+
 ## Prerequisites
 
 - go >=1.26
@@ -44,7 +46,7 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | Command                  | What                                                                                                                                                                                                                                                   |
 |--------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `task lint`              | golangci-lint every Go module + helm lint every chart + eslint the frontend + obsgen dashboard and alert lint                                                                                                                                          |
-| `task test`              | go test every module + frontend vitest. Integration tests share three long-lived datastore containers (started on demand, reused across runs; per-run test databases are swept afterward, even on failure)                                             |
+| `task test`              | go test every module + frontend vitest. Integration tests share long-lived datastore containers (started on demand, reused across runs; per-run test databases are swept afterward, even on failure)                                             |
 | `task test:cover`        | tests + the 80% coverage gate (generated code and cmd/ wiring excluded)                                                                                                                                                                                |
 | `task gen`               | regenerate everything derived from the contracts: bundled contracts, domain tables, server stubs, dashboards and alerts, the frontend's typed client, facets, and locale catalogs. The chain is documented in `api/README.md` and `frontend/README.md` |
 | `task tidy`              | go mod tidy every module                                                                                                                                                                                                                               |
@@ -52,9 +54,9 @@ Note: the fixture's handle is literally `admin` on dev databases created before 
 | `task build`             | compile every module + the frontend bundle                                                                                                                                                                                                             |
 | `task e2e`               | Parallel Playwright browser suite against the running stack; per-run minted dev fixtures; isolation-first                                                                                                                                              |
 | `task run` / `task down` | tilt up / down                                                                                                                                                                                                                                         |
-| `task nuke`              | full app-stack reset: tilt down + the vgkeep namespace + the shared test datastore containers (see Teardown)                                                                                                                                           |
+| `task nuke`              | full app-stack reset: tilt down + delete the vgkeep namespace; the shared test datastore containers are separate (`task test:datastores:nuke`)                                                                                                          |
 
-Note: `task test` / `task test:cover` run the Go integration suites against three shared containers; test databases
+Note: `task test` / `task test:cover` run the Go integration suites against shared containers; test databases
 carry a per-package name and a per-run scope, so concurrent runs stay isolated. Bare `go test` in a module needs no
 setup: it boots throwaway containers instead (needs Docker).
 
@@ -62,7 +64,7 @@ setup: it boots throwaway containers instead (needs Docker).
 
 ```bash
 task down                    # stop the dev stack; namespace, datastore PVCs, issued TLS secrets survive
-task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets) + the shared test datastore containers
+task nuke                    # app layer: tilt down + delete the vgkeep namespace (drops PVCs + TLS secrets); shared test datastore containers: task test:datastores:nuke
 task bootstrap:cluster:down  # remove the platform: helm uninstalls + the vg-platform namespace
 ```
 
@@ -106,7 +108,7 @@ run against the real edge. Site identity bakes into the bundle at build time fro
 Every service pushes OTLP through a node-local agent collector to a central gateway, which fans out to Prometheus
 (metrics, with exemplars), Loki (logs), and Jaeger (traces). Browser telemetry rides the same pipe through a
 session-gated relay on the bff, so one trace stitches the browser through the bff and into whichever service and
-database answered the call. Ddashboards and alert rules provision into the `vgkeep` Grafana folder (localhost:3000,
+database answered the call. Dashboards and alert rules provision into the `vgkeep` Grafana folder (localhost:3000,
 anonymous admin in dev); every alert links a runbook under `docs/runbooks/`, indexed by
 `docs/runbooks/README.md`. The dashboard catalog and the telemetry pipeline live in `docs/runbooks/stack.md`.
 
@@ -121,14 +123,15 @@ documented production path.
 - `api/` OpenAPI contracts and domain tables; layout and editing flow in
   `api/README.md`
 - `libs/go/` shared modules (one concern each)
-- `services/` one Go module per service
+- `services/` one Go module per service, each with its own README
 - `frontend/` React SPA (typed against `api/bff.yaml`, served by the bff); see `frontend/README.md`
 - `bruno/` API flows against the dev stack; see `bruno/README.md`
 - `deploy/charts/` Helm: per-service charts, the platform chart, and
   `vg-lib`, the shared library chart every service chart vendors via
   `task helm:deps` (runs automatically from `task lint`,
   `task bootstrap:cluster`, and the Tiltfile)
-- `docs/` diagrams, runbooks, production paths, brand assets (`docs/brand/`)
+- `docs/` start at `docs/README.md` (the index) and `docs/architecture.md`; runbooks,
+  production paths, brand assets (`docs/brand/`)
 
 Translations: see `docs/translations.md` to contribute a language. Regions: `docs/adding-a-region.md` is the graduation
 checklist for a new entry region.
@@ -149,7 +152,7 @@ Everything checked off is verified end to end by Playwright journeys, per-servic
 - [x] Playwright e2e suite
 - [x] observability: dashboards, alerts, runbooks
 - [x] remove MongoDB
-- [ ] docs/diagrams pass
+- [x] docs/diagrams pass
 - [ ] frontend style pass and cleaner user flows
 - [ ] price-change notifications
 - [ ] social notifications
