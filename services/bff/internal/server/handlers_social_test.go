@@ -1013,8 +1013,8 @@ func TestUnitFeed_FillLoopAndGating(t *testing.T) {
 }
 
 // TestUnitFeed_UpstreamErrorsAreHard502s pins that GetFeed never degrades
-// quietly: a raw social.Feed failure or any hydrateFeed batch failure both
-// answer 502, since the failed lookup is gating-relevant - fail-open would risk naming a gated object.
+// quietly: a raw social.Feed failure or any hydrateFeed batch failure answers
+// 502 with the failing dependency named in the detail - fail-open would risk naming a gated object.
 func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 	actorID, shelfID, ownerID := uuid.New(), uuid.New(), uuid.New()
 	event := socialapi.ActivityEvent{
@@ -1048,6 +1048,45 @@ func TestUnitFeed_UpstreamErrorsAreHard502s(t *testing.T) {
 		rec := doAuthed(t, h, env, http.MethodGet, "/api/feed?tab=following")
 		if rec.Code != http.StatusBadGateway {
 			t.Fatalf("status = %d, want 502 (no partial/degraded feed page)", rec.Code)
+		}
+		var p struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+			t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+		}
+		if p.Code != "upstream_error" || p.Detail != "collection service unavailable" {
+			t.Fatalf("problem = %+v", p)
+		}
+	})
+
+	t.Run("hydrateFeed batch failure (user down)", func(t *testing.T) {
+		h := newTestHandlers(t, newStubCache(), &stubAuth{})
+		h.social = &stubSocialFull{feed: func(context.Context, string, string, *string, int) ([]socialapi.ActivityEvent, *string, error) {
+			return []socialapi.ActivityEvent{event}, nil, nil
+		}}
+		h.collection = &stubCollection{sharedShelvesByIDs: func(context.Context, string, []uuid.UUID) ([]collectionapi.SharedShelfSummary, error) {
+			return nil, nil
+		}}
+		h.users = &stubUsers{sharedCardsByIDs: func(context.Context, string, []uuid.UUID) ([]userapi.ProfileCard, error) {
+			return nil, errors.New("user down")
+		}}
+		access := mintAccess(t, uuid.New().String(), "j1", time.Now().Add(5*time.Minute))
+		env := &testEnv{cookie: sealedCookie(t, h, access, "r1"), sessionAccessToken: access}
+		rec := doAuthed(t, h, env, http.MethodGet, "/api/feed?tab=following")
+		if rec.Code != http.StatusBadGateway {
+			t.Fatalf("status = %d, want 502", rec.Code)
+		}
+		var p struct {
+			Code   string `json:"code"`
+			Detail string `json:"detail"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+			t.Fatalf("problem body: %v (%s)", err, rec.Body.String())
+		}
+		if p.Code != "upstream_error" || p.Detail != "user service unavailable" {
+			t.Fatalf("problem = %+v", p)
 		}
 	})
 }

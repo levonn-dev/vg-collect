@@ -498,9 +498,9 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 			writeProblem(w, r, http.StatusBadGateway, "upstream_error", "social service unavailable")
 			return
 		}
-		hydrated, err := h.hydrateFeed(r.Context(), sess.AccessToken, claims.Sub, tab, events)
+		hydrated, detail, err := h.hydrateFeed(r.Context(), sess.AccessToken, claims.Sub, tab, events)
 		if err != nil {
-			writeProblem(w, r, http.StatusBadGateway, "upstream_error", "social service unavailable")
+			writeProblem(w, r, http.StatusBadGateway, "upstream_error", detail)
 			return
 		}
 		for i, item := range hydrated {
@@ -532,9 +532,10 @@ func (h *Handlers) GetFeed(w http.ResponseWriter, r *http.Request, params api.Ge
 // hydrateFeed batches actor/followee/shelf-owner cards, shelf summaries,
 // comment bodies, and social counts for one page, building a *api.FeedItem
 // per event (nil where gating drops it) at the same index as events, so the
-// caller recovers each survivor's cursor by index. Every lookup here is a hard
+// caller recovers each survivor's cursor by index; on error the string names
+// the failing dependency for the 502 detail. Every lookup here is a hard
 // dependency, unlike decorative social counts elsewhere: failing open would risk naming a gated object.
-func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, events []socialapi.ActivityEvent) ([]*api.FeedItem, error) {
+func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, events []socialapi.ActivityEvent) ([]*api.FeedItem, string, error) {
 	var shelfIDs []uuid.UUID
 	seenShelf := map[uuid.UUID]bool{}
 	var commentIDs []uuid.UUID
@@ -553,7 +554,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		var err error
 		shelves, err = h.collection.SharedShelvesByIDs(ctx, bearer, shelfIDs)
 		if err != nil {
-			return nil, fmt.Errorf("hydrate feed: shelves: %w", err)
+			return nil, "collection service unavailable", fmt.Errorf("hydrate feed: shelves: %w", err)
 		}
 	}
 	shelfByID := shelfSummariesByID(shelves)
@@ -580,7 +581,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		var err error
 		cards, err = h.users.SharedCardsByIDs(ctx, bearer, personIDs)
 		if err != nil {
-			return nil, fmt.Errorf("hydrate feed: cards: %w", err)
+			return nil, "user service unavailable", fmt.Errorf("hydrate feed: cards: %w", err)
 		}
 	}
 	cardByID := cardsByID(cards)
@@ -590,7 +591,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		var err error
 		comments, err = h.social.CommentsByIDs(ctx, bearer, commentIDs)
 		if err != nil {
-			return nil, fmt.Errorf("hydrate feed: comments: %w", err)
+			return nil, "social service unavailable", fmt.Errorf("hydrate feed: comments: %w", err)
 		}
 	}
 	// Same value-map shape as cardsByID/shelfSummariesByID; indexByID fits since
@@ -602,7 +603,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		var err error
 		summaries, err = h.social.ShelvesSummary(ctx, bearer, shelfIDs)
 		if err != nil {
-			return nil, fmt.Errorf("hydrate feed: shelves summary: %w", err)
+			return nil, "social service unavailable", fmt.Errorf("hydrate feed: shelves summary: %w", err)
 		}
 	}
 	summaryByID := shelfSocialByID(summaries)
@@ -654,7 +655,7 @@ func (h *Handlers) hydrateFeed(ctx context.Context, bearer, _, tab string, event
 		}
 		items[i] = item
 	}
-	return items, nil
+	return items, "", nil
 }
 
 // topShelvesLimit is social's fixed leaderboard size (top ignores limit/
