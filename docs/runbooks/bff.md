@@ -8,6 +8,8 @@ through typed clients that relay upstream answers verbatim. It holds no
 database: its only datastore is `bff-valkey`, a TLS-only, non-persistent cache
 whose total loss degrades latency and revocation speed but breaks nothing.
 
+Design and internals (components, flows, data model): [services/bff/README.md](../../services/bff/README.md).
+
 What it does, as an operator sees it:
 
 - Sessions: dev and OAuth login, logout, transparent refresh with a
@@ -29,7 +31,7 @@ What it does, as an operator sees it:
   guarded product delete (reference check against collection before the
   enrichment delete), community mint, promote flows, submissions queue and
   verdicts, catalog refresh trigger, entry rematch trigger, entry resnapshot,
-  and the three normalization sweeps (platforms, regions, community regions).
+  and the normalization sweeps (platforms, regions, community regions).
   Role enforcement lives downstream; the bff holds no role logic.
 - Request validation: every relay's body and query parameters are checked
   against the bff's own copy of the OpenAPI contract before any upstream
@@ -235,9 +237,9 @@ mux patterns, method-prefixed (`GET /api/me`, `POST /api/otlp/v1/traces`).
 | `vg_bff_cache_fail_open_total`                                                   | counter (`vg.bff.cache.fail_open`)   | `{event}`   | `op`: `denylist_add`, `denylist_check`, `me_get`, `me_put`, `me_invalidate`, `recs_get`, `recs_put`, `recs_invalidate`, `refresh_lock`, `refresh_unlock`, `refresh_publish`, `refresh_result`, `social_summary`, `social_publish_event`, `comment_authors` | Valkey operations skipped by failing open, plus non-Valkey composition calls that degrade the same way (social counts, the publish event, and batched comment-author cards); the denylist ops feed a page alert |
 | `vg_bff_auth_logins_total`                                                       | counter (`vg.bff.auth.logins`)       | `{login}`   | `flow`: `login`, `link`; `outcome`: `success`, `failed`, `email_unverified`, `provider_error`, `conflict`                                                                                                                                                  | did logins or account links regress, and how are they failing                                                                                                                                                   |
 | `vg_bff_session_refreshes_total`                                                 | counter (`vg.bff.session.refreshes`) | `{refresh}` | `outcome`: `rotated`, `adopted`, `deferred`, `rejected`, `reuse_revoked`, `failed`, `adopt_timeout`                                                                                                                                                        | are sessions staying alive; a `rejected`/`reuse_revoked`/`failed` climb is users being logged out                                                                                                               |
-| `vg_bff_cache_lookups_total`                                                     | counter (`vg.bff.cache.lookups`)     | `{lookup}`  | `cache`: `me`, `recs`; `outcome`: `hit`, `miss`                                                                                                                                                                                                            | are the two composition caches absorbing load; a hit-ratio drop after a deploy means a key-version bump or TTL misconfig                                                                                        |
+| `vg_bff_cache_lookups_total`                                                     | counter (`vg.bff.cache.lookups`)     | `{lookup}`  | `cache`: `me`, `recs`; `outcome`: `hit`, `miss`                                                                                                                                                                                                            | are the composition caches absorbing load; a hit-ratio drop after a deploy means a key-version bump or TTL misconfig                                                                                        |
 
-Emission sites for the three domain counters beyond `fail_open`:
+Emission sites for the domain counters beyond `fail_open`:
 
 - `vg.bff.auth.logins`: one increment per completed login or link attempt, at
   the `Login`, `Callback`, and `LinkLogin` outcome points (success on the
@@ -521,16 +523,21 @@ sum by (http_route) (rate(http_server_request_duration_seconds_count{service_nam
 ```
 
 Route-to-dependency map: `/api/auth/*` and `/api/me/identities*` > auth;
-`/api/me` > user; `/api/entries*`, `/api/tags*`, `/api/views*`,
+`/api/me`, `/api/search/users`, `/api/shared/profiles/by-ids` > user;
+`/api/entries*`, `/api/tags*`, `/api/views*`,
 `/api/dashboard*`, `/api/admin/submissions*`, `/api/admin/rematch`,
 `/api/admin/resnapshot`, `/api/admin/normalize-platforms`,
 `/api/admin/normalize-regions` > collection; `/api/search`,
 `/api/products*`, `/api/fx`, `/api/platforms`, `/api/admin/products*`,
 `/api/admin/refresh`, `/api/admin/normalize-community-regions` > enrichment;
-`/api/social/follows/*`, `/api/social/likes/*`, `/api/shelves/*`,
-`/api/shelves/*/comments`, `/api/comments/*`, `/api/feed`, `/api/explore`,
-`/api/profiles/*` > social; `/api/otlp/v1/traces` > otel-agent.
-`/api/recommendations`, `DELETE /api/me`, and the composed profile pages
+`/api/social/follows/*`, `/api/social/likes/*`, `/api/shelves/*/comments`,
+`/api/comments/*` > social; `/api/otlp/v1/*` > otel-agent.
+`/api/recommendations`, `DELETE /api/me`, the feed and explore pages
+(`/api/feed` reads social's activity list, then collection and user to
+hydrate it; `/api/explore` dials social, collection, and user by tab),
+the shared shelf pages (`/api/shelves/{shelfId}` and
+`/api/shelves/{shelfId}/entries` read collection and user, with social
+counts fail-open), and the composed profile pages
 (`/api/profiles/{handle}` and `/api/profiles/{handle}/shelves/{slug}`
 read user and collection before social) touch several services; read the
 problem detail or the trace. Then triage the named service, not the bff
@@ -692,7 +699,7 @@ relays and key material.
   "Trigger entry rematch" button.
 
 - Entry resnapshot (relayed to collection, which enforces admin-or-service).
-  Synchronous, unlike the two triggers above - the sweep counts ride the
+  Synchronous, unlike the triggers above - the sweep counts ride the
   response:
 
   ```bash
