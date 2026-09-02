@@ -8,7 +8,12 @@ composition that joins entries to enrichment prices. Catalog facts are
 snapshotted onto an entry at creation; prices are composed on every
 read and never stored. Every route requires a Bearer access JWT from
 the auth service and is scoped to the token subject, except the admin
-reads and verdicts, which additionally require role admin.
+reads and verdicts, which additionally require role admin, and the
+`/internal/*` levers, which admit role admin or a service token and
+skip subject scoping.
+
+The developer's view (components, actor flows, data model, dev loop)
+is [services/collection/README.md](../../services/collection/README.md).
 
 Feature inventory, as an operator sees it:
 
@@ -62,7 +67,7 @@ The bff, social, and the rematch CronJob are the callers; NetworkPolicy
 `collection-from-callers-only` admits port 8080 ingress from bff,
 social, and collection-rematch pods, and the datastore policies admit
 only collection pods plus the Prometheus exporter ports (9187, 9121)
-from vg-platform. The one cron workload, collection-rematch
+from vg-platform. Its cron workload, collection-rematch
 (`0 7 * * *`, an hour after enrichment's catalog refresh), exchanges
 the shared internal secret for a service JWT at auth (`set -e
 -o pipefail`, so a failed exchange stops the job instead of chaining
@@ -171,7 +176,7 @@ pricing on reads and 502s the operations that need the catalog
 ## Datastores
 
 Postgres (`collection-pg`, StatefulSet, postgres:17-alpine, 1Gi PVC).
-Five tables: `entries` (one row per physical copy; CHECK constraints
+The tables: `entries` (one row per physical copy; CHECK constraints
 encode the domain invariants - pricing modes, backlog rank existing
 exactly while status is backlog, condition grades requiring the part,
 platform id never without a name; `backlog_rank` is COLLATE "C" so
@@ -193,7 +198,7 @@ verify-full against the in-cluster CA (secret `collection-pg-tls`);
 the pod-local postgres-exporter sidecar serves :9187.
 
 Valkey (`collection-valkey`, StatefulSet, valkey/valkey:8-alpine).
-Two keys per user: `dashboard:v1:<sub>` and
+Per-user keys: `dashboard:v1:<sub>` and
 `dashboard:value_history:v1:<sub>`,
 both marshaled response bodies with the configured TTL, both deleted
 together on any of the owner's entry mutations. TLS-only listener,
@@ -734,7 +739,7 @@ before blaming the limit.
 
 ## Admin levers
 
-Four levers below, all guarded admin role or a service token, all
+The levers below, all guarded admin role or a service token, all
 idempotent (re-running after a partial failure is the designed
 retry). Every one is reachable two ways: a card on the bff Admin
 page's Maintenance grid, or the direct service route (dev: the Tilt
