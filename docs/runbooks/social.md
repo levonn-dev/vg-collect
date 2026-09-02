@@ -2,13 +2,18 @@
 
 Follows, likes, comments, and the activity feed - vgkeep's social
 layer over shelves (collection's saved views) and profiles (user's
-identities). It owns four tables (`follows`, `likes`, `comments`,
-`activity`) and validates every write against collection or user
-before it lands - it never accepts an unvalidated follow or like
-target. Visibility is never stored here: writes independently
+identities). It owns the `follows`, `likes`, `comments`, `activity`,
+and `cap_events` tables and validates every follow, like, and
+comment against user or collection before it lands - it never accepts
+an unvalidated follow or like target. Visibility is never stored here: writes independently
 re-check it against collection and user before landing; reads answer
 with ids and counts only, and the bff hydrates and gates visibility
 at read time.
+
+The developer view (API surface, component and data-model diagrams,
+package layout, dev loop) is
+[services/social/README.md](../../services/social/README.md); this
+file stays the operator view.
 
 What an operator sees it doing:
 
@@ -70,7 +75,7 @@ sequenceDiagram
     participant C as collection
     participant U as user
     participant P as social-pg
-    B->>S: PUT /likes/{shelfId} (or a follow, or a comment)
+    B->>S: PUT /likes/{shelfId}
     S->>C: GET /shared/shelves/{shelfId}
     C-->>S: shelf + owner_id
     S->>U: GET /shared/profiles/by-ids?ids=owner_id
@@ -80,8 +85,11 @@ sequenceDiagram
     S-->>B: 204 / 404 not_found / 429 cap_exceeded
 ```
 
-Every mutating route runs a shape of this before it ever touches
-social-pg, so collection or user answering an error 502s the write
+Each write resolves what its target needs before it touches
+social-pg: a like runs both hops above, a follow only the user hop, a
+comment only the collection hop, and the deletes (unfollow, unlike,
+comment delete, purge) skip resolution and go straight to the store.
+Collection or user answering an error on a resolve 502s the write
 outright rather than falling back to anything - social never accepts
 an unvalidated follow or like target. Failure scenario 2 below covers
 it.
@@ -101,7 +109,7 @@ until collection and user are both ready.
 | Postgres           | `localhost:5436` -> `social-pg:5432`                                                   |
 | Liveness           | `GET /healthz`, static ok, no auth                                                     |
 | Readiness          | `GET /readyz`, pings the pg pool, no auth; JWKS is deliberately not checked            |
-| Bruno              | none yet; mint a bearer token with `auth/dev-token` and call `localhost:8086` directly |
+| Bruno              | `bruno/bff/social/` exercises the surface through the gateway; for direct service calls mint a bearer with `auth/dev-token` and hit `localhost:8086` |
 
 Task targets that touch this module:
 
@@ -176,7 +184,7 @@ per genuine follow or like action, written in the same transaction as
 the edge and kept even after the edge is retracted, so the rolling-24h
 cap counts actions rather than currently-held edges; every insert
 opportunistically deletes rows older than 48h so the table self-
-retains with no background job). Three migrations so far
+retains with no background job). The migrations so far
 (`000001_init`, `000002_cap_events`, `000003_comments_author_idx` -
 widens `comments_author_idx` to `(author_id, created_at DESC)` so the
 cap's rolling-24h count is index-bounded, matching
@@ -236,15 +244,16 @@ it):
 | `vg.social.publish.events`  | `vg_social_publish_events_total`  | counter    | {event}     | `outcome` = `created` \| `refreshed` \| `throttled` | shelf-publish activity; see failure scenario 3 for reading this against the bff's fail-open counter                             |
 | `vg.social.purge.runs`      | `vg_social_purge_runs_total`      | counter    | {run}       | `outcome` = `ok`                                    | account-deletion leg volume - this service's side of DeleteMe                                                                   |
 
-Emission sites: all seven counters are fields on `server.Handlers`,
+Emission sites: every counter is a field on `server.Handlers`,
 created in `server.New` (registration failure is logged and does not
 stop startup, matching every other service's counters). Each handler
 increments its counter after the store call succeeds, or, for cap
 rejections, at the `store.ErrCapExceeded` branch before the 429:
-`Follow`/`Unfollow` increment `follows` with `op=create` only when the
-store reports the edge was actually inserted (a re-follow of an
-existing edge counts nothing extra); `LikeShelf`/`UnlikeShelf` mirror
-that for `likes`; `CreateShelfComment` always increments `comments`
+`Follow` increments `follows` with `op=create` only when the store
+reports the edge was actually inserted (a re-follow of an existing
+edge counts nothing extra), while `Unfollow` counts `op=delete` on
+every successful store call, edge or no edge; `LikeShelf`/`UnlikeShelf`
+mirror that pair for `likes`; `CreateShelfComment` always increments `comments`
 with `op=create` on success; `DeleteComment` increments `comments`
 with whatever outcome the store's author-vs-owner branch returned;
 `GetFeed` increments `feed.reads` with the requested tab after a
@@ -541,8 +550,9 @@ listed shelves directly and gates each page's owner at the bff, not
 the activity table). The bff calls
 `POST /events/shelf-published` best-effort after collection confirms
 the visibility flip, and fails open on any error - the event is
-simply lost, not retried, until the next listed transition
-re-attempts it. Compare `vg_social_publish_events_total` (this
+simply lost, not retried, until the next successful saved-view write
+whose response lands `visibility=listed` re-fires it (any create or
+update of the shelf, not only a visibility flip). Compare `vg_social_publish_events_total` (this
 service's own view: did the call even arrive, and with what outcome)
 against the bff's
 
@@ -575,8 +585,8 @@ None yet. Account deletion runs through the standard DeleteMe
 orchestration (see Purge semantics below), not a dedicated admin
 endpoint, so there is nothing here today that needs a guarded
 re-runnable route the way collection's resnapshot or enrichment's
-refresh trigger do. Two levers are scoped for later, once real usage
-data justifies them - both would take call-time parameters per the
+refresh trigger do. Levers are scoped for later, once real usage
+data justifies them - each would take call-time parameters per the
 backfill-lever idiom the rest of the repo already follows (a guarded,
 idempotent, re-runnable endpoint; never a one-shot migration for data
 normalization):
