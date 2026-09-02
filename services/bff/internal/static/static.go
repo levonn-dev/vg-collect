@@ -1,6 +1,6 @@
 // Package static serves the embedded SPA bundle; the committed dist
 // directory is a placeholder the container build overwrites with real Vite
-// output before compiling. Each behavior has a CDN equivalent in the README's production-paths section.
+// output before compiling. Each behavior has a CDN equivalent in docs/production-paths.md (SPA delivery).
 package static
 
 import (

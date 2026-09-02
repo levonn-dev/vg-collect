@@ -40,7 +40,7 @@ spec:
                     secretKeyRef: { name: collection-secrets, key: internal-service-token }
               command: ["/bin/sh", "-c"]
               # Dependency-ordered chain: normalize-platforms, then normalize-regions (display re-picks ride
-              # it), then rematch-entries, so a just-promoted region's pricing class corrects in the same run. && surfaces failures; all three answer synchronous counts.
+              # it), then rematch-entries, so a just-promoted region's pricing class corrects in the same run. && surfaces failures; the sweeps answer synchronous counts, rematch-entries answers 202 and detaches.
               args:
                 - >-
                   set -e -o pipefail;

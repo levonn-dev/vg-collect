@@ -235,7 +235,7 @@ tasks:
       - task: frontend:test:cover
 
   test:datastores:
-    desc: 'Start the shared test datastore containers if their ports are not already answering (kits adopt them via the *TEST_URL env vars; `task nuke` removes them)'
+    desc: 'Start the shared test datastore containers if their ports are not already answering (kits adopt them via the *TEST_URL env vars; `task test:datastores:nuke` removes them)'
     cmds:
       - timeout 2 bash -c '</dev/tcp/127.0.0.1/54329' 2>/dev/null || docker start vgkeep-testpg 2>/dev/null ||
           docker run -d --name vgkeep-testpg -p 127.0.0.1:54329:5432

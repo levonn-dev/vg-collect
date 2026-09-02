@@ -1,6 +1,6 @@
 // Package server maps HTTP onto the store, enrichment client, and dashboard
-// cache, enforcing per-user JWT scoping. The one admin read (product-reference
-// count backing the catalog's guarded delete) is the exception.
+// cache, enforcing per-user JWT scoping. Admin reads and verdicts (role admin)
+// and the /internal levers (role admin or a service token) skip subject scoping.
 package server
 
 import (
