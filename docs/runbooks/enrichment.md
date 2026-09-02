@@ -10,6 +10,9 @@ per product, and runs the moderation surface for community-minted
 products. Everything else in the stack (bff, collection) reads
 products and prices from it by id.
 
+Component and flow diagrams, the data model, and the env contract
+live in [services/enrichment/README.md](../../services/enrichment/README.md).
+
 Features as an operator sees them:
 
 - Catalog search (`GET /search`, kinds game / hardware / pc_listing),
@@ -210,15 +213,15 @@ secret's new home).
 ## Datastores
 
 Postgres (`enrichment-pg`, StatefulSet, postgres:17-alpine, 1Gi PVC)
-holds four tables. `products` is one row per catalog product; identity
-is enforced by three unique partial indexes: `products_game_identity`
+holds the catalog schema. `products` is one row per catalog product;
+identity is enforced by unique partial indexes: `products_game_identity`
 on (igdb_game_id, platform_igdb_id, pc_product_id) `NULLS NOT DISTINCT`
 scoped to `type = 'game' AND origin = 'provider'`,
 `products_hardware_identity` on (pc_product_id, region, edition,
 variant) `NULLS NOT DISTINCT` scoped to `type IN ('console',
 'accessory') AND origin = 'provider'`, and `products_pc_listing_identity`
 on (pc_product_id) scoped to `type = 'pc_listing'` (unscoped by origin -
-a community product can never be type pc_listing); the three
+a community product can never be type pc_listing); the
 identity-bearing columns (`igdb_game_id`, `platform_igdb_id`,
 `pc_product_id`) are `GENERATED ALWAYS AS ... STORED` projections off
 the `igdb`/`platform`/`pricecharting` jsonb columns, so the indexes
@@ -938,7 +941,7 @@ Same refresh via the admin API (port-forward 8084):
 curl -X POST -H "Authorization: Bearer $ADMIN_JWT" http://localhost:8084/admin/refresh
 ```
 
-Both run all three steps: prices, reprojection, candidate sweep. The
+Both run the same steps: prices, reprojection, candidate sweep. The
 reprojection step is the catalog's self-healing backfill:
 any projection-logic change redeploys through it with zero provider
 calls in steady state, so "re-run the refresh" is the answer to most
@@ -1016,7 +1019,7 @@ memory by pod" before trimming the limit. Postgres: 50m / 128Mi
 requests, 256Mi limit, 1Gi PVC. Valkey: 50m / 64Mi requests, 128Mi
 limit.
 
-PDBs set `minAvailable: 1` on all three workloads. With single
+PDBs set `minAvailable: 1` on every workload. With single
 replicas that means voluntary drains block instead of silently
 dropping the only copy - intentional; scale before draining, or
 accept the eviction being refused.
@@ -1030,7 +1033,7 @@ A rollout surges: deployment defaults round to maxSurge 1 /
 maxUnavailable 0 at one replica, so the new pod starts, runs the
 migrate init container, and must pass readyz (Postgres ping) before
 the old pod terminates. Traffic never drops as long as the new pod goes
-ready. Two things do not survive the swap: the Valkey-independent
+ready. What does not survive the swap: the Valkey-independent
 in-process refresh guard, and any detached refresh mid-flight - the
 refresh dies unlogged with the old process, so re-trigger the refresh
 after rolling during one (nothing corrupts; the refresh is per-product
@@ -1040,7 +1043,7 @@ duplicate snapshot per product).
 CronJob shape: schedule `0 6 * * *`, concurrencyPolicy Forbid (the
 service's 409 guard is the inner layer), startingDeadlineSeconds 3600,
 backoffLimit 2, activeDeadlineSeconds 900 for the curl pod itself,
-which now runs two `&&`-joined hops after the token exchange
+which runs `&&`-joined hops after the token exchange
 (`--max-time 60` each): the refresh trigger - detached and budgeted at
 30m inside the service - then normalize-community-regions, which runs
 to completion synchronously before the pod exits. The script runs
