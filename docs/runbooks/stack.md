@@ -1,8 +1,9 @@
 # The vgkeep stack
 
-vgkeep is a video-game collection tracker: six Go services behind
-an APISIX gateway that publishes only the bff, a React SPA served out
-of the bff binary, and per-service datastores (Postgres for auth,
+vgkeep is a video-game collection tracker: Go services behind
+an APISIX gateway that publishes only the bff, a React SPA (served
+out of the bff binary when `SERVE_STATIC` is on, the chart default),
+and per-service datastores (Postgres for auth,
 user, collection, social, and enrichment; Valkey caches for the bff,
 collection, and enrichment). auth mints every token,
 user owns profiles and roles, collection owns what people track,
@@ -52,15 +53,15 @@ graph LR
     enrichment --> fx[frankfurter.dev]
 ```
 
-Two side doors exist in dev only: the `frontend-dev` Tilt resource
+Side doors exist in dev only: the `frontend-dev` Tilt resource
 (manual trigger) runs Vite on 5173 and proxies `/api` to the gateway,
 so cookie and CSRF behavior match production paths; and Bruno flows
 under `bruno/` either ride the gateway (`bruno/bff/`,
 `bruno/bff/admin/`) or hit services directly on their Tilt
 port-forwards with Bearer tokens. Every service validates JWTs against
 auth's JWKS; NetworkPolicies restrict each hop to its intended callers
-(the gateway namespace to bff, bff to the five services, each service
-to its own datastores). Enrichment's provider calls run in `stub` mode
+(the gateway namespace to bff, bff to the services it fans out to,
+each service to its own datastores). Enrichment's provider calls run in `stub` mode
 by default, so the whole stack works with zero real credentials.
 
 ## Telemetry pipeline
@@ -191,20 +192,20 @@ dashboard.
 | User Service       | `vg-user`         | account upserts, currency seeds, deletions, user-pg                                                                                                                                                      | [user.md](user.md)                                                                                                                                                                       |
 | Frontend Telemetry | `vg-frontend`     | locale boots by source, browser languages hitting fallback, catalog fetch failures, mid-session locale switches, prose pages served in English, uncaught errors, network failures, and web-vitals health | [frontend.md](frontend.md)                                                                                                                                                               |
 
-The six service dashboards share one layout contract: HTTP RED per
+The service dashboards share one layout contract: HTTP RED per
 route first, then domain metrics, then datastores from that service's
 seat, then pods and error logs. Panels for a service's domain metrics
 (`vg_<service>_*`) stay empty until a pod built with those instruments
 is running; a freshly landed instrument needs its deployment rolled
 before the series exists. Frontend Telemetry does not follow that
 contract: the browser emits no HTTP RED histogram, owns no datastore,
-and runs no pod of its own, so its dashboard holds nine browser-side
+and runs no pod of its own, so its dashboard holds browser-side
 instruments instead - locale, prose fallback, errors, network
 failures, and web vitals - documented in [frontend.md](frontend.md).
 
 ### Generation and lint
 
-The six service dashboards (auth, bff, collection, enrichment, social,
+The service dashboards (auth, bff, collection, enrichment, social,
 user) generate from `deploy/observability/` manifests. Panels shared
 across services live once, as named golden blocks in
 `deploy/observability/dashboards/golden.yaml`; each service's manifest
@@ -217,7 +218,7 @@ time, so an empty gap between blocks does not stay empty: a panel
 below the gap floats up and renders out of its authored position. The
 guarantee is not that panels never move - it is that every dashboard
 is authored fully packed, and a float-up check at generation time
-(`task gen`, once a dashboard declares sections - all six do today)
+(`task gen`, once a dashboard declares sections - all do today)
 and lint time (`task lint:obs`, unconditionally) rejects any panel
 that could still move, so the rendered layout always equals the
 authored one. Each service's manifest also declares `sections`, a map
@@ -229,16 +230,16 @@ each service's own runbook uses in its panel list.
 
 `task lint:obs` checks panel geometry (bounds, overlap, the float-up
 stability check, id and title uniqueness) and parses every query
-expression across all twelve shipped dashboard files under
-`deploy/charts/platform/files/dashboards/`, the six generated ones and
-the six hand-authored ones (overview, apisix-edge, datastores,
+expression across every shipped dashboard file under
+`deploy/charts/platform/files/dashboards/`, the generated ones and
+the hand-authored ones (overview, apisix-edge, datastores,
 pod-details, node-details, frontend) alike. Like alert rules, a shipped
 dashboard change converges into Grafana through the provisioning
 rescan (see Verified below) - no pod restart needed.
 
 ## Frontend telemetry
 
-The SPA's telemetry - six counters and three web-vitals histograms,
+The SPA's telemetry - counters and web-vitals histograms,
 relayed through the bff the same way traces are - has its own runbook:
 [frontend.md](frontend.md).
 
@@ -255,11 +256,11 @@ under Alerting > Active alerts. Every rule's `runbook_url` lands on
 the runbook (or the exact failure-mode section) that triages it;
 [README.md](README.md) holds the full alert-to-runbook table.
 
-Seven rules treat missing data as firing because absence is their
+Some rules treat missing data as firing because absence is their
 signal: vg-enrichment-refresh-stalled (no completed catalog refresh in
 26h; a brand-new stack fires this until its first refresh finishes at
-06:00 or by manual trigger), and the six vg-{service}-down rules
-([Service down](#service-down) below - none of the six services has a
+06:00 or by manual trigger), and the vg-{service}-down rules
+([Service down](#service-down) below - no service has a
 ServiceMonitor of its own, so the absence of its datastore exporter's
 scrape target is the signal). Every other
 rule sets `noDataState: OK`, so a not-yet-emitting instrument stays
@@ -376,7 +377,7 @@ stack runs with zero real secrets: provider credentials are optional
 (stub modes serve embedded fixtures) and Tilt enables a real provider
 only when its full credential pair is present in `.env`.
 
-Two operational consequences: deployments re-roll themselves when a
+The operational consequences: deployments re-roll themselves when a
 secret's shape changes (the pod template hashes the ExternalSecret
 manifest), but a value-only rotation needs a deliberate
 `kubectl rollout restart` after ESO refreshes the Secret; and the
@@ -402,7 +403,7 @@ runbooks in:
 | A service is completely unresponsive, all pods gone                                         | [Service down](#service-down)                                                                                                                                                            | [Pod restart churn](#4-pod-restart-churn-or-oom-kill) if it is crashlooping rather than clean-down, or that service's own runbook failure modes                                                                            |
 | One service erroring or slow                                                                | [5xx ratio](#1-service-5xx-ratio-above-5-percent), [p99 latency](#2-service-p99-latency-above-500ms) below                                                                               | that service's runbook failure modes                                                                                                                                                                                       |
 | A datastore down or saturated                                                               | [enrichment.md](enrichment.md#2-postgres-down-or-saturated), [Postgres saturation](#6-postgres-connections-above-80-percent-of-max), [Valkey pressure](#7-valkey-evicting-keys-or-memory-unusually-high) | the owning service runbook for readiness behavior and blast radius                                                                                                                                                         |
-| Dashboards blank, service healthy                                                           | [Telemetry pipeline operations](#telemetry-pipeline-operations) above                                                                                                                    | the four-step walk there, ending at the backend pods                                                                                                                                                                       |
+| Dashboards blank, service healthy                                                           | [Telemetry pipeline operations](#telemetry-pipeline-operations) above                                                                                                                    | the step-by-step walk there, ending at the backend pods                                                                                                                                                                       |
 
 The dependency chain behind most of these: browser -> gateway -> bff
 -> auth -> user for anything session-shaped, bff -> collection ->
@@ -577,9 +578,9 @@ rate(redis_evicted_keys_total[5m]) > 0 or redis_memory_used_bytes > 209715200
    keeps growing without any evictions, suspect a key leak (keys
    written without a TTL) instead.
 
-The two sections below are different in kind from 1-7 above: each is
-one rule shape instantiated once per service (six copies with the
-same query, not one rule aggregating across all six), so there is no
+The sections below are different in kind from 1-7 above: each is
+one rule shape instantiated once per service (same query per copy,
+not one rule aggregating across all of them), so there is no
 single number that fired.
 
 ### Service down
@@ -595,9 +596,9 @@ up{namespace="vgkeep", pod=~"{service}-.*"}
 Every service pushes telemetry over OTLP and has no scraped `up`
 series of its own, so in practice this tracks that service's datastore
 exporter target: auth, social, and user each have one Postgres
-exporter (`<service>-pg`); bff has one Valkey exporter
-(`bff-valkey`); collection and enrichment have two apiece
-(`<service>-pg` and `<service>-valkey`). A datastore outage usually
+exporter (`<service>-pg`); bff has a Valkey exporter
+(`bff-valkey`); collection and enrichment have a Postgres and a
+Valkey exporter apiece (`<service>-pg` and `<service>-valkey`). A datastore outage usually
 takes the service's own readiness down with it too, since readiness
 pings the connection pool - by far the most common route to this rule
 firing.
@@ -718,8 +719,8 @@ kubectl -n vg-platform get cm vg-dashboards -o json | jq -r '.data | keys[]'
 curl -s "http://localhost:3000/api/search?tag=vgkeep&limit=50" | jq -r '.[] | select(.type=="dash-db") | .uid'
 ```
 
-Service deployments rolled, expecting `successfully rolled out` six
-times:
+Service deployments rolled, expecting `successfully rolled out` once
+per service:
 
 ```bash
 for d in auth bff collection enrichment social user; do kubectl -n vgkeep rollout status deployment/$d; done

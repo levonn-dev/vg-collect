@@ -51,7 +51,7 @@ provision its own (Cluster)SecretStore, since no chart here ships one.
 
 ## SPA delivery
 
-Delivery moves behind Route53 to CloudFront (ACM, WAF), with two
+Delivery moves behind Route53 to CloudFront (ACM, WAF), with split
 origins: private S3 (OAC) for the hashed assets, and an NLB to APISIX
 to the bff for everything under /api/*. Keeping both origins on the
 same host preserves the existing cookie/CSRF model unchanged. CI syncs
@@ -114,7 +114,7 @@ by helm: the helm show crds | kubectl apply --server-side line has to
 be re-run by hand on every chart version bump, or the next upgrade
 fails against stale CRDs. NetworkPolicies throughout the repo are
 ingress-only; an egress-lockdown pass is the documented next hardening
-step, not yet done. App pods and the two trigger CronJobs run a
+step, not yet done. App pods and the trigger CronJobs run a
 restricted securityContext (runAsNonRoot pinned to the image's numeric
 nonroot uid so the kubelet can verify it - 65532 for the distroless
 services, 100:101 for the curl-based CronJobs; a non-numeric image USER
