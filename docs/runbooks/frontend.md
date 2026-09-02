@@ -2,7 +2,7 @@
 
 This is not a service runbook in the usual sense: the SPA has no pod,
 ships no server logs, and owns no alert rule. What it has earned is
-its own dashboard (`vg-frontend`) and nine browser-side telemetry
+its own dashboard (`vg-frontend`) and browser-side telemetry
 instruments dense enough to deserve a document of their own instead of
 a paragraph inside [stack.md](stack.md). Everything below - metrics,
 dashboard, failure scenarios - concerns code in
@@ -12,11 +12,13 @@ own lazy chunk so the SDK stays off the entry bundle); there is no
 architecture, running-it,
 configuration, datastore, admin-lever, or capacity story to tell,
 because there is no running process on the other end of these pages,
-only a browser.
+only a browser. The app's own structure - shells, API modules, client
+state, build - is documented in
+[frontend/README.md](../../frontend/README.md).
 
 ## Telemetry
 
-Nine instruments - six counters and three web-vitals histograms - are
+The instruments - counters and web-vitals histograms - are
 created once in `frontend/src/telemetryImpl.ts` (held and recorded
 into by the `telemetry.ts` facade; records that fire before the impl
 chunk lands, like the boot counter, buffer in the facade and replay on
@@ -31,7 +33,7 @@ over the sibling `POST /api/otlp/v1/traces` route (one span per fetch
 call, stitched to whatever backend trace it caused); that signal is
 covered by the pipeline topology in
 [stack.md](stack.md#telemetry-pipeline-operations) and read back in
-Jaeger under service `frontend` - this page is about the nine metric
+Jaeger under service `frontend` - this page is about the metric
 instruments and their dashboard.
 
 Every instrument here samples signed-in sessions only: the relay
@@ -55,14 +57,13 @@ to size anonymous traffic.
 | `vg_frontend_web_vitals_inp_milliseconds_{count,sum,bucket}` | histogram (`vg.frontend.web_vitals.inp`)        | ms               | same as LCP                                                                                                                        | Interaction to Next Paint, final value per page load - responsiveness                                                                                                                                                                                                               |
 | `vg_frontend_web_vitals_cls_{count,sum,bucket}`              | histogram (`vg.frontend.web_vitals.cls`)        | (unitless score) | same as LCP                                                                                                                        | Cumulative Layout Shift, final value per page load - visual stability                                                                                                                                                                                                               |
 
-The `_milliseconds_` infix on the two ms-unit histograms is the
+The `_milliseconds_` infix on the ms-unit histograms is the
 OTel-to-Prometheus translator expanding the `ms` unit into a name
 suffix - the same mechanism that turns every backend service's
 `s`-unit HTTP histogram into `..._seconds_bucket`. `vg.frontend.web_vitals.cls`
-declares no unit, so its Prometheus name carries no such infix. Verified
-against the live pipeline, not assumed - the dot-to-underscore and
-`_total`/`_bucket`/`_sum`/`_count` suffixing is otherwise the same as
-every other counter and histogram in this stack.
+declares no unit, so its Prometheus name carries no such infix. The
+dot-to-underscore and `_total`/`_bucket`/`_sum`/`_count` suffixing is
+otherwise the same as every other counter and histogram in this stack.
 
 `vg_frontend_locale_boot_total` fires exactly once per successful app
 boot (`recordLocaleBoot`, called once from `activateBoot`), so summed
@@ -89,7 +90,7 @@ backend's 5xx ratio points at the client's own network path (offline,
 DNS, a misbehaving proxy, CORS), not a backend incident.
 
 `vg_frontend_errors_total`'s `kind` attribute is `error` or
-`unhandledrejection` from the two `window` listeners telemetry init
+`unhandledrejection` from the `window` listeners telemetry init
 registers, or `boundary` from `ErrorBoundary.componentDidCatch`
 (`frontend/src/components/ErrorBoundary.tsx`): a render crash React
 caught, where the user saw the fallback screen instead of a blank
@@ -99,7 +100,7 @@ so counting it here is not a double count (see the why-comment on
 
 ### Web vitals
 
-The three histograms feed from the `web-vitals` package's default
+The vitals histograms feed from the `web-vitals` package's default
 reporting mode (no `reportAllChanges`): one data point per vital per
 page load, recorded when the browser finalizes that vital's value. LCP
 and CLS (and in practice INP too) only finalize once the page is
@@ -149,7 +150,7 @@ guessed.
 Nothing here pages: `vg-rules.yaml` gains no rule from this dashboard,
 on purpose. Catalog failures already degrade gracefully (failure
 scenario 1 below); the error counter, the network-failure counter, and
-all three vitals histograms are new instruments with no production
+the vitals histograms are new instruments with no production
 baseline yet. A threshold picked before anyone has seen a week of real
 traffic is a guess, and a guessed threshold either pages on ordinary
 noise or misses a real regression. The approach is baselines first: let
@@ -190,7 +191,7 @@ family.
 | INP p75 trend                           | timeseries                    | same query as the INP stat                                                                              |
 | CLS p75 trend                           | timeseries                    | same query as the CLS stat                                                                              |
 
-The three vitals land as six panels rather than three or one combined
+Each vital lands as its own stat-and-trend pair rather than one combined
 panel: LCP and INP share a unit (ms) but differ by an order of
 magnitude in typical value, and CLS has no unit at all, so a single
 shared-axis panel would either mislabel CLS or flatten it against LCP.
